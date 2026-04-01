@@ -1,0 +1,25 @@
+{
+  "name": "better-zap-monorepo",
+  "private": true,
+  "packageManager": "pnpm@10.28.2",
+  "scripts": {
+    "build": "pnpm --filter \"./packages/better-zap\" --filter \"./packages/react\" --filter \"./packages/hono\" --filter \"./packages/cli\" -r build",
+    "typecheck": "pnpm --filter \"./packages/better-zap\" --filter \"./packages/react\" --filter \"./packages/hono\" --filter \"./packages/cli\" -r typecheck",
+    "test": "pnpm --filter \"./packages/better-zap\" --filter \"./packages/react\" --filter \"./packages/hono\" --filter \"./packages/cli\" -r test",
+    "pack:check": "node ./scripts/pack-smoke.mjs",
+    "release:check": "pnpm build && pnpm typecheck && pnpm test && pnpm pack:check && pnpm changeset status --verbose",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release:publish": "changeset publish",
+    "release:publish:next": "changeset publish --tag next"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.6",
+    "@changesets/cli": "^2.29.7",
+    "@types/node": "^25.4.0",
+    "tsdown": "^0.21.2",
+    "turbo": "^2.8.16",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0"
+  }
+}

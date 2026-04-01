@@ -1,0 +1,10 @@
+packages:
+  - packages/better-zap
+  - packages/react
+  - packages/hono
+  - packages/cli
+  - demo/*
+  - landing
+
+ignoredBuiltDependencies:
+  - esbuild

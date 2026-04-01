@@ -1,0 +1,11 @@
+/*
+ * Tailwind CSS source manifest for @better-zap/react components.
+ *
+ * Consuming apps should import this file (e.g. `@import "@better-zap/react/tailwind.css"`)
+ * so that Tailwind's JIT scanner picks up every utility class used by the components.
+ *
+ * The `@source "."` directive tells Tailwind to scan all recognised file types
+ * in this directory, and the path resolves relative to THIS file — so it works
+ * regardless of where the consuming app lives in the monorepo.
+ */
+@source ".";

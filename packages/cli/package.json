@@ -1,0 +1,46 @@
+{
+  "name": "@better-zap/cli",
+  "version": "0.0.1",
+  "description": "CLI tools for Better Zap.",
+  "license": "ISC",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "bin": {
+    "better-zap": "./dist/cli.mjs"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "better-zap": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.4.0",
+    "tsdown": "^0.21.2",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0"
+  }
+}

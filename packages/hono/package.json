@@ -1,0 +1,48 @@
+{
+  "name": "@better-zap/hono",
+  "version": "0.0.1",
+  "description": "Hono adapter and webhook runtime for Better Zap.",
+  "license": "ISC",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "better-zap": "workspace:*",
+    "hono": "4.12.5"
+  },
+  "peerDependencies": {
+    "hono": "4.12.5"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240117.0",
+    "@types/node": "^25.4.0",
+    "tsdown": "^0.21.2",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0"
+  }
+}
