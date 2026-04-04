@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { defineTemplates } from "better-zap";
-import type { BetterZapDatabase, WhatsAppLogStore } from "better-zap";
+import type {
+  BetterZapDatabase,
+  ConversationRecord,
+  WhatsAppLogStore,
+} from "better-zap";
 import { betterZap } from "./better-zap";
 
 const TEST_META_APP_SECRET = "test-meta-app-secret";
@@ -33,6 +37,26 @@ function makeStore(): WhatsAppLogStore {
     getConversations: vi.fn().mockResolvedValue([]),
     getMessagesByConversationPaginated: vi.fn().mockResolvedValue([]),
     hasRecentOutgoingMessage: vi.fn().mockResolvedValue(false),
+  };
+}
+
+function makeConversationRecord(
+  overrides: Partial<ConversationRecord> = {},
+): ConversationRecord {
+  const recentIncomingMessageAt = new Date(Date.now() - 60_000).toISOString();
+
+  return {
+    id: "conversation-1",
+    phone: "5511999887766",
+    contactName: "Joao",
+    unreadCount: 0,
+    status: "open",
+    lastMessageAt: recentIncomingMessageAt,
+    lastMessagePreview: "Oi",
+    lastDirection: "incoming",
+    messageCount: 1,
+    lastIncomingMessageAt: recentIncomingMessageAt,
+    ...overrides,
   };
 }
 
@@ -130,6 +154,16 @@ async function postWebhook(
   await Promise.all(waitUntilPromises);
 
   return response;
+}
+
+async function sendRequest(
+  zap: ReturnType<typeof betterZap>,
+  request: Request,
+) {
+  return zap.handler(request, {}, {
+    waitUntil: () => undefined,
+    passThroughOnException: () => undefined,
+  });
 }
 
 describe("betterZap plugins", () => {
@@ -399,5 +433,170 @@ describe("betterZap plugins", () => {
         parameters: [{ type: "text", text: "texto livre" }],
       },
     ]);
+  });
+
+  it("exposes freeformMessageWindow in conversation list and get payloads", async () => {
+    const store = makeStore();
+    const conversation = makeConversationRecord();
+    store.getConversations = vi
+      .fn()
+      .mockResolvedValue([conversation]);
+    store.getConversationByPhone = vi
+      .fn()
+      .mockResolvedValue(conversation);
+
+    const zap = betterZap({
+      database: makeDatabase({ whatsappLog: store }),
+      config: {
+        token: "token",
+        phoneId: "phone-id",
+        webhookToken: "verify-token",
+        appSecret: TEST_META_APP_SECRET,
+      },
+      webhook: {
+        onMessage: vi.fn().mockResolvedValue(undefined),
+        onStatusUpdate: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+
+    const listResponse = await sendRequest(
+      zap,
+      new Request("http://localhost/api/whatsapp/conversations"),
+    );
+    const getResponse = await sendRequest(
+      zap,
+      new Request("http://localhost/api/whatsapp/conversations/5511999887766"),
+    );
+    const [listPayload, getPayload] = (await Promise.all([
+      listResponse.json(),
+      getResponse.json(),
+    ])) as [Array<Record<string, any>>, Record<string, any>];
+    const expectedExpiresAt = new Date(
+      new Date(conversation.lastIncomingMessageAt as string).getTime() +
+        24 * 60 * 60 * 1000,
+    ).toISOString();
+
+    expect(listPayload[0].freeformMessageWindow).toEqual({
+      isOpen: true,
+      lastIncomingMessageAt: conversation.lastIncomingMessageAt,
+      expiresAt: expectedExpiresAt,
+    });
+    expect(getPayload.freeformMessageWindow).toEqual({
+      isOpen: true,
+      lastIncomingMessageAt: conversation.lastIncomingMessageAt,
+      expiresAt: expectedExpiresAt,
+    });
+  });
+
+  it("returns a structured CONTEXT_WINDOW_CLOSED error for text sends outside the window", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const store = makeStore();
+    const lastIncomingMessageAt = new Date(
+      Date.now() - 49 * 60 * 60 * 1000,
+    ).toISOString();
+    store.getConversationByPhone = vi.fn().mockResolvedValue(
+      makeConversationRecord({
+        lastIncomingMessageAt,
+      }),
+    );
+
+    const zap = betterZap({
+      database: makeDatabase({ whatsappLog: store }),
+      config: {
+        token: "token",
+        phoneId: "phone-id",
+        webhookToken: "verify-token",
+        appSecret: TEST_META_APP_SECRET,
+      },
+      webhook: {
+        onMessage: vi.fn().mockResolvedValue(undefined),
+        onStatusUpdate: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+
+    const response = await sendRequest(
+      zap,
+      new Request("http://localhost/api/whatsapp/send/text", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          to: "5511999887766",
+          body: "Hello!",
+        }),
+      }),
+    );
+    const payload = await response.json();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(409);
+    expect(payload).toMatchObject({
+      success: false,
+      error: "Free-form message window is closed.",
+      code: "CONTEXT_WINDOW_CLOSED",
+      httpStatus: 409,
+      details: {
+          freeformMessageWindow: {
+          isOpen: false,
+          lastIncomingMessageAt,
+          expiresAt: new Date(
+            new Date(lastIncomingMessageAt).getTime() + 24 * 60 * 60 * 1000,
+          ).toISOString(),
+        },
+      },
+    });
+  });
+
+  it("emits normalized freeformMessageWindow state in sync events", async () => {
+    const store = makeStore();
+    const conversation = makeConversationRecord();
+    store.getConversationById = vi
+      .fn()
+      .mockResolvedValue(conversation);
+
+    let syncPayload: Record<string, any> | null = null;
+    const syncFetch = vi.fn(async (request: Request) => {
+      syncPayload = JSON.parse(await request.text());
+      return new Response(null, { status: 200 });
+    });
+    const conversationSync = {
+      idFromName: vi.fn().mockReturnValue("workspace-do"),
+      get: vi.fn().mockReturnValue({
+        fetch: syncFetch,
+      }),
+    } as any;
+
+    const zap = betterZap({
+      database: makeDatabase({ whatsappLog: store }),
+      config: {
+        token: "token",
+        phoneId: "phone-id",
+        webhookToken: "verify-token",
+        appSecret: TEST_META_APP_SECRET,
+      },
+      conversationSync,
+      webhook: {
+        onMessage: vi.fn().mockResolvedValue(undefined),
+        onStatusUpdate: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+
+    const response = await postWebhook(zap, makeTextMessage());
+    expect(syncPayload).not.toBeNull();
+    const event = syncPayload as unknown as Record<string, any>;
+
+    expect(response.status).toBe(200);
+    expect(event.type).toBe("NEW_MESSAGE");
+    expect(event.conversation.freeformMessageWindow).toEqual({
+      isOpen: true,
+      lastIncomingMessageAt: conversation.lastIncomingMessageAt,
+      expiresAt: new Date(
+        new Date(conversation.lastIncomingMessageAt as string).getTime() +
+          24 * 60 * 60 * 1000,
+      ).toISOString(),
+    });
   });
 });

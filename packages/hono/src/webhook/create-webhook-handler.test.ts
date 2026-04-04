@@ -184,6 +184,20 @@ describe("createWebhookHandler", () => {
       expect(mockOnMessage).toHaveBeenCalledOnce();
     });
 
+    it("logs incoming messages using Meta's message timestamp", async () => {
+      const res = await postWebhook(app, makeTextMessage());
+
+      expect(res.status).toBe(200);
+      expect(mockLogger.logIncoming).toHaveBeenCalledWith(
+        expect.objectContaining({
+          phone: "5511999887766",
+          waMessageId: "wamid.incoming1",
+          content: "Oi",
+          sentAt: "2023-11-14T22:13:20.000Z",
+        }),
+      );
+    });
+
     it("evaluates deduplicator before onMessage", async () => {
       mockDeduplicator.hasProcessed.mockResolvedValue(true);
       const res = await postWebhook(app, makeTextMessage());

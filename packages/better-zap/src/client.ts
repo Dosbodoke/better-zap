@@ -49,6 +49,37 @@ interface ZapClientOptions<TTemplates extends TemplateRegistry = {}> {
   templates?: TTemplates;
 }
 
+type BetterZapErrorBody = {
+  error?: string;
+  code?: string;
+  details?: unknown;
+  httpStatus?: number;
+};
+
+export class BetterZapClientError extends Error {
+  status: number;
+  code?: string;
+  details?: unknown;
+  body?: unknown;
+
+  constructor(
+    message: string,
+    options: {
+      status: number;
+      code?: string;
+      details?: unknown;
+      body?: unknown;
+    },
+  ) {
+    super(message);
+    this.name = "BetterZapClientError";
+    this.status = options.status;
+    this.code = options.code;
+    this.details = options.details;
+    this.body = options.body;
+  }
+}
+
 interface SendTextParams {
   to: string;
   body: string;
@@ -152,15 +183,22 @@ export function createZapClient<TTemplates extends TemplateRegistry = {}>(
   async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const url = `${baseURL}${basePath}${path}`;
     const response = await fetchFn(url, init);
+    const payload = (await response.json().catch(() => null)) as BetterZapErrorBody | T | null;
 
     if (!response.ok) {
-      const error = (await response.json().catch(() => ({}))) as {
-        error?: string;
-      };
-      throw new Error(error.error || `Request failed: ${response.status}`);
+      const error = payload as BetterZapErrorBody | null;
+      throw new BetterZapClientError(
+        error?.error || `Request failed: ${response.status}`,
+        {
+          status: response.status,
+          code: error?.code,
+          details: error?.details,
+          body: payload,
+        },
+      );
     }
 
-    return response.json() as Promise<T>;
+    return payload as T;
   }
 
   function post<T>(path: string, body: unknown): Promise<T> {
@@ -191,6 +229,9 @@ export function createZapClient<TTemplates extends TemplateRegistry = {}>(
         request<Conversation | null>(
           `/conversations/${normalizePhone(phone)}`,
         ).catch((err) => {
+          if (err instanceof BetterZapClientError && err.status === 404) {
+            return null;
+          }
           if (err.message?.includes("Conversation not found")) return null;
           throw err;
         }),

@@ -39,6 +39,8 @@ export interface OutgoingLoggingMetadata {
   metadata?: Record<string, any>;
 }
 
+const CONTEXT_WINDOW_CLOSED_ERROR = "Free-form message window is closed.";
+
 export class WhatsAppService {
   private baseUrl: string;
   private token: string;
@@ -58,17 +60,46 @@ export class WhatsAppService {
     this.log = log;
   }
 
-  /** Send a text message (within 24h service window only). */
+  /** Send a text message within the 24h free-form message window only. */
   async sendText(
     to: string,
     body: string,
     logging?: Omit<OutgoingLoggingMetadata, "content">,
   ): Promise<SendResult> {
+    const normalizedPhone = formatPhone(to);
+    const freeformMessageWindow = await this.logger.getFreeformMessageWindow(
+      normalizedPhone,
+    );
+
+    if (!freeformMessageWindow.isOpen) {
+      const result: SendResult = {
+        success: false,
+        error: CONTEXT_WINDOW_CLOSED_ERROR,
+        code: "CONTEXT_WINDOW_CLOSED",
+        httpStatus: 409,
+        details: { freeformMessageWindow },
+      };
+
+      await this.logSendResult(
+        normalizedPhone,
+        logging
+          ? {
+              ...logging,
+              messageType: logging.messageType || "bot_reply",
+              content: body,
+            }
+          : undefined,
+        result,
+      );
+
+      return result;
+    }
+
     const hasUrl = /https?:\/\/\S+/i.test(body);
     const payload: WhatsAppTextMessage = {
       messaging_product: "whatsapp",
       recipient_type: "individual",
-      to: formatPhone(to),
+      to: normalizedPhone,
       type: "text",
       text: hasUrl ? { body, preview_url: true } : { body },
     };
@@ -340,26 +371,39 @@ export class WhatsAppService {
     }
 
     const result = await this.performRequest(payload, retries);
-
-    // Automatic logging of the outgoing attempt
-    if (logging) {
-      try {
-        await this.logger.logOutgoing({
-          phone: payload.to,
-          userId: logging.userId,
-          messageType: logging.messageType,
-          content: logging.content,
-          templateName:
-            payload.type === "template" ? payload.template.name : undefined,
-          result,
-          metadata: logging.metadata,
-        });
-      } catch (logError) {
-        this.log.error("whatsapp.log_failed", serializeError(logError));
-      }
-    }
+    await this.logSendResult(
+      payload.to,
+      logging,
+      result,
+      payload.type === "template" ? payload.template.name : undefined,
+    );
 
     return result;
+  }
+
+  private async logSendResult(
+    phone: string,
+    logging: OutgoingLoggingMetadata | undefined,
+    result: SendResult,
+    templateName?: string,
+  ) {
+    if (!logging) {
+      return;
+    }
+
+    try {
+      await this.logger.logOutgoing({
+        phone,
+        userId: logging.userId,
+        messageType: logging.messageType,
+        content: logging.content,
+        templateName,
+        result,
+        metadata: logging.metadata,
+      });
+    } catch (logError) {
+      this.log.error("whatsapp.log_failed", serializeError(logError));
+    }
   }
 
   /** Actually performs the network request with retries. */

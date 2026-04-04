@@ -371,14 +371,22 @@ export interface SendResult {
   messageId?: string;
   error?: string;
   errorCode?: number;
+  code?: string;
   httpStatus?: number;
+  details?: Record<string, any>;
 }
 
 // ============================================
 // UI Types
 // ============================================
 
-export type Conversation = {
+export type FreeformMessageWindow = {
+  isOpen: boolean;
+  lastIncomingMessageAt: string | null;
+  expiresAt: string | null;
+};
+
+export type ConversationRecord = {
   id: string;
   phone: string;
   contactName: string | null;
@@ -389,6 +397,10 @@ export type Conversation = {
   lastDirection: string;
   messageCount: number;
   lastIncomingMessageAt: string | null;
+};
+
+export type Conversation = ConversationRecord & {
+  freeformMessageWindow: FreeformMessageWindow;
 };
 
 export type UIMessageStatus = "sent" | "delivered" | "read" | "failed";

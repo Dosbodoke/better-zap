@@ -5,6 +5,8 @@ export * from "./conversation-list";
 export * from "./utils";
 export type {
   Conversation,
+  ConversationRecord,
+  FreeformMessageWindow,
   UIMessage,
   UIMessageStatus,
 } from "better-zap";

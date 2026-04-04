@@ -7,18 +7,25 @@ import {
   Mic01Icon,
   Clock01Icon,
 } from "@hugeicons/core-free-icons";
+import type { Conversation, UIMessage } from "better-zap";
+import { resolveConversationFreeformMessageWindow } from "better-zap";
 import { cn } from "./utils";
 
 interface MessageInputProps {
   onSend: (text: string) => void | Promise<void>;
+  conversation?: Conversation | null;
+  messages?: UIMessage[];
   disabled?: boolean;
   placeholder?: string;
   className?: string;
+  /** @deprecated Prefer `conversation` (and optional `messages`) so the library owns window state. */
   contextWindowOpen?: boolean;
 }
 
 export function MessageInput({
   onSend,
+  conversation,
+  messages,
   disabled,
   placeholder = "Digite uma mensagem",
   className,
@@ -27,8 +34,16 @@ export function MessageInput({
   const [text, setText] = useState("");
   const [isSending, setIsSending] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const freeformMessageWindow = conversation
+    ? resolveConversationFreeformMessageWindow(conversation, messages)
+    : {
+        isOpen: contextWindowOpen,
+        lastIncomingMessageAt: null,
+        expiresAt: null,
+      };
+  const isContextWindowOpen = freeformMessageWindow.isOpen;
 
-  const isDisabled = disabled || isSending || !contextWindowOpen;
+  const isDisabled = disabled || isSending || !isContextWindowOpen;
 
   const handleSend = async () => {
     const trimmedText = text.trim();
@@ -62,7 +77,7 @@ export function MessageInput({
 
   const hasText = text.trim().length > 0;
 
-  if (!contextWindowOpen) {
+  if (!isContextWindowOpen) {
     return (
       <div className={cn("w-full flex flex-col p-4 z-10 shrink-0", className)}>
         <div className="flex items-center gap-2 px-4 py-3 min-h-[62px] bg-[#fef3c7] rounded-2xl border border-[#f59e0b]/20">

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { WhatsAppService } from "./whatsapp.service";
 import type { WhatsAppConfig } from "../types/config";
+import { createFreeformMessageWindow } from "../freeform-message-window";
 import { formatPhone } from "../utils/phone";
 
 // ============================================
@@ -16,7 +17,12 @@ function makeEnv(overrides: Partial<WhatsAppConfig> = {}): WhatsAppConfig {
 }
 
 function makeLogger() {
+  const lastIncomingMessageAt = new Date(Date.now() - 60_000).toISOString();
+
   return {
+    getFreeformMessageWindow: vi
+      .fn()
+      .mockResolvedValue(createFreeformMessageWindow(lastIncomingMessageAt)),
     logOutgoing: vi.fn().mockResolvedValue("log-id"),
   };
 }
@@ -131,6 +137,60 @@ describe("WhatsAppService", () => {
 
       const body = JSON.parse(fetchMock.mock.calls[0][1].body);
       expect(body.text.preview_url).toBe(true);
+    });
+
+    it("returns CONTEXT_WINDOW_CLOSED when the free-form message window is closed", async () => {
+      const fetchMock = mockFetchOk();
+      vi.stubGlobal("fetch", fetchMock);
+
+      const logger = makeLogger();
+      logger.getFreeformMessageWindow.mockResolvedValue(
+        createFreeformMessageWindow("2026-01-01T00:00:00.000Z", new Date("2026-01-02T01:00:00.000Z")),
+      );
+
+      const { service } = makeService({}, logger);
+      const result = await service.sendText("5511999887766", "Hello!");
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        success: false,
+        error: "Free-form message window is closed.",
+        code: "CONTEXT_WINDOW_CLOSED",
+        httpStatus: 409,
+        details: {
+          freeformMessageWindow: createFreeformMessageWindow(
+            "2026-01-01T00:00:00.000Z",
+            new Date("2026-01-02T01:00:00.000Z"),
+          ),
+        },
+      });
+    });
+
+    it("logs blocked sends when logging metadata is provided", async () => {
+      const fetchMock = mockFetchOk();
+      vi.stubGlobal("fetch", fetchMock);
+
+      const logger = makeLogger();
+      logger.getFreeformMessageWindow.mockResolvedValue(
+        createFreeformMessageWindow("2026-01-01T00:00:00.000Z", new Date("2026-01-02T01:00:00.000Z")),
+      );
+
+      const { service } = makeService({}, logger);
+      const result = await service.sendText("5511999887766", "Hello!", {
+        messageType: "bot_reply",
+        userId: "user-1",
+        metadata: { source: "ui" },
+      });
+
+      expect(logger.logOutgoing).toHaveBeenCalledWith({
+        phone: "5511999887766",
+        userId: "user-1",
+        messageType: "bot_reply",
+        content: "Hello!",
+        templateName: undefined,
+        result,
+        metadata: { source: "ui" },
+      });
     });
   });
 
@@ -414,6 +474,24 @@ describe("WhatsAppService", () => {
       expect(fetchMock).not.toHaveBeenCalled();
       expect(result.success).toBe(true);
       expect(result.messageId).toMatch(/^dev-/);
+    });
+
+    it("still blocks text sends when the free-form message window is closed", async () => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+
+      const logger = makeLogger();
+      logger.getFreeformMessageWindow.mockResolvedValue(
+        createFreeformMessageWindow("2026-01-01T00:00:00.000Z", new Date("2026-01-02T01:00:00.000Z")),
+      );
+
+      const { service } = makeService({ environment: "development" }, logger);
+      const result = await service.sendText("5511999887766", "Hello!");
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(result.success).toBe(false);
+      expect(result.code).toBe("CONTEXT_WINDOW_CLOSED");
+      expect(result.httpStatus).toBe(409);
     });
   });
 

@@ -7,8 +7,18 @@
  */
 
 import type { SendResult } from "../types/whatsapp.types";
-import type { SyncEvent, ConversationSummary } from "../types/sync-events";
+import type {
+  Conversation,
+  ConversationRecord,
+  FreeformMessageWindow,
+} from "../types/whatsapp.types";
+import type { SyncEvent } from "../types/sync-events";
 import { type Logger, serializeError } from "../logger";
+import {
+  createFreeformMessageWindow,
+  normalizeConversationRecord,
+  normalizeConversationRecords,
+} from "../freeform-message-window";
 
 export type WhatsAppDirection = "incoming" | "outgoing";
 export type WhatsAppStatus = "sent" | "delivered" | "read" | "failed";
@@ -83,25 +93,11 @@ export interface WhatsAppLogStore {
     updates: Partial<WhatsAppLogRecord>,
   ): Promise<boolean>;
 
-  getConversationById(
-    conversationId: string,
-  ): Promise<ConversationSummary | null>;
+  getConversationById(conversationId: string): Promise<ConversationRecord | null>;
 
-  getConversationByPhone(phone: string): Promise<ConversationSummary | null>;
+  getConversationByPhone(phone: string): Promise<ConversationRecord | null>;
 
-  getConversations(): Promise<
-    Array<{
-      id: string;
-      phone: string;
-      contactName: string | null;
-      unreadCount: number;
-      status: string;
-      lastMessageAt: string;
-      lastMessagePreview: string | null;
-      lastDirection: string;
-      messageCount: number;
-    }>
-  >;
+  getConversations(): Promise<ConversationRecord[]>;
 
   getMessagesByConversationPaginated(
     conversationId: string,
@@ -123,7 +119,7 @@ export interface WhatsAppLogStore {
 
   /**
    * Check if there's a recent outgoing message to this phone within N hours.
-   * Used to approximate Meta's 24h conversation window and for cooldown checks.
+   * Used for consumer-defined cooldown checks.
    */
   hasRecentOutgoingMessage(
     phone: string,
@@ -156,6 +152,34 @@ export class MessageLoggerService {
     } catch (err) {
       this.log.error("message_logger.sync_notify_failed", serializeError(err));
     }
+  }
+
+  async getConversationById(conversationId: string): Promise<Conversation | null> {
+    const conversation = await this.store.getConversationById(conversationId);
+    return conversation ? normalizeConversationRecord(conversation) : null;
+  }
+
+  async getConversationByPhone(phone: string): Promise<Conversation | null> {
+    const conversation = await this.store.getConversationByPhone(phone);
+    return conversation ? normalizeConversationRecord(conversation) : null;
+  }
+
+  async getConversations(): Promise<Conversation[]> {
+    const conversations = await this.store.getConversations();
+    return normalizeConversationRecords(conversations);
+  }
+
+  /** @deprecated Prefer `getFreeformMessageWindow()`. */
+  async getCustomerCareWindow(phone: string): Promise<FreeformMessageWindow> {
+    return this.getFreeformMessageWindow(phone);
+  }
+
+  async getFreeformMessageWindow(phone: string): Promise<FreeformMessageWindow> {
+    const conversation = await this.getConversationByPhone(phone);
+    return (
+      conversation?.freeformMessageWindow ??
+      createFreeformMessageWindow(null)
+    );
   }
 
   /**
@@ -192,9 +216,7 @@ export class MessageLoggerService {
       metadata: params.metadata,
     });
 
-    const conversation = await this.store.getConversationById(
-      inserted.conversationId,
-    );
+    const conversation = await this.getConversationById(inserted.conversationId);
     if (conversation) {
       await this.notify({
         type: "NEW_MESSAGE",
@@ -268,6 +290,7 @@ export class MessageLoggerService {
     phone: string;
     waMessageId: string;
     content: string;
+    sentAt: string;
     senderName?: string;
     metadata?: Record<string, unknown>;
   }): Promise<void> {
@@ -280,12 +303,10 @@ export class MessageLoggerService {
       content: params.content,
       status: "delivered",
       metadata: params.metadata,
-      sentAt: new Date().toISOString(),
+      sentAt: params.sentAt,
     });
 
-    const conversation = await this.store.getConversationById(
-      inserted.conversationId,
-    );
+    const conversation = await this.getConversationById(inserted.conversationId);
     if (conversation) {
       await this.notify({
         type: "NEW_MESSAGE",

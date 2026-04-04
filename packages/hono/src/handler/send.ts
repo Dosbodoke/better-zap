@@ -8,6 +8,10 @@ import {
 } from "better-zap";
 import type { BetterZapEnv } from "./types";
 
+function getSendResponseStatus(result: { success: boolean; httpStatus?: number }) {
+  return (result.success ? 200 : result.httpStatus ?? 500) as any;
+}
+
 export async function handleSendText(c: Context<BetterZapEnv>) {
   const { to, body, messageType, userId, metadata } =
     await c.req.json<{
@@ -29,7 +33,7 @@ export async function handleSendText(c: Context<BetterZapEnv>) {
       : undefined;
 
   const result = await whatsapp.sendText(to, body, logging);
-  return c.json(result, result.success ? 200 : 500);
+  return c.json(result, getSendResponseStatus(result));
 }
 
 export function createSendTemplateHandler<TTemplates extends TemplateRegistry>(
@@ -103,7 +107,7 @@ export function createSendTemplateHandler<TTemplates extends TemplateRegistry>(
       components,
       logging,
     );
-    return c.json(result, result.success ? 200 : 500);
+    return c.json(result, getSendResponseStatus(result));
   };
 }
 
@@ -138,7 +142,7 @@ export async function handleSendInteractive(c: Context<BetterZapEnv>) {
       return c.json({ error: "buttonLabel and sections are required for list type" }, 400);
     }
     const result = await whatsapp.sendInteractiveList(to, body, buttonLabel, sections, logging);
-    return c.json(result, result.success ? 200 : 500);
+    return c.json(result, getSendResponseStatus(result));
   }
 
   if (type === "carousel") {
@@ -152,14 +156,14 @@ export async function handleSendInteractive(c: Context<BetterZapEnv>) {
       { to, body, cards },
       logging,
     );
-    return c.json(result, result.success ? 200 : 500);
+    return c.json(result, getSendResponseStatus(result));
   }
 
   if (!buttons) {
     return c.json({ error: "buttons are required for button type" }, 400);
   }
   const result = await whatsapp.sendInteractiveButtons(to, body, buttons, logging);
-  return c.json(result, result.success ? 200 : 500);
+  return c.json(result, getSendResponseStatus(result));
 }
 
 export async function handleSendLocation(c: Context<BetterZapEnv>) {
@@ -184,5 +188,5 @@ export async function handleSendLocation(c: Context<BetterZapEnv>) {
     messageType ? { messageType: messageType as any, userId, metadata } : undefined;
 
   const result = await whatsapp.sendLocation(to, latitude, longitude, name, address, logging);
-  return c.json(result, result.success ? 200 : 500);
+  return c.json(result, getSendResponseStatus(result));
 }

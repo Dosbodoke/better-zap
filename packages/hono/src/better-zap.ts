@@ -19,6 +19,8 @@ import {
   EMPTY_TEMPLATE_REGISTRY,
   formatPhone,
   hasConfiguredTemplates,
+  normalizeConversationRecord,
+  normalizeConversationRecords,
   serializeTemplateFromRegistry,
 } from "better-zap";
 import type { BetterZap, BetterZapApi, BetterZapConfig } from "./better-zap.types";
@@ -249,12 +251,14 @@ export function betterZap<
         whatsapp.sendReaction(to, messageId, emoji),
     },
     conversations: {
-      list: () =>
-        database.whatsappLog.getConversations() as Promise<Conversation[]>,
-      get: (phone: string) =>
-        database.whatsappLog.getConversationByPhone(
+      list: async () =>
+        normalizeConversationRecords(await database.whatsappLog.getConversations()),
+      get: async (phone: string) => {
+        const conversation = await database.whatsappLog.getConversationByPhone(
           formatPhone(phone),
-        ) as Promise<Conversation | null>,
+        );
+        return conversation ? normalizeConversationRecord(conversation) : null;
+      },
       messages: async (
         phone: string,
         opts?: { cursor?: string; limit?: number },

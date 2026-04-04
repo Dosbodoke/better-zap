@@ -1,4 +1,60 @@
-import { createZapClient } from "./client.mjs";
+import { BetterZapClientError, createZapClient } from "./client.mjs";
+//#region src/freeform-message-window.ts
+const FREEFORM_MESSAGE_WINDOW_MS = 1440 * 60 * 1e3;
+function toTimestamp(value) {
+	if (!value) return null;
+	const timestamp = new Date(value).getTime();
+	return Number.isFinite(timestamp) ? timestamp : null;
+}
+function createFreeformMessageWindow(lastIncomingMessageAt, now = /* @__PURE__ */ new Date()) {
+	const lastIncomingTimestamp = toTimestamp(lastIncomingMessageAt);
+	if (lastIncomingTimestamp == null) return {
+		isOpen: false,
+		lastIncomingMessageAt: null,
+		expiresAt: null
+	};
+	const expiresAtTimestamp = lastIncomingTimestamp + FREEFORM_MESSAGE_WINDOW_MS;
+	return {
+		isOpen: now.getTime() < expiresAtTimestamp,
+		lastIncomingMessageAt,
+		expiresAt: new Date(expiresAtTimestamp).toISOString()
+	};
+}
+function normalizeConversationRecord(record, now = /* @__PURE__ */ new Date()) {
+	const freeformMessageWindow = createFreeformMessageWindow(record.lastIncomingMessageAt, now);
+	return {
+		...record,
+		lastIncomingMessageAt: freeformMessageWindow.lastIncomingMessageAt,
+		freeformMessageWindow
+	};
+}
+function normalizeConversationRecords(records, now = /* @__PURE__ */ new Date()) {
+	return records.map((record) => normalizeConversationRecord(record, now));
+}
+function getLatestIncomingMessageAt(messages) {
+	if (!messages?.length) return null;
+	let latestIncomingMessageAt = null;
+	let latestTimestamp = -Infinity;
+	for (const message of messages) {
+		if (message.direction !== "incoming") continue;
+		const timestamp = toTimestamp(message.sentAt);
+		if (timestamp == null || timestamp <= latestTimestamp) continue;
+		latestIncomingMessageAt = message.sentAt;
+		latestTimestamp = timestamp;
+	}
+	return latestIncomingMessageAt;
+}
+function resolveConversationFreeformMessageWindow(conversation, messages, now = /* @__PURE__ */ new Date()) {
+	const baseLastIncomingMessageAt = conversation?.freeformMessageWindow?.lastIncomingMessageAt ?? conversation?.lastIncomingMessageAt ?? null;
+	const latestIncomingMessageAt = getLatestIncomingMessageAt(messages);
+	if (!latestIncomingMessageAt) return createFreeformMessageWindow(baseLastIncomingMessageAt, now);
+	const baseTimestamp = toTimestamp(baseLastIncomingMessageAt);
+	const latestTimestamp = toTimestamp(latestIncomingMessageAt);
+	if (latestTimestamp == null) return createFreeformMessageWindow(baseLastIncomingMessageAt, now);
+	if (baseTimestamp != null && latestTimestamp <= baseTimestamp) return createFreeformMessageWindow(baseLastIncomingMessageAt, now);
+	return createFreeformMessageWindow(latestIncomingMessageAt, now);
+}
+//#endregion
 //#region src/logger.ts
 const LOG_LEVEL_ORDER = {
 	debug: 0,
@@ -77,6 +133,7 @@ function delay(ms) {
 //#region src/services/whatsapp.service.ts
 const META_API_VERSION = "v25.0";
 const META_BASE_URL = "https://graph.facebook.com";
+const CONTEXT_WINDOW_CLOSED_ERROR = "Free-form message window is closed.";
 var WhatsAppService = class {
 	baseUrl;
 	token;
@@ -90,15 +147,31 @@ var WhatsAppService = class {
 		this.logger = logger;
 		this.log = log;
 	}
-	/** Send a text message (within 24h service window only). */
+	/** Send a text message within the 24h free-form message window only. */
 	async sendText(to, body, logging) {
-		const hasUrl = /https?:\/\/\S+/i.test(body);
+		const normalizedPhone = formatPhone(to);
+		const freeformMessageWindow = await this.logger.getFreeformMessageWindow(normalizedPhone);
+		if (!freeformMessageWindow.isOpen) {
+			const result = {
+				success: false,
+				error: CONTEXT_WINDOW_CLOSED_ERROR,
+				code: "CONTEXT_WINDOW_CLOSED",
+				httpStatus: 409,
+				details: { freeformMessageWindow }
+			};
+			await this.logSendResult(normalizedPhone, logging ? {
+				...logging,
+				messageType: logging.messageType || "bot_reply",
+				content: body
+			} : void 0, result);
+			return result;
+		}
 		const payload = {
 			messaging_product: "whatsapp",
 			recipient_type: "individual",
-			to: formatPhone(to),
+			to: normalizedPhone,
 			type: "text",
-			text: hasUrl ? {
+			text: /https?:\/\/\S+/i.test(body) ? {
 				body,
 				preview_url: true
 			} : { body }
@@ -310,20 +383,24 @@ var WhatsAppService = class {
 			};
 		}
 		const result = await this.performRequest(payload, retries);
-		if (logging) try {
+		await this.logSendResult(payload.to, logging, result, payload.type === "template" ? payload.template.name : void 0);
+		return result;
+	}
+	async logSendResult(phone, logging, result, templateName) {
+		if (!logging) return;
+		try {
 			await this.logger.logOutgoing({
-				phone: payload.to,
+				phone,
 				userId: logging.userId,
 				messageType: logging.messageType,
 				content: logging.content,
-				templateName: payload.type === "template" ? payload.template.name : void 0,
+				templateName,
 				result,
 				metadata: logging.metadata
 			});
 		} catch (logError) {
 			this.log.error("whatsapp.log_failed", serializeError(logError));
 		}
-		return result;
 	}
 	/** Actually performs the network request with retries. */
 	async performRequest(payload, retries) {
@@ -405,6 +482,24 @@ var MessageLoggerService = class {
 			this.log.error("message_logger.sync_notify_failed", serializeError(err));
 		}
 	}
+	async getConversationById(conversationId) {
+		const conversation = await this.store.getConversationById(conversationId);
+		return conversation ? normalizeConversationRecord(conversation) : null;
+	}
+	async getConversationByPhone(phone) {
+		const conversation = await this.store.getConversationByPhone(phone);
+		return conversation ? normalizeConversationRecord(conversation) : null;
+	}
+	async getConversations() {
+		return normalizeConversationRecords(await this.store.getConversations());
+	}
+	/** @deprecated Prefer `getFreeformMessageWindow()`. */
+	async getCustomerCareWindow(phone) {
+		return this.getFreeformMessageWindow(phone);
+	}
+	async getFreeformMessageWindow(phone) {
+		return (await this.getConversationByPhone(phone))?.freeformMessageWindow ?? createFreeformMessageWindow(null);
+	}
 	/**
 	* Check if a message with this waMessageId was already processed.
 	*/
@@ -428,7 +523,7 @@ var MessageLoggerService = class {
 			sentAt: (/* @__PURE__ */ new Date()).toISOString(),
 			metadata: params.metadata
 		});
-		const conversation = await this.store.getConversationById(inserted.conversationId);
+		const conversation = await this.getConversationById(inserted.conversationId);
 		if (conversation) await this.notify({
 			type: "NEW_MESSAGE",
 			message: inserted,
@@ -480,9 +575,9 @@ var MessageLoggerService = class {
 			content: params.content,
 			status: "delivered",
 			metadata: params.metadata,
-			sentAt: (/* @__PURE__ */ new Date()).toISOString()
+			sentAt: params.sentAt
 		});
-		const conversation = await this.store.getConversationById(inserted.conversationId);
+		const conversation = await this.getConversationById(inserted.conversationId);
 		if (conversation) await this.notify({
 			type: "NEW_MESSAGE",
 			message: inserted,
@@ -563,4 +658,4 @@ function serializeTemplateParameter(parameter, value) {
 	}
 }
 //#endregion
-export { EMPTY_TEMPLATE_REGISTRY, MessageLoggerService, WHATSAPP_MESSAGE_TYPES, WhatsAppService, createLogger, createZapClient, defineTemplates, delay, formatPhone, getTemplateNames, hasConfiguredTemplates, noopLogger, serializeError, serializeTemplateFromRegistry };
+export { BetterZapClientError, EMPTY_TEMPLATE_REGISTRY, FREEFORM_MESSAGE_WINDOW_MS, MessageLoggerService, WHATSAPP_MESSAGE_TYPES, WhatsAppService, createFreeformMessageWindow, createLogger, createZapClient, defineTemplates, delay, formatPhone, getLatestIncomingMessageAt, getTemplateNames, hasConfiguredTemplates, noopLogger, normalizeConversationRecord, normalizeConversationRecords, resolveConversationFreeformMessageWindow, serializeError, serializeTemplateFromRegistry };

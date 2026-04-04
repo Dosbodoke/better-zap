@@ -1,12 +1,17 @@
 import type { Context } from "hono";
-import { formatPhone, serializeError } from "better-zap";
+import {
+  formatPhone,
+  normalizeConversationRecord,
+  normalizeConversationRecords,
+  serializeError,
+} from "better-zap";
 import type { BetterZapEnv } from "./types";
 
 export async function handleListConversations(c: Context<BetterZapEnv>) {
   try {
     const store = c.get("store");
     const conversations = await store.getConversations();
-    return c.json(conversations);
+    return c.json(normalizeConversationRecords(conversations));
   } catch (error) {
     c.get("logger").error("conversations.list_error", serializeError(error));
     return c.json({ error: "Internal error fetching conversations" }, 500);
@@ -27,7 +32,7 @@ export async function handleGetConversation(c: Context<BetterZapEnv>) {
       return c.json({ error: "Conversation not found" }, 404);
     }
 
-    return c.json(conversation);
+    return c.json(normalizeConversationRecord(conversation));
   } catch (error) {
     c.get("logger").error("conversations.get_error", serializeError(error));
     return c.json({ error: "Internal error fetching conversation" }, 500);

@@ -25,10 +25,21 @@ export type {
   MessageStatus,
   MessageError,
   WebhookError,
+  ConversationRecord,
   Conversation,
+  FreeformMessageWindow,
   UIMessage,
   UIMessageStatus,
 } from "./types/whatsapp.types";
+
+export {
+  FREEFORM_MESSAGE_WINDOW_MS,
+  createFreeformMessageWindow,
+  getLatestIncomingMessageAt,
+  normalizeConversationRecord,
+  normalizeConversationRecords,
+  resolveConversationFreeformMessageWindow,
+} from "./freeform-message-window";
 
 export type {
   SyncEvent,
@@ -49,7 +60,11 @@ export {
   type LogLevel,
 } from "./logger";
 
-export { createZapClient, type ZapClient } from "./client";
+export {
+  BetterZapClientError,
+  createZapClient,
+  type ZapClient,
+} from "./client";
 export { WhatsAppService, type OutgoingLoggingMetadata } from "./services/whatsapp.service";
 export {
   MessageLoggerService,

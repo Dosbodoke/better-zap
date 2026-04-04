@@ -233,6 +233,10 @@ async function processIncomingMessage(
   }
 
   const content = getMessageContent(message);
+  const sentAt = new Date(parseInt(message.timestamp, 10) * 1000);
+  const normalizedSentAt = Number.isNaN(sentAt.getTime())
+    ? new Date().toISOString()
+    : sentAt.toISOString();
 
   // Automatic logging (audit trail)
   const { id, type, text, from, timestamp, ...rawMetadata } = message;
@@ -240,6 +244,7 @@ async function processIncomingMessage(
     phone,
     waMessageId: message.id,
     content,
+    sentAt: normalizedSentAt,
     senderName: contact?.profile?.name,
     metadata: Object.keys(rawMetadata).length > 0 ? rawMetadata : undefined,
   });
