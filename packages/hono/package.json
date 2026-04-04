@@ -1,6 +1,6 @@
 {
   "name": "@better-zap/hono",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Hono adapter and webhook runtime for Better Zap.",
   "license": "ISC",
   "type": "module",
