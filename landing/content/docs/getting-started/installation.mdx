@@ -1,0 +1,63 @@
+---
+title: Installation
+description: Install Better Zap packages for your project.
+---
+
+Better Zap is split into focused packages so you only install what you need.
+
+## Core + Hono (recommended)
+
+For most projects, you need the core SDK and the Hono adapter:
+
+```package-install
+better-zap @better-zap/hono
+```
+
+This gives you:
+- The full type system, services, and template registry (`better-zap`)
+- Webhook handler, API routes, and Cloudflare Workers integration (`@better-zap/hono`)
+
+## React UI (optional)
+
+If you want pre-built conversation UI components:
+
+```package-install
+@better-zap/react
+```
+
+Includes a WhatsApp dashboard, conversation list, message bubbles, and message input — all styled with Tailwind CSS.
+
+## CLI (optional)
+
+To auto-generate a type-safe template registry from your Meta Business Manager templates:
+
+```package-install
+@better-zap/cli
+```
+
+Then run:
+
+```bash
+npx better-zap generate
+```
+
+See the [Template Registry](/docs/concepts/template-registry) for configuration options.
+
+## Peer Dependencies
+
+Better Zap requires:
+- **TypeScript 5+** — For full type inference
+- **Hono** — Required by `@better-zap/hono` (any recent version works)
+
+```package-install
+hono typescript
+```
+
+## Package Overview
+
+| Package | npm | Description |
+| --- | --- | --- |
+| `better-zap` | [![npm](https://img.shields.io/npm/v/better-zap)](https://www.npmjs.com/package/better-zap) | Core SDK — types, services, template registry, client, plugins |
+| `@better-zap/hono` | [![npm](https://img.shields.io/npm/v/@better-zap/hono)](https://www.npmjs.com/package/@better-zap/hono) | Hono adapter — webhook, API routes, Durable Objects sync |
+| `@better-zap/react` | [![npm](https://img.shields.io/npm/v/@better-zap/react)](https://www.npmjs.com/package/@better-zap/react) | React UI components — dashboard, conversation list, messages |
+| `@better-zap/cli` | [![npm](https://img.shields.io/npm/v/@better-zap/cli)](https://www.npmjs.com/package/@better-zap/cli) | CLI — template registry generator |

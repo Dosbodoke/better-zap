@@ -1,0 +1,64 @@
+---
+title: Chat Actions
+description: Mark messages as read, send reactions, and show typing indicators.
+---
+
+## Mark as Read
+
+Send a read receipt for a specific message:
+
+```ts
+await zap.api.send.markAsRead("wamid.HBgLNTUxMTk...");
+```
+
+Read receipts don't require the 24-hour message window.
+
+## Reactions
+
+Send an emoji reaction to a message:
+
+```ts
+await zap.api.send.reaction("+5511999998888", "wamid.HBgLNTUxMTk...", "👍");
+```
+
+To remove a reaction, pass an empty string:
+
+```ts
+await zap.api.send.reaction("+5511999998888", "wamid.HBgLNTUxMTk...", "");
+```
+
+## Typing Indicator
+
+Show a typing indicator (composing bubble) to let the user know you're processing their message:
+
+```ts
+await zap.api.send.typingIndicator("+5511999998888");
+```
+
+The typing indicator disappears automatically after a few seconds or when you send a message. This is useful for bot flows where processing takes a moment:
+
+```ts
+webhook: {
+  onMessage: async (ctx) => {
+    // Show typing while we process
+    await ctx.api.typingIndicator(ctx.phone);
+
+    const reply = await generateBotReply(ctx.content);
+    await ctx.api.sendText(ctx.phone, reply);
+  },
+}
+```
+
+## Response Format
+
+All send methods return a `SendResult`:
+
+```ts
+interface SendResult {
+  messaging_product: "whatsapp";
+  contacts: Array<{ input: string; wa_id: string }>;
+  messages: Array<{ id: string }>;
+}
+```
+
+In development mode (`environment: "development"`), mock responses are returned without calling the Meta API.

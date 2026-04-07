@@ -1,0 +1,32 @@
+---
+title: Text Messages
+description: Send plain text messages via the Server API and Client SDK.
+---
+
+Send a plain text message. Respects the 24-hour freeform message window — you can only send text to users who have messaged you in the last 24 hours.
+
+<Tabs items={["Server API", "Client SDK"]}>
+  <Tab value="Server API">
+    ```ts
+    await zap.api.send.text("+5511999998888", "Hello, how can I help?");
+    ```
+  </Tab>
+  <Tab value="Client SDK">
+    ```ts
+    await zapClient.send.text({
+      to: "+5511999998888",
+      body: "Hello, how can I help?",
+    });
+    ```
+  </Tab>
+</Tabs>
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `to` | `string` | Yes | Recipient phone number |
+| `body` | `string` | Yes | Message text content |
+| `messageType` | `string` | No | Logging category (e.g., `"bot_reply"`, `"marketing"`) |
+| `userId` | `string` | No | Operator user ID for audit trail |
+| `metadata` | `Record<string, unknown>` | No | Extra metadata for logging |

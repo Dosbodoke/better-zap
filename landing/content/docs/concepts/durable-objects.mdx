@@ -1,0 +1,86 @@
+---
+title: Durable Objects
+description: Real-time conversation sync with Cloudflare Durable Objects.
+---
+
+Better Zap optionally integrates with Cloudflare Durable Objects to broadcast real-time conversation updates across workers.
+
+## Overview
+
+When `conversationSync` is configured, Better Zap's message logger automatically notifies a Durable Object whenever:
+
+- A new message is received
+- A message status changes (sent → delivered → read)
+- A conversation is updated
+
+This enables real-time UI updates across multiple connected clients without polling.
+
+## Setup
+
+Pass your Durable Object namespace binding to `betterZap()`:
+
+```ts title="src/index.ts"
+const zap = betterZap({
+  // ...config
+  conversationSync: env.CONVERSATION_SYNC,
+});
+```
+
+Configure the binding in `wrangler.toml`:
+
+```toml title="wrangler.toml"
+[durable_objects]
+bindings = [
+  { name = "CONVERSATION_SYNC", class_name = "ConversationSync" }
+]
+
+[[migrations]]
+tag = "v1"
+new_classes = ["ConversationSync"]
+```
+
+## Sync Events
+
+Three types of events are broadcast:
+
+### `NEW_MESSAGE`
+
+Fired when an incoming message is logged.
+
+```ts
+{
+  type: "NEW_MESSAGE",
+  conversationPhone: "5511999998888",
+  message: { /* UIMessage */ },
+}
+```
+
+### `STATUS_UPDATE`
+
+Fired when a message status changes.
+
+```ts
+{
+  type: "STATUS_UPDATE",
+  conversationPhone: "5511999998888",
+  messageId: "wamid.HBgLNTUxMTk...",
+  status: "delivered",
+  timestamp: 1712345678,
+}
+```
+
+### `CONVERSATION_UPDATE`
+
+Fired when conversation metadata changes (e.g., new last message).
+
+```ts
+{
+  type: "CONVERSATION_UPDATE",
+  conversationPhone: "5511999998888",
+  conversation: { /* Conversation */ },
+}
+```
+
+## Without Durable Objects
+
+If you don't pass `conversationSync`, Better Zap works normally without real-time sync. The sync notifier is a no-op when unconfigured.

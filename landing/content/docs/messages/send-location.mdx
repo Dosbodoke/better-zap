@@ -1,0 +1,25 @@
+---
+title: Location Messages
+description: Send location pins with coordinates, name, and address.
+---
+
+Send a location pin to a user. Requires an open 24-hour freeform message window.
+
+```ts
+await zap.api.send.location("+5511999998888", {
+  latitude: -23.5505,
+  longitude: -46.6333,
+  name: "Our Office",
+  address: "Av. Paulista, 1000 - Sao Paulo, SP",
+});
+```
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `to` | `string` | Yes | Recipient phone number |
+| `latitude` | `number` | Yes | Location latitude |
+| `longitude` | `number` | Yes | Location longitude |
+| `name` | `string` | No | Location name |
+| `address` | `string` | No | Location address |

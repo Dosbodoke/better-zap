@@ -1,0 +1,122 @@
+---
+title: Webhook Events
+description: Handle incoming messages and status updates from WhatsApp.
+---
+
+Better Zap processes WhatsApp webhook events and delivers them to your callbacks with parsed, normalized data.
+
+## onMessage
+
+Called when a user sends a message to your WhatsApp Business number.
+
+```ts
+const zap = betterZap({
+  // ...config
+  webhook: {
+    onMessage: async (ctx) => {
+      console.log(`From: ${ctx.phone}`);
+      console.log(`Content: ${ctx.content}`);
+      console.log(`Type: ${ctx.message.type}`);
+
+      // Reply to the user
+      await ctx.api.sendText(ctx.phone, "Thanks for your message!");
+
+      // Mark as read
+      await ctx.api.markAsRead(ctx.message.id);
+    },
+    onStatusUpdate: async () => {},
+  },
+});
+```
+
+### Message Context
+
+| Property | Type | Description |
+| --- | --- | --- |
+| `message` | `IncomingMessage` | Raw WhatsApp message object |
+| `content` | `string` | Human-readable content extracted from any message type |
+| `phone` | `string` | Sender phone number (normalized 13-digit format) |
+| `contact` | `object` | Sender contact info (`{ name, wa_id }`) |
+| `db` | `BetterZapDatabase` | Your database instance |
+| `api` | `WhatsAppService` | Service for sending messages |
+| `logger` | `MessageLoggerService` | Message logging service |
+
+When plugins are configured, their context is merged into `ctx` with full type inference.
+
+### Supported Message Types
+
+Better Zap extracts human-readable content from all WhatsApp message types:
+
+| Type | Content Extraction |
+| --- | --- |
+| `text` | The text body |
+| `image` | Caption or `"[Image]"` |
+| `video` | Caption or `"[Video]"` |
+| `audio` | `"[Audio]"` |
+| `document` | Filename or `"[Document]"` |
+| `sticker` | `"[Sticker]"` |
+| `location` | `"[Location: lat, lng]"` |
+| `contacts` | `"[Contact: name]"` |
+| `interactive` | Button reply title or list reply title |
+| `button` | Button text |
+| `reaction` | Emoji |
+
+## onStatusUpdate
+
+Called when a message you sent changes status (sent, delivered, read, or failed).
+
+```ts
+webhook: {
+  onStatusUpdate: async (ctx) => {
+    console.log(`Message ${ctx.status.id} → ${ctx.status.status}`);
+    // status.status is one of: "sent" | "delivered" | "read" | "failed"
+  },
+}
+```
+
+### Status Context
+
+| Property | Type | Description |
+| --- | --- | --- |
+| `status` | `MessageStatus` | Status update object |
+| `db` | `BetterZapDatabase` | Your database instance |
+| `api` | `WhatsAppService` | Service for sending messages |
+| `logger` | `MessageLoggerService` | Message logging service |
+
+### Status Lifecycle
+
+Statuses progress atomically — they can only advance forward:
+
+```
+sent → delivered → read
+  └──────────────→ failed
+```
+
+The logger service enforces this: a message that's already `read` won't regress to `delivered`.
+
+## Processing Model
+
+Better Zap's webhook is designed for reliability:
+
+1. **Signature verification** — Every `POST /webhook` is validated with HMAC-SHA256 using your `appSecret`
+2. **Deduplication** — Messages are checked against the log store before processing
+3. **Instant response** — Meta receives `200 OK` immediately
+4. **Async processing** — Your callbacks run in `executionCtx.waitUntil()`, so they don't block the response
+5. **Plugin hooks first** — Plugin `onMessage`/`onStatusUpdate` hooks run before your callbacks
+6. **Automatic logging** — Incoming messages are logged before your callback runs
+
+## Error Handling
+
+If your `onMessage` or `onStatusUpdate` callback throws, the error is caught and logged. Meta still receives `200 OK` (to prevent retry loops).
+
+For custom error handling, wrap your callback logic in try/catch:
+
+```ts
+onMessage: async (ctx) => {
+  try {
+    await processMessage(ctx);
+  } catch (err) {
+    await notifyErrorTracking(err, ctx);
+  }
+},
+```

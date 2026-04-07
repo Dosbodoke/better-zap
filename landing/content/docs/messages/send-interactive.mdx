@@ -1,0 +1,85 @@
+---
+title: Interactive Messages
+description: Send buttons, lists, and media carousels.
+---
+
+Interactive messages let users tap buttons, select from lists, or browse carousels. They require an open 24-hour freeform message window.
+
+## Buttons
+
+Send a message with up to 3 quick-reply buttons.
+
+<Tabs items={["Server API", "Client SDK"]}>
+  <Tab value="Server API">
+    ```ts
+    await zap.api.send.interactiveButtons(
+      "+5511999998888",
+      "How would you rate your experience?",
+      [
+        { id: "rate_good", title: "Good" },
+        { id: "rate_ok", title: "OK" },
+        { id: "rate_bad", title: "Bad" },
+      ],
+    );
+    ```
+  </Tab>
+  <Tab value="Client SDK">
+    ```ts
+    await zapClient.send.interactive({
+      to: "+5511999998888",
+      type: "button",
+      body: "How would you rate your experience?",
+      buttons: [
+        { id: "rate_good", title: "Good" },
+        { id: "rate_ok", title: "OK" },
+        { id: "rate_bad", title: "Bad" },
+      ],
+    });
+    ```
+  </Tab>
+</Tabs>
+
+## Lists
+
+Send a message with a list menu containing sections and rows.
+
+```ts
+await zap.api.send.interactiveList(
+  "+5511999998888",
+  "Choose a service:",
+  "View Options",
+  [
+    {
+      title: "Services",
+      rows: [
+        { id: "svc_support", title: "Technical Support", description: "Get help with your account" },
+        { id: "svc_billing", title: "Billing", description: "Payment and invoice questions" },
+        { id: "svc_sales", title: "Sales", description: "Talk to our sales team" },
+      ],
+    },
+  ],
+);
+```
+
+## Media Carousel
+
+Send a horizontally-scrollable carousel of media cards.
+
+```ts
+await zap.api.send.interactiveMediaCarousel({
+  to: "+5511999998888",
+  body: "Check out our products:",
+  cards: [
+    {
+      header: { type: "image", link: "https://example.com/product1.jpg" },
+      body: "Product A — $29.99",
+      buttons: [{ type: "quick_reply", id: "buy_a", title: "Buy Now" }],
+    },
+    {
+      header: { type: "image", link: "https://example.com/product2.jpg" },
+      body: "Product B — $49.99",
+      buttons: [{ type: "quick_reply", id: "buy_b", title: "Buy Now" }],
+    },
+  ],
+});
+```

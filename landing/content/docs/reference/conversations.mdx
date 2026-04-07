@@ -1,0 +1,102 @@
+---
+title: Conversations API
+description: List conversations and retrieve paginated message history.
+---
+
+The Conversations API lets you query conversation records and message history. Available via the server API and client SDK.
+
+## List Conversations
+
+Returns all conversations with the latest message metadata and freeform window status.
+
+<Tabs items={["Server API", "Client SDK"]}>
+  <Tab value="Server API">
+    ```ts
+    const conversations = await zap.api.conversations.list();
+    ```
+  </Tab>
+  <Tab value="Client SDK">
+    ```ts
+    const conversations = await zapClient.conversations.list();
+    ```
+  </Tab>
+</Tabs>
+
+### Response
+
+```ts
+interface Conversation {
+  id: string;
+  phone: string;
+  contactName?: string;
+  lastMessageContent?: string;
+  lastMessageAt?: string;
+  lastMessageDirection?: "incoming" | "outgoing";
+  unreadCount?: number;
+  freeformWindow: {
+    isOpen: boolean;
+    expiresAt?: string;
+  };
+}
+```
+
+## Get Conversation
+
+Returns a single conversation by phone number, or `null` if not found.
+
+<Tabs items={["Server API", "Client SDK"]}>
+  <Tab value="Server API">
+    ```ts
+    const convo = await zap.api.conversations.get("+5511999998888");
+    ```
+  </Tab>
+  <Tab value="Client SDK">
+    ```ts
+    const convo = await zapClient.conversations.get("+5511999998888");
+    ```
+  </Tab>
+</Tabs>
+
+## Get Messages
+
+Returns paginated messages for a conversation, ordered by timestamp. Uses cursor-based pagination.
+
+<Tabs items={["Server API", "Client SDK"]}>
+  <Tab value="Server API">
+    ```ts
+    const messages = await zap.api.conversations.messages("+5511999998888", {
+      limit: 50,
+      cursor: "last_message_id",
+    });
+    ```
+  </Tab>
+  <Tab value="Client SDK">
+    ```ts
+    const messages = await zapClient.conversations.messages("+5511999998888", {
+      limit: 50,
+      cursor: "last_message_id",
+    });
+    ```
+  </Tab>
+</Tabs>
+
+### Pagination
+
+- `limit` — Maximum number of messages to return (default varies by implementation)
+- `cursor` — The ID of the last message from the previous page. Omit for the first page.
+
+### Message Shape
+
+```ts
+interface UIMessage {
+  id: string;
+  waMessageId: string;
+  conversationId: string;
+  direction: "incoming" | "outgoing";
+  content: string;
+  type: string;
+  status: "sent" | "delivered" | "read" | "failed";
+  timestamp: string;
+  metadata?: Record<string, unknown>;
+}
+```

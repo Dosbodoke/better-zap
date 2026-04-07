@@ -1,0 +1,62 @@
+---
+title: Introduction
+description: The most comprehensive TypeScript framework for WhatsApp Cloud API on Cloudflare Workers.
+---
+
+Better Zap is a type-safe, plugin-extensible TypeScript framework for building WhatsApp integrations on top of Meta's official Cloud API. It's designed to run on Cloudflare Workers with optional Durable Objects support for real-time conversation sync.
+
+## Why Better Zap?
+
+- **Type-safe from top to bottom** — Full TypeScript inference for templates, message types, plugin context, and API responses.
+- **Edge-first** — Built for Cloudflare Workers. Your webhook handler responds in under 20ms while processing messages asynchronously via `waitUntil`.
+- **Plugin system** — Extend functionality with composable plugins that inject context and services into your message handlers.
+- **Template registry** — Define your WhatsApp templates once, get compile-time type checking for template parameters.
+- **Real-time sync** — Optional Cloudflare Durable Objects integration for broadcasting conversation updates across workers.
+- **LGPD-compliant logging** — Built-in message audit trail with deduplication and atomic status progression.
+
+## Architecture
+
+Better Zap is a monorepo with four packages:
+
+| Package | Description |
+| --- | --- |
+| `better-zap` | Core SDK — types, services, template registry, client SDK, plugin system |
+| `@better-zap/hono` | Hono web framework adapter — webhook handler, API routes, Durable Objects sync |
+| `@better-zap/react` | Pre-built React UI components — dashboard, conversation list, message view |
+| `@better-zap/cli` | CLI tool — auto-generate template registry from Meta Business Manager |
+
+## Quick Example
+
+```ts title="src/index.ts"
+import { betterZap } from "@better-zap/hono";
+
+const zap = betterZap({
+  database: { whatsappLog: myDatabase },
+  config: {
+    token: env.WHATSAPP_TOKEN,
+    phoneId: env.WHATSAPP_PHONE_ID,
+    webhookToken: env.WEBHOOK_VERIFY_TOKEN,
+    appSecret: env.WHATSAPP_APP_SECRET,
+  },
+  webhook: {
+    onMessage: async (ctx) => {
+      console.log(`New message from ${ctx.phone}: ${ctx.content}`);
+      await ctx.api.sendText(ctx.phone, "Got your message!");
+    },
+    onStatusUpdate: async (ctx) => {
+      console.log(`Message ${ctx.status.id} is now ${ctx.status.status}`);
+    },
+  },
+});
+
+export default zap.handler;
+```
+
+## Next Steps
+
+<Cards>
+  <Card title="Quick Start" href="/docs/getting-started" />
+  <Card title="Installation" href="/docs/getting-started/installation" />
+  <Card title="Configuration" href="/docs/getting-started/configuration" />
+  <Card title="API Reference" href="/docs/reference/server" />
+</Cards>

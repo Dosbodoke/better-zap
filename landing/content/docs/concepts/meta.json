@@ -1,0 +1,4 @@
+{
+  "title": "Concepts",
+  "pages": ["template-registry", "plugins", "message-window", "durable-objects"]
+}

@@ -1,0 +1,110 @@
+---
+title: Server API
+description: The betterZap() factory function and the returned API object.
+---
+
+The `betterZap()` function from `@better-zap/hono` is the main entry point. It creates a Hono application with webhook handling, API routes, and returns a programmatic API for server-side use.
+
+## Usage
+
+```ts
+import { betterZap } from "@better-zap/hono";
+
+const zap = betterZap({
+  database: { whatsappLog: myDatabase },
+  config: {
+    token: env.WHATSAPP_TOKEN,
+    phoneId: env.WHATSAPP_PHONE_ID,
+    webhookToken: env.WEBHOOK_VERIFY_TOKEN,
+    appSecret: env.WHATSAPP_APP_SECRET,
+  },
+  webhook: {
+    onMessage: async (ctx) => { /* ... */ },
+    onStatusUpdate: async (ctx) => { /* ... */ },
+  },
+});
+```
+
+## Return Value
+
+`betterZap()` returns an object with three properties:
+
+### `handler`
+
+A standard `fetch` handler compatible with Cloudflare Workers:
+
+```ts
+handler: (request: Request, env?: any, executionCtx?: any) => Promise<Response>
+```
+
+Use it as your worker's default export:
+
+```ts
+export default { fetch: zap.handler };
+// or simply:
+export default zap.handler;
+```
+
+### `api`
+
+A programmatic API for sending messages and querying conversations from your server code. No HTTP calls — it uses the services directly.
+
+```ts
+// Send a text message
+await zap.api.send.text("+5511999998888", "Hello!");
+
+// Send a template
+await zap.api.send.template("+5511999998888", "order_confirmed", {
+  params: { customerName: "John", orderId: "12345" },
+});
+
+// List conversations
+const conversations = await zap.api.conversations.list();
+
+// Get messages for a conversation
+const messages = await zap.api.conversations.messages("+5511999998888", {
+  limit: 50,
+});
+```
+
+See [Messages](/docs/messages/send-text) and [Conversations API](/docs/reference/conversations) for the full reference.
+
+### `services`
+
+Core services plus any services injected by plugins:
+
+```ts
+// Always available
+zap.services.whatsapp   // WhatsAppService instance
+zap.services.logger     // MessageLoggerService instance
+
+// Plugin services (type-safe when plugins are configured)
+zap.services.myQueue    // From a queue plugin, for example
+```
+
+## HTTP Routes
+
+The handler automatically registers these routes under `basePath` (default: `/api/whatsapp`):
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `GET` | `/webhook` | Meta webhook verification (challenge response) |
+| `POST` | `/webhook` | Incoming messages and status updates |
+| `POST` | `/send/text` | Send a text message |
+| `POST` | `/send/template` | Send a template message |
+| `POST` | `/send/interactive` | Send interactive messages (buttons, lists, carousel) |
+| `POST` | `/send/location` | Send a location message |
+| `GET` | `/conversations` | List all conversations |
+| `GET` | `/conversations/:phone` | Get a single conversation |
+| `GET` | `/conversations/:phone/messages` | Get paginated messages |
+
+## Webhook Processing
+
+The webhook handler is designed for speed:
+
+1. **Verification** (`GET /webhook`) — Responds to Meta's challenge with the verify token
+2. **Message processing** (`POST /webhook`) — Validates the HMAC-SHA256 signature, checks for duplicate messages, then:
+   - Returns `200 OK` to Meta immediately (within ~20ms)
+   - Processes the message asynchronously via `executionCtx.waitUntil()`
+   - Logs incoming messages automatically
+   - Runs plugin hooks, then your `onMessage`/`onStatusUpdate` callbacks

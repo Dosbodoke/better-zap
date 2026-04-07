@@ -1,0 +1,181 @@
+---
+title: Template Registry
+description: Type-safe WhatsApp template registry with compile-time parameter validation and CLI generation.
+---
+
+Better Zap provides a template registry system that gives you compile-time type checking for WhatsApp message templates.
+
+## Defining Templates
+
+Use `defineTemplates()` to declare your templates and their parameter structure:
+
+```ts
+import { defineTemplates } from "better-zap";
+
+export const templates = defineTemplates({
+  welcome: {
+    language: "en",
+    components: [
+      {
+        type: "body",
+        parameters: [
+          { type: "text", name: "customerName" },
+        ],
+      },
+    ],
+  },
+  order_confirmation: {
+    language: "en",
+    components: [
+      {
+        type: "body",
+        parameters: [
+          { type: "text", name: "orderId" },
+          { type: "text", name: "total" },
+          { type: "text", name: "deliveryDate" },
+        ],
+      },
+    ],
+  },
+});
+```
+
+## Using Templates
+
+Pass the registry to `betterZap()` and get fully typed `send.template()`:
+
+```ts
+const zap = betterZap({
+  // ...config
+  templates,
+});
+
+// Type-safe: template name is autocompleted,
+// params are validated at compile time
+await zap.api.send.template("+5511999998888", "order_confirmation", {
+  params: {
+    orderId: "ORD-123",
+    total: "R$ 99.90",
+    deliveryDate: "2025-04-10",
+  },
+});
+
+// TypeScript error: missing required param 'deliveryDate'
+await zap.api.send.template("+5511999998888", "order_confirmation", {
+  params: { orderId: "ORD-123", total: "R$ 99.90" },
+});
+```
+
+## Parameter Types
+
+Templates support several parameter types:
+
+| Type | Description |
+| --- | --- |
+| `text` | Plain text value |
+| `payload` | Button payload |
+| `location` | Location coordinates |
+| `image` | Image media |
+| `video` | Video media |
+| `document` | Document media |
+| `currency` | Currency amount |
+| `date_time` | Date/time value |
+
+## Auto-generating with the CLI
+
+Instead of manually defining templates, use `@better-zap/cli` to fetch them from Meta Business Manager:
+
+```package-install
+@better-zap/cli
+```
+
+```bash
+npx better-zap generate \
+  --access-token $META_ACCESS_TOKEN \
+  --waba-id $WHATSAPP_BUSINESS_ACCOUNT_ID \
+  --output src/templates.ts
+```
+
+This generates a TypeScript file with `defineTemplates()` populated from your actual Meta templates.
+
+### CLI Options
+
+| Flag | Description | Default |
+| --- | --- | --- |
+| `--access-token` | Meta access token | `$WHATSAPP_TOKEN` or `$META_ACCESS_TOKEN` |
+| `--waba-id` | WhatsApp Business Account ID | `$WHATSAPP_BUSINESS_ACCOUNT_ID` or `$WABA_ID` |
+| `--output` | Output file path | `src/templates.ts` |
+| `--api-version` | Meta Graph API version | `v25.0` |
+| `--config` | Config file path | Auto-discovered |
+| `--check` | Validate file is up to date (CI mode) | `false` |
+
+### Config File
+
+You can also configure the CLI via a config file. Better Zap looks for:
+
+- `better-zap.config.mjs`
+- `better-zap.config.js`
+- `better-zap.config.json`
+
+```js title="better-zap.config.mjs"
+export default {
+  accessToken: process.env.META_ACCESS_TOKEN,
+  wabaId: process.env.WABA_ID,
+  output: "src/templates.ts",
+  apiVersion: "v25.0",
+};
+```
+
+### Generated Output
+
+The CLI generates a file like:
+
+```ts title="src/templates.ts"
+import { defineTemplates } from "better-zap";
+
+export const templates = defineTemplates({
+  welcome: {
+    language: "en",
+    components: [
+      {
+        type: "body",
+        parameters: [
+          { type: "text", name: "customerName" },
+        ],
+      },
+    ],
+  },
+  order_confirmation: {
+    language: "pt_BR",
+    components: [
+      {
+        type: "body",
+        parameters: [
+          { type: "text", name: "orderId" },
+          { type: "text", name: "total" },
+        ],
+      },
+    ],
+  },
+});
+```
+
+## Raw Template Sending
+
+If you don't want to use the template registry, you can send templates with raw components:
+
+```ts
+await zap.api.send.templateRaw("+5511999998888", "welcome", {
+  language: "en",
+  components: [
+    {
+      type: "body",
+      parameters: [
+        { type: "text", text: "Maria" },
+      ],
+    },
+  ],
+});
+```
+
+This bypasses type checking but gives you full control over the component structure.

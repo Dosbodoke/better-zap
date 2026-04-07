@@ -1,0 +1,147 @@
+---
+title: Client SDK
+description: Browser and Node.js client for consuming Better Zap API endpoints.
+---
+
+The client SDK provides a type-safe way to call your Better Zap API from browser or server code.
+
+## Setup
+
+```ts
+import { createZapClient } from "better-zap/client";
+
+export const zapClient = createZapClient();
+```
+
+### Options
+
+```ts
+const zapClient = createZapClient({
+  baseURL: "https://api.example.com",  // Default: window.location.origin
+  basePath: "/api/whatsapp",            // Default: "/api/whatsapp"
+  fetch: customFetch,                   // Default: global fetch
+});
+```
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `baseURL` | `string` | `window.location.origin` | API server URL |
+| `basePath` | `string` | `"/api/whatsapp"` | Must match your server's `basePath` |
+| `fetch` | `typeof fetch` | `globalThis.fetch` | Custom fetch implementation |
+| `templates` | `TemplateRegistry` | `{}` | Template registry for type inference only |
+
+## Typed Templates
+
+Pass your template registry for compile-time type checking:
+
+```ts
+import { createZapClient } from "better-zap/client";
+import type { templates } from "./templates";
+
+const zapClient = createZapClient({
+  templates: {} as typeof templates,
+});
+
+// Now template names and params are type-checked
+await zapClient.send.template({
+  to: "+5511999998888",
+  template: "order_confirmation",  // autocomplete works
+  params: { customerName: "John", orderId: "123" },  // type-checked
+});
+```
+
+## Send Methods
+
+### `send.text(params)`
+
+```ts
+await zapClient.send.text({
+  to: "+5511999998888",
+  body: "Hello!",
+  messageType: "bot_reply",  // optional
+});
+```
+
+### `send.template(params)`
+
+```ts
+await zapClient.send.template({
+  to: "+5511999998888",
+  template: "welcome",
+  language: "en",
+  params: { name: "Maria" },
+});
+```
+
+### `send.interactive(params)`
+
+```ts
+await zapClient.send.interactive({
+  to: "+5511999998888",
+  type: "button",
+  body: "Choose an option:",
+  buttons: [
+    { id: "opt_1", title: "Option A" },
+    { id: "opt_2", title: "Option B" },
+  ],
+});
+```
+
+### `send.location(params)`
+
+```ts
+await zapClient.send.location({
+  to: "+5511999998888",
+  latitude: -23.5505,
+  longitude: -46.6333,
+  name: "Office",
+  address: "Av. Paulista, 1000",
+});
+```
+
+## Conversations
+
+### `conversations.list()`
+
+Returns all conversations:
+
+```ts
+const conversations = await zapClient.conversations.list();
+```
+
+### `conversations.get(phone)`
+
+Returns a single conversation or `null`:
+
+```ts
+const convo = await zapClient.conversations.get("+5511999998888");
+```
+
+### `conversations.messages(phone, opts?)`
+
+Returns paginated messages with cursor-based pagination:
+
+```ts
+const messages = await zapClient.conversations.messages("+5511999998888", {
+  limit: 50,
+  cursor: "last_message_id",
+});
+```
+
+## Error Handling
+
+Failed requests throw `BetterZapClientError`:
+
+```ts
+import { BetterZapClientError } from "better-zap/client";
+
+try {
+  await zapClient.send.text({ to: "invalid", body: "Hi" });
+} catch (err) {
+  if (err instanceof BetterZapClientError) {
+    console.log(err.status);   // HTTP status code
+    console.log(err.code);     // Error code from server
+    console.log(err.details);  // Additional error details
+  }
+}
+```
