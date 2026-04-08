@@ -13,8 +13,8 @@
     "build": "next build",
     "start": "next start",
     "postinstall": "fumadocs-mdx",
-    "preview": "opennextjs-cloudflare preview",
-    "deploy": "opennextjs-cloudflare deploy"
+    "preview": "pnpm run build:cloudflare && opennextjs-cloudflare preview",
+    "deploy": "pnpm run build:cloudflare && opennextjs-cloudflare deploy"
   },
   "dependencies": {
     "fumadocs-core": "^15.5.0",

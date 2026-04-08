@@ -1,5 +1,6 @@
 {
   "name": "better-zap-docs",
+  "account_id": "fcb5907f8cbbba764899fd029f155d28",
   "main": ".open-next/worker.js",
   "compatibility_date": "2025-01-01",
   "compatibility_flags": ["nodejs_compat"],
