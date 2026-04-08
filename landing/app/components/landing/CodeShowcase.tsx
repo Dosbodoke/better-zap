@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type ComponentType, type SVGProps } from "react";
+import { motion } from "framer-motion";
 import { NPM } from "../icons/npm";
 import { Pnpm } from "../icons/pnpm";
 import { Yarn } from "../icons/yarn";
@@ -24,7 +25,12 @@ export function CodeShowcase({ lang }: { lang: string }) {
 
   return (
     <div className="space-y-10 lg:pt-[20vh]">
-      <header className="space-y-6">
+      <motion.header
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 1, ease: [0.16, 1, 0.3, 1], delay: 0.2 }}
+        className="space-y-6"
+      >
         <h1 className="text-4xl lg:text-6xl font-bold tracking-tighter bg-gradient-to-br from-zinc-900 via-zinc-500 to-zinc-900 bg-clip-text text-transparent leading-[1.1] pb-2">
           {isPt ? "Segurança de Tipos no Coração" : "Type-Safety at the Core"}
         </h1>
@@ -33,9 +39,14 @@ export function CodeShowcase({ lang }: { lang: string }) {
             ? "Diga adeus a erros em tempo de execução. O Better Zap fornece validação em tempo de compilação para templates do WhatsApp e parâmetros de mensagens."
             : "Say goodbye to runtime errors. Better Zap provides compile-time validation for WhatsApp templates and message parameters."}
         </p>
-      </header>
+      </motion.header>
 
-      <ul className="space-y-3">
+      <motion.ul
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 1, ease: [0.16, 1, 0.3, 1], delay: 0.35 }}
+        className="space-y-3"
+      >
         {[
           isPt
             ? "Registro de templates type-safe"
@@ -68,10 +79,16 @@ export function CodeShowcase({ lang }: { lang: string }) {
             {item}
           </li>
         ))}
-      </ul>
+      </motion.ul>
 
       {/* Installation code block */}
-      <div className="scroll-mt-20 pt-10" id="installation">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.8, delay: 0.6, ease: "easeOut" }}
+        className="scroll-mt-20 pt-10"
+        id="installation"
+      >
         <h2 className="text-2xl font-semibold tracking-tight bg-gradient-to-br from-zinc-900 via-zinc-500 to-zinc-900 bg-clip-text text-transparent pb-1 mb-6">
           {isPt ? "Instalação" : "Installation"}
         </h2>
@@ -108,10 +125,16 @@ export function CodeShowcase({ lang }: { lang: string }) {
             </div>
           </div>
         </div>
-      </div>
+      </motion.div>
 
       {/* Usage code block */}
-      <div className="scroll-mt-20 pt-10" id="usage">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.8, delay: 0.8, ease: "easeOut" }}
+        className="scroll-mt-20 pt-10"
+        id="usage"
+      >
         <h2 className="text-2xl font-semibold tracking-tight bg-gradient-to-br from-zinc-900 via-zinc-500 to-zinc-900 bg-clip-text text-transparent pb-1 mb-6">
           {isPt ? "Uso" : "Usage"}
         </h2>
@@ -221,7 +244,7 @@ export function CodeShowcase({ lang }: { lang: string }) {
             </pre>
           </div>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }
