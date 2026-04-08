@@ -2,6 +2,7 @@
 
 import { useState, type ComponentType, type SVGProps } from "react";
 import { motion } from "framer-motion";
+import { useTranslations } from "next-intl";
 import { NPM } from "../icons/npm";
 import { Pnpm } from "../icons/pnpm";
 import { Yarn } from "../icons/yarn";
@@ -19,8 +20,14 @@ const packageManagers: {
   { name: "bun", command: "bun add", pkg: "@better-zap/core", icon: Bun },
 ];
 
-export function CodeShowcase({ lang }: { lang: string }) {
-  const isPt = lang === "pt-BR";
+const bulletKeys = [
+  "typeSafeRegistry",
+  "autoComplete",
+  "strictHandlers",
+] as const;
+
+export function CodeShowcase() {
+  const t = useTranslations();
   const [activeTab, setActiveTab] = useState(1); // default to pnpm
 
   return (
@@ -32,12 +39,10 @@ export function CodeShowcase({ lang }: { lang: string }) {
         className="space-y-6"
       >
         <h1 className="text-4xl lg:text-6xl font-bold tracking-tighter bg-gradient-to-br from-zinc-900 via-zinc-500 to-zinc-900 bg-clip-text text-transparent leading-[1.1] pb-2">
-          {isPt ? "Segurança de Tipos no Coração" : "Type-Safety at the Core"}
+          {t("hero.title")}
         </h1>
         <p className="text-lg text-zinc-500 leading-relaxed max-w-2xl font-normal">
-          {isPt
-            ? "Diga adeus a erros em tempo de execução. O Better Zap fornece validação em tempo de compilação para templates do WhatsApp e parâmetros de mensagens."
-            : "Say goodbye to runtime errors. Better Zap provides compile-time validation for WhatsApp templates and message parameters."}
+          {t("hero.description")}
         </p>
       </motion.header>
 
@@ -47,19 +52,9 @@ export function CodeShowcase({ lang }: { lang: string }) {
         transition={{ duration: 1, ease: [0.16, 1, 0.3, 1], delay: 0.35 }}
         className="space-y-3"
       >
-        {[
-          isPt
-            ? "Registro de templates type-safe"
-            : "Type-safe template registry",
-          isPt
-            ? "Auto-complete para variáveis de template"
-            : "Auto-complete for template variables",
-          isPt
-            ? "Handlers de eventos com tipagem estrita"
-            : "Strictly typed event handlers",
-        ].map((item, i) => (
+        {bulletKeys.map((key) => (
           <li
-            key={i}
+            key={key}
             className="flex items-center gap-2.5 text-sm text-zinc-600"
           >
             <svg
@@ -76,7 +71,7 @@ export function CodeShowcase({ lang }: { lang: string }) {
                 d="M9 12.75 11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 0 1-1.043 3.296 3.745 3.745 0 0 1-3.296 1.043A3.745 3.745 0 0 1 12 21c-1.268 0-2.39-.63-3.068-1.593a3.746 3.746 0 0 1-3.296-1.043 3.745 3.745 0 0 1-1.043-3.296A3.745 3.745 0 0 1 3 12c0-1.268.63-2.39 1.593-3.068a3.745 3.745 0 0 1 1.043-3.296 3.746 3.746 0 0 1 3.296-1.043A3.746 3.746 0 0 1 12 3c1.268 0 2.39.63 3.068 1.593a3.746 3.746 0 0 1 3.296 1.043 3.746 3.746 0 0 1 1.043 3.296A3.745 3.745 0 0 1 21 12Z"
               />
             </svg>
-            {item}
+            {t(`hero.bullets.${key}`)}
           </li>
         ))}
       </motion.ul>
@@ -90,7 +85,7 @@ export function CodeShowcase({ lang }: { lang: string }) {
         id="installation"
       >
         <h2 className="text-2xl font-semibold tracking-tight bg-gradient-to-br from-zinc-900 via-zinc-500 to-zinc-900 bg-clip-text text-transparent pb-1 mb-6">
-          {isPt ? "Instalação" : "Installation"}
+          {t("installation")}
         </h2>
         <div className="relative rounded-xl border border-zinc-200 overflow-hidden bg-zinc-100 font-mono text-sm leading-relaxed">
           <div className="flex items-center border-b border-zinc-200/40 bg-zinc-50/50 overflow-x-auto">
@@ -136,7 +131,7 @@ export function CodeShowcase({ lang }: { lang: string }) {
         id="usage"
       >
         <h2 className="text-2xl font-semibold tracking-tight bg-gradient-to-br from-zinc-900 via-zinc-500 to-zinc-900 bg-clip-text text-transparent pb-1 mb-6">
-          {isPt ? "Uso" : "Usage"}
+          {t("usage")}
         </h2>
         <div className="relative rounded-xl border border-zinc-200 overflow-hidden bg-zinc-100 font-mono text-sm leading-relaxed">
           <div className="p-4 overflow-x-auto [&_pre]:overflow-x-auto">

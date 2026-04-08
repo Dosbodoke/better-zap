@@ -1,8 +1,9 @@
 import Link from "next/link";
+import { getTranslations } from "next-intl/server";
 
-export function Navbar({ lang }: { lang: string }) {
-  const isPt = lang === "pt-BR";
-  
+export async function Navbar({ lang }: { lang: string }) {
+  const t = await getTranslations("navbar");
+
   return (
     <header className="sticky top-0 z-50 w-full border-b border-zinc-200 bg-white/80 backdrop-blur-sm">
       <div className="container mx-auto flex h-16 items-center justify-between px-4">
@@ -13,16 +14,16 @@ export function Navbar({ lang }: { lang: string }) {
             </div>
             <span>Better Zap</span>
           </Link>
-          
+
           <nav className="hidden md:flex items-center gap-6">
-            <Link 
-              href={`/${lang}/docs/introduction`} 
+            <Link
+              href={`/${lang}/docs/introduction`}
               className="text-sm font-medium text-zinc-600 transition-colors hover:text-zinc-900"
             >
-              {isPt ? "Documentação" : "Documentation"}
+              {t("documentation")}
             </Link>
-            <Link 
-              href="https://github.com/better-zap/better-zap" 
+            <Link
+              href="https://github.com/better-zap/better-zap"
               className="text-sm font-medium text-zinc-600 transition-colors hover:text-zinc-900"
               target="_blank"
             >
@@ -33,16 +34,16 @@ export function Navbar({ lang }: { lang: string }) {
 
         <div className="flex items-center gap-4">
           <Link
-            href={isPt ? "/en" : "/pt-BR"}
+            href={lang === "pt-BR" ? "/en" : "/pt-BR"}
             className="text-xs font-semibold text-zinc-500 uppercase tracking-wider hover:text-zinc-900 transition-colors border border-zinc-200 px-2 py-1 rounded bg-zinc-50"
           >
-            {isPt ? "English" : "Português"}
+            {t("switchLang")}
           </Link>
           <Link
             href={`/${lang}/docs/getting-started`}
             className="hidden sm:block rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-800"
           >
-            {isPt ? "Começar" : "Get Started"}
+            {t("getStarted")}
           </Link>
         </div>
       </div>

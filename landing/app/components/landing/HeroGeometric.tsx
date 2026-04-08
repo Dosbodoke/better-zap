@@ -4,6 +4,7 @@ import { useRef, useMemo } from "react";
 import { Canvas, useFrame, ThreeElements } from "@react-three/fiber";
 import * as THREE from "three";
 import { motion } from "framer-motion";
+import { useTranslations, useLocale } from "next-intl";
 import { GitHub as GitHubIcon } from "../icons/github";
 
 declare module "react" {
@@ -161,6 +162,9 @@ const GradientPlane = ({
 // --- Main Component ---
 
 export default function HeroGeometric() {
+  const t = useTranslations("heroMain");
+  const locale = useLocale();
+
   return (
     <div className="relative w-full h-full flex flex-col items-center justify-center bg-white text-black">
       {/* Background Shader */}
@@ -186,7 +190,7 @@ export default function HeroGeometric() {
             transition={{ duration: 1, ease: [0.16, 1, 0.3, 1], delay: 0.2 }}
             className="text-5xl md:text-6xl lg:text-7xl leading-[0.9] tracking-tighter font-serif italic font-light text-[#1a1a1a]"
           >
-            Build WhatsApp Bots
+            {t("line1")}
           </motion.h1>
           <motion.h1
             initial={{ opacity: 0, y: 20 }}
@@ -194,7 +198,7 @@ export default function HeroGeometric() {
             transition={{ duration: 1, ease: [0.16, 1, 0.3, 1], delay: 0.35 }}
             className="text-5xl md:text-6xl lg:text-7xl leading-[0.9] tracking-tighter font-bold text-black"
           >
-            The Right Way
+            {t("line2")}
           </motion.h1>
         </div>
 
@@ -205,8 +209,7 @@ export default function HeroGeometric() {
             transition={{ duration: 0.8, delay: 0.6, ease: "easeOut" }}
             className="text-base md:text-lg leading-relaxed text-neutral-600 font-normal"
           >
-            A type-safe TypeScript SDK for the WhatsApp Cloud API. From idea to
-            production in minutes.
+            {t("description")}
           </motion.p>
         </div>
 
@@ -217,10 +220,10 @@ export default function HeroGeometric() {
           className="flex gap-4"
         >
           <a
-            href="/en/docs/getting-started"
+            href={`/${locale}/docs/getting-started`}
             className="rounded-lg bg-[#131313] px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#333]"
           >
-            Get Started
+            {t("getStarted")}
           </a>
           <a
             href="https://github.com/Dosbodoke/better-zap"

@@ -1,69 +1,16 @@
 import Link from "next/link";
+import { getTranslations } from "next-intl/server";
 import HeroGeometric from "../components/landing/HeroGeometricClient";
 import { CodeShowcase } from "../components/landing/CodeShowcase";
 import { FeatureGrid } from "../components/landing/FeatureGrid";
 import { Footer } from "../components/landing/Footer";
 
-const content = {
-  en: {
-    features: [
-      {
-        title: "Run Anywhere",
-        description: "Deploy on your own infrastructure. Works with any Node.js runtime — Express, Fastify, Hono, or standalone.",
-        icon: "Server",
-      },
-      {
-        title: "Type-Safe Templates",
-        description: "Compile-time validation for WhatsApp templates. No more runtime errors for complex interactive messages.",
-        icon: "Shield",
-      },
-      {
-        title: "Composable Plugins",
-        description: "Extend functionality with reusable, type-safe components. Build once, deploy everywhere.",
-        icon: "Puzzle",
-      },
-      {
-        title: "Full API Support",
-        description: "Built-in handlers for buttons, lists, carousels, location, and rich media.",
-        icon: "Zap",
-      },
-    ],
-    ctaSection: {
-      title: "Ready to build better?",
-      subtitle: "Join developers building better WhatsApp experiences with type-safe, composable tools.",
-      button: "Start Building Now",
-    },
-  },
-  "pt-BR": {
-    features: [
-      {
-        title: "Rode em Qualquer Lugar",
-        description: "Implante na sua própria infraestrutura. Funciona com qualquer runtime Node.js — Express, Fastify, Hono, ou standalone.",
-        icon: "Server",
-      },
-      {
-        title: "Templates Type-Safe",
-        description: "Validação em tempo de compilação para templates do WhatsApp. Sem erros de execução para mensagens complexas.",
-        icon: "Shield",
-      },
-      {
-        title: "Plugins Composíveis",
-        description: "Estenda a funcionalidade com componentes reutilizáveis. Construa uma vez, use em qualquer lugar.",
-        icon: "Puzzle",
-      },
-      {
-        title: "Suporte Total à API",
-        description: "Handlers integrados para botões, listas, carrosséis, localização e mídia rica.",
-        icon: "Zap",
-      },
-    ],
-    ctaSection: {
-      title: "Pronto para construir melhor?",
-      subtitle: "Junte-se aos desenvolvedores construindo melhores experiências no WhatsApp com ferramentas type-safe e composíveis.",
-      button: "Comece a Construir Agora",
-    },
-  },
-};
+const featureKeys = [
+  { key: "runAnywhere" as const, icon: "Server" as const },
+  { key: "typeSafeTemplates" as const, icon: "Shield" as const },
+  { key: "composablePlugins" as const, icon: "Puzzle" as const },
+  { key: "fullApiSupport" as const, icon: "Zap" as const },
+];
 
 export default async function LandingPage({
   params,
@@ -71,7 +18,13 @@ export default async function LandingPage({
   params: Promise<{ lang: string }>;
 }) {
   const { lang } = await params;
-  const t = content[lang as keyof typeof content] || content.en;
+  const t = await getTranslations();
+
+  const features = featureKeys.map(({ key, icon }) => ({
+    title: t(`features.${key}.title`),
+    description: t(`features.${key}.description`),
+    icon,
+  }));
 
   return (
     <div className="flex flex-col lg:flex-row w-full h-full min-h-screen lg:h-screen bg-[#f3f4f6] text-zinc-900">
@@ -83,23 +36,23 @@ export default async function LandingPage({
         <div className="absolute bottom-0 left-0 right-0 z-30 h-32 bg-gradient-to-t from-[#f3f4f6] via-[#f3f4f6]/95 to-transparent pointer-events-none backdrop-blur-[1px]" />
         <main className="relative flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
           <div className="px-6 lg:px-16 pt-12 pb-40 space-y-16 lg:space-y-20 max-w-3xl mx-auto">
-            <CodeShowcase lang={lang} />
-            <FeatureGrid features={t.features} />
+            <CodeShowcase />
+            <FeatureGrid features={features} />
 
             {/* CTA */}
             <section className="text-center space-y-4">
               <h2 className="text-2xl font-semibold tracking-tight bg-gradient-to-br from-zinc-900 via-zinc-500 to-zinc-900 bg-clip-text text-transparent pb-1">
-                {t.ctaSection.title}
+                {t("cta.title")}
               </h2>
               <p className="mx-auto max-w-md text-zinc-500 text-sm leading-relaxed">
-                {t.ctaSection.subtitle}
+                {t("cta.subtitle")}
               </p>
               <div className="pt-2">
                 <Link
                   href={`/${lang}/docs/getting-started`}
                   className="inline-block rounded-lg bg-zinc-900 px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-zinc-800"
                 >
-                  {t.ctaSection.button}
+                  {t("cta.button")}
                 </Link>
               </div>
             </section>

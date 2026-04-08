@@ -1,0 +1,58 @@
+{
+  "heroMain": {
+    "line1": "Crie WhatsApp Bots",
+    "line2": "Do Jeito Certo",
+    "description": "Um SDK TypeScript type-safe para a WhatsApp Cloud API. Da ideia à produção em minutos.",
+    "getStarted": "Começar"
+  },
+  "hero": {
+    "title": "Totalmente Type-Safe",
+    "description": "Diga adeus a erros em runtime. O Better Zap fornece validação em compile-time para templates do WhatsApp e parâmetros de mensagens.",
+    "bullets": {
+      "typeSafeRegistry": "Template registry type-safe",
+      "autoComplete": "Auto-complete para variáveis de template",
+      "strictHandlers": "Event handlers com tipagem estrita"
+    }
+  },
+  "installation": "Instalação",
+  "usage": "Uso",
+  "features": {
+    "runAnywhere": {
+      "title": "Rode em Qualquer Lugar",
+      "description": "Implante na sua própria infraestrutura. Funciona com qualquer runtime Node.js — Express, Fastify, Hono, ou standalone."
+    },
+    "typeSafeTemplates": {
+      "title": "Templates Type-Safe",
+      "description": "Validação em tempo de compilação para templates do WhatsApp. Sem erros de execução para mensagens complexas."
+    },
+    "composablePlugins": {
+      "title": "Plugins Composíveis",
+      "description": "Estenda a funcionalidade com componentes reutilizáveis. Construa uma vez, use em qualquer lugar."
+    },
+    "fullApiSupport": {
+      "title": "Suporte Total à API",
+      "description": "Handlers integrados para botões, listas, carrosséis, localização e mídia rica."
+    }
+  },
+  "cta": {
+    "title": "Pronto para construir melhor?",
+    "subtitle": "Junte-se aos desenvolvedores construindo melhores experiências no WhatsApp com ferramentas type-safe e composíveis.",
+    "button": "Comece a Construir Agora"
+  },
+  "footer": {
+    "tagline": "O SDK TypeScript para construir bots de WhatsApp com segurança de tipos e performance.",
+    "product": "Produto",
+    "docs": "Docs",
+    "quickStart": "Início Rápido",
+    "plugins": "Plugins",
+    "community": "Comunidade",
+    "legal": "Legal",
+    "privacy": "Privacidade",
+    "terms": "Termos"
+  },
+  "navbar": {
+    "documentation": "Documentação",
+    "getStarted": "Começar",
+    "switchLang": "English"
+  }
+}

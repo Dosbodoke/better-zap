@@ -1,0 +1,58 @@
+{
+  "heroMain": {
+    "line1": "Build WhatsApp Bots",
+    "line2": "The Right Way",
+    "description": "A type-safe TypeScript SDK for the WhatsApp Cloud API. From idea to production in minutes.",
+    "getStarted": "Get Started"
+  },
+  "hero": {
+    "title": "Type-Safety at the Core",
+    "description": "Say goodbye to runtime errors. Better Zap provides compile-time validation for WhatsApp templates and message parameters.",
+    "bullets": {
+      "typeSafeRegistry": "Type-safe template registry",
+      "autoComplete": "Auto-complete for template variables",
+      "strictHandlers": "Strictly typed event handlers"
+    }
+  },
+  "installation": "Installation",
+  "usage": "Usage",
+  "features": {
+    "runAnywhere": {
+      "title": "Run Anywhere",
+      "description": "Deploy on your own infrastructure. Works with any Node.js runtime — Express, Fastify, Hono, or standalone."
+    },
+    "typeSafeTemplates": {
+      "title": "Type-Safe Templates",
+      "description": "Compile-time validation for WhatsApp templates. No more runtime errors for complex interactive messages."
+    },
+    "composablePlugins": {
+      "title": "Composable Plugins",
+      "description": "Extend functionality with reusable, type-safe components. Build once, deploy everywhere."
+    },
+    "fullApiSupport": {
+      "title": "Full API Support",
+      "description": "Built-in handlers for buttons, lists, carousels, location, and rich media."
+    }
+  },
+  "cta": {
+    "title": "Ready to build better?",
+    "subtitle": "Join developers building better WhatsApp experiences with type-safe, composable tools.",
+    "button": "Start Building Now"
+  },
+  "footer": {
+    "tagline": "The TypeScript SDK for building WhatsApp bots with type-safety and performance.",
+    "product": "Product",
+    "docs": "Docs",
+    "quickStart": "Quick Start",
+    "plugins": "Plugins",
+    "community": "Community",
+    "legal": "Legal",
+    "privacy": "Privacy",
+    "terms": "Terms"
+  },
+  "navbar": {
+    "documentation": "Documentation",
+    "getStarted": "Get Started",
+    "switchLang": "Português"
+  }
+}
