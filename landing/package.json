@@ -13,8 +13,8 @@
     "build": "next build",
     "start": "next start",
     "postinstall": "fumadocs-mdx",
-    "preview": "pnpm run build:cloudflare && opennextjs-cloudflare preview",
-    "deploy": "pnpm run build:cloudflare && opennextjs-cloudflare deploy"
+    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy"
   },
   "dependencies": {
     "@react-three/fiber": "^9.5.0",
