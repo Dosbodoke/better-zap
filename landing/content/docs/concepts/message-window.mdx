@@ -1,0 +1,47 @@
+---
+title: Message Window
+description: Understanding WhatsApp's 24-hour freeform message window.
+---
+
+WhatsApp enforces a **24-hour message window** for business-initiated conversations. Better Zap tracks and enforces this window automatically.
+
+## How It Works
+
+When a user sends a message to your business number, a 24-hour window opens. During this window, you can send freeform text messages to that user. After the window closes, you can only reach them via pre-approved **template messages**.
+
+```
+User sends message → Window opens (24h)
+  ├─ send.text()           ✅ Works
+  ├─ send.interactiveButtons()  ✅ Works
+  ├─ send.template()       ✅ Works (always works)
+  └─ 24h passes → Window closes
+      ├─ send.text()       ❌ Blocked
+      └─ send.template()   ✅ Still works
+```
+
+## Automatic Tracking
+
+Better Zap's `MessageLoggerService` tracks the freeform window for each conversation:
+
+- When an incoming message is logged, the window expiry is updated to `now + 24h`
+- The `getFreeformMessageWindow()` method on your database returns the window state
+- `normalizeConversationRecord()` enriches conversation records with `freeformWindow.isOpen` and `freeformWindow.expiresAt`
+
+## In the API
+
+When you call `zap.api.conversations.list()` or `zap.api.conversations.get()`, each conversation includes:
+
+```ts
+{
+  freeformWindow: {
+    isOpen: boolean,      // true if within 24h of last incoming message
+    expiresAt?: string,   // ISO timestamp when the window closes
+  }
+}
+```
+
+## Best Practices
+
+- **Check the window before sending text** — Use `freeformWindow.isOpen` to decide whether to send a text or a template
+- **Use templates for proactive messaging** — Marketing, notifications, and reminders should always use templates
+- **Templates reopen the window** — When a user replies to your template, a new 24h window opens

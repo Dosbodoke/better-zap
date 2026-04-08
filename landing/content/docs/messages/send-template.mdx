@@ -1,0 +1,134 @@
+---
+title: Template Messages
+description: Send pre-approved WhatsApp templates with type-safe parameters.
+---
+
+Templates can be sent **outside the 24-hour window** — they're the only way to reach users who haven't messaged you recently.
+
+## Sending with the Template Registry
+
+If you use `defineTemplates()`, template names and params are type-checked at compile time:
+
+<Tabs items={["Server API", "Client SDK"]}>
+  <Tab value="Server API">
+    ```ts
+    await zap.api.send.template("+5511999998888", "order_confirmation", {
+      params: {
+        customerName: "Maria",
+        orderId: "ORD-123",
+      },
+    });
+    ```
+  </Tab>
+  <Tab value="Client SDK">
+    ```ts
+    await zapClient.send.template({
+      to: "+5511999998888",
+      template: "order_confirmation",
+      language: "en",
+      params: { customerName: "Maria", orderId: "ORD-123" },
+    });
+    ```
+  </Tab>
+</Tabs>
+
+## Sending Raw Templates
+
+If you don't use the template registry, pass components directly:
+
+```ts
+await zap.api.send.templateRaw("+5511999998888", "order_confirmation", {
+  language: "en",
+  components: [
+    {
+      type: "body",
+      parameters: [
+        { type: "text", text: "Maria" },
+        { type: "text", text: "ORD-123" },
+      ],
+    },
+  ],
+});
+```
+
+## End-to-End Workflow
+
+### 1. Create a Template in Meta
+
+1. Go to [Meta Business Manager](https://business.facebook.com/) > **WhatsApp Manager** > **Message Templates**
+2. Click **Create Template**
+3. Choose a category (Marketing, Utility, or Authentication)
+4. Define the template with variables: `Hello {{1}}, your order {{2}} is confirmed.`
+5. Submit for approval (usually takes minutes to hours)
+
+### 2. Generate the Template Registry
+
+Once approved, use the CLI to generate your registry:
+
+```bash
+npx better-zap generate \
+  --access-token $META_ACCESS_TOKEN \
+  --waba-id $WABA_ID \
+  --output src/templates.ts
+```
+
+This creates a file like:
+
+```ts title="src/templates.ts"
+import { defineTemplates } from "better-zap";
+
+export const templates = defineTemplates({
+  order_confirmation: {
+    language: "en",
+    components: [
+      {
+        type: "body",
+        parameters: [
+          { type: "text", name: "customerName" },
+          { type: "text", name: "orderId" },
+        ],
+      },
+    ],
+  },
+});
+```
+
+### 3. Use the Registry in Your App
+
+```ts title="src/index.ts"
+import { betterZap } from "@better-zap/hono";
+import { templates } from "./templates";
+
+const zap = betterZap({
+  // ...config
+  templates,
+  webhook: {
+    onMessage: async (ctx) => { /* ... */ },
+    onStatusUpdate: async (ctx) => { /* ... */ },
+  },
+});
+
+// Type-safe: autocomplete for template names and params
+await zap.api.send.template("+5511999998888", "order_confirmation", {
+  params: {
+    customerName: "Maria",
+    orderId: "ORD-456",
+  },
+});
+```
+
+### 4. CI Validation
+
+Add a check to your CI pipeline to ensure templates stay in sync:
+
+```bash
+npx better-zap generate --check
+```
+
+This exits with a non-zero code if the generated file would differ from the current one.
+
+## Tips
+
+- **Templates can be sent anytime** — They don't require the 24-hour message window
+- **Regenerate after changes** — Run `better-zap generate` whenever you create or modify templates in Meta
+- **Use `templateRaw` for one-offs** — If you need to send a template without the registry, use `api.send.templateRaw()`

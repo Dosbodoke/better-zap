@@ -1,0 +1,111 @@
+---
+title: Quick Start
+description: Get your WhatsApp webhook running on Cloudflare Workers in 5 minutes.
+---
+
+This guide walks you through setting up a Better Zap project from scratch on Cloudflare Workers with Hono.
+
+## Prerequisites
+
+- A [Meta Developer Account](https://developers.facebook.com/) with a WhatsApp Business App
+- A Cloudflare account with Workers enabled
+- Node.js 18+ and pnpm (or npm/yarn)
+
+## 1. Create a Cloudflare Workers project
+
+```bash
+npm create cloudflare@latest my-whatsapp-app -- --template hono
+cd my-whatsapp-app
+```
+
+## 2. Install Better Zap
+
+```package-install
+better-zap @better-zap/hono
+```
+
+## 3. Set up your worker
+
+Replace the contents of `src/index.ts`:
+
+```ts title="src/index.ts"
+import { betterZap } from "@better-zap/hono";
+
+type Env = {
+  DB: D1Database;
+  WHATSAPP_TOKEN: string;
+  WHATSAPP_PHONE_ID: string;
+  WEBHOOK_VERIFY_TOKEN: string;
+  WHATSAPP_APP_SECRET: string;
+};
+
+const app = {
+  fetch(request: Request, env: Env, ctx: ExecutionContext) {
+    const zap = betterZap({
+      database: { whatsappLog: createD1Store(env.DB) }, // See the D1 guide
+      config: {
+        token: env.WHATSAPP_TOKEN,
+        phoneId: env.WHATSAPP_PHONE_ID,
+        webhookToken: env.WEBHOOK_VERIFY_TOKEN,
+        appSecret: env.WHATSAPP_APP_SECRET,
+      },
+      webhook: {
+        onMessage: async (ctx) => {
+          // Echo back incoming messages
+          await ctx.api.sendText(ctx.phone, `You said: ${ctx.content}`);
+        },
+        onStatusUpdate: async (ctx) => {
+          console.log(`Status: ${ctx.status.status}`);
+        },
+      },
+    });
+
+    return zap.handler(request, env, ctx);
+  },
+};
+
+export default app;
+```
+
+## 4. Configure environment variables
+
+Add your WhatsApp credentials to `.dev.vars` for local development:
+
+```bash title=".dev.vars"
+WHATSAPP_TOKEN=your_system_user_access_token
+WHATSAPP_PHONE_ID=your_phone_number_id
+WEBHOOK_VERIFY_TOKEN=any_secret_string_you_choose
+WHATSAPP_APP_SECRET=your_app_secret_from_meta
+```
+
+For production, use `wrangler secret put`:
+
+```bash
+wrangler secret put WHATSAPP_TOKEN
+wrangler secret put WHATSAPP_PHONE_ID
+wrangler secret put WEBHOOK_VERIFY_TOKEN
+wrangler secret put WHATSAPP_APP_SECRET
+```
+
+## 5. Configure the webhook in Meta
+
+1. Go to your [Meta App Dashboard](https://developers.facebook.com/apps/)
+2. Navigate to **WhatsApp > Configuration**
+3. Set the **Callback URL** to `https://your-worker.your-subdomain.workers.dev/api/whatsapp/webhook`
+4. Set the **Verify Token** to the same value as `WEBHOOK_VERIFY_TOKEN`
+5. Subscribe to the `messages` webhook field
+
+## 6. Deploy
+
+```bash
+wrangler deploy
+```
+
+That's it! Your WhatsApp webhook is live. Send a message to your WhatsApp Business number and you'll get an echo reply.
+
+## What's next?
+
+- [Configuration](/docs/getting-started/configuration) — Learn about all configuration options
+- [Messages](/docs/messages/send-text) — Send text, templates, interactive messages, and more
+- [Webhook Events](/docs/reference/webhook-events) — Handle incoming messages and status updates
+- [Plugins](/docs/concepts/plugins) — Extend your webhook with composable plugins

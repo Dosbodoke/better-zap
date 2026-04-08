@@ -1,0 +1,4 @@
+{
+  "title": "Messages",
+  "pages": ["send-text", "send-template", "send-interactive", "send-location", "chat-actions"]
+}

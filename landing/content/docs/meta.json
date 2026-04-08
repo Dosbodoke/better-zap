@@ -1,0 +1,10 @@
+{
+  "pages": [
+    "introduction",
+    "getting-started",
+    "messages",
+    "concepts",
+    "reference",
+    "guides"
+  ]
+}

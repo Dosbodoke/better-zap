@@ -1,0 +1,189 @@
+---
+title: Configuration
+description: Configure Better Zap with your WhatsApp Cloud API credentials.
+---
+
+Better Zap requires credentials from your Meta WhatsApp Business App and a database implementation for message logging.
+
+## Config Object
+
+The `betterZap()` function accepts a configuration object:
+
+```ts
+import { betterZap } from "@better-zap/hono";
+
+const zap = betterZap({
+  database: { whatsappLog: myDatabase },
+  config: {
+    token: "your_access_token",
+    phoneId: "your_phone_number_id",
+    webhookToken: "your_verify_token",
+    appSecret: "your_app_secret",
+  },
+  webhook: {
+    onMessage: async (ctx) => { /* ... */ },
+    onStatusUpdate: async (ctx) => { /* ... */ },
+  },
+  // Optional
+  basePath: "/api/whatsapp",     // Default: "/api/whatsapp"
+  templates: myTemplates,         // From defineTemplates()
+  plugins: [myPlugin],            // Plugin array
+  conversationSync: env.SYNC_DO,  // Durable Object namespace
+  logger: { level: "info" },      // Logger config
+});
+```
+
+## Config Properties
+
+### `config` (required)
+
+WhatsApp Cloud API credentials:
+
+| Property | Type | Description |
+| --- | --- | --- |
+| `token` | `string` | System User access token from Meta Business Manager |
+| `phoneId` | `string` | Phone Number ID registered in your WhatsApp Business App |
+| `webhookToken` | `string` | A secret string you choose — Meta sends it during webhook verification |
+| `appSecret` | `string` | App Secret from your Meta App Dashboard — used for HMAC-SHA256 signature verification |
+| `environment` | `string?` | Set to `"development"` to skip real API calls and return mock responses |
+
+### `database` (required)
+
+An object containing your database implementation:
+
+```ts
+interface BetterZapDatabase {
+  whatsappLog: WhatsAppLogStore;
+}
+```
+
+The `WhatsAppLogStore` interface defines the methods Better Zap needs for message logging. You must implement this interface with your database of choice (D1, Prisma, Drizzle, etc.).
+
+See the [WhatsAppLogStore interface](#whatsapplogstore-interface) section below for the full interface.
+
+### `webhook` (required)
+
+Callback functions for incoming WhatsApp events:
+
+```ts
+webhook: {
+  onMessage: async (ctx) => {
+    // ctx.message   — raw WhatsApp message object
+    // ctx.content   — extracted human-readable content
+    // ctx.phone     — sender phone number (normalized)
+    // ctx.contact   — sender contact info
+    // ctx.db        — your database
+    // ctx.api       — WhatsAppService instance
+    // ctx.logger    — MessageLoggerService instance
+  },
+  onStatusUpdate: async (ctx) => {
+    // ctx.status    — { id, status, timestamp, recipientId }
+    // ctx.db        — your database
+    // ctx.api       — WhatsAppService instance
+    // ctx.logger    — MessageLoggerService instance
+  },
+}
+```
+
+### `basePath` (optional)
+
+The URL prefix for all routes. Defaults to `"/api/whatsapp"`.
+
+All API routes are mounted under this path:
+- `GET  {basePath}/webhook` — Meta webhook verification
+- `POST {basePath}/webhook` — Incoming messages/statuses
+- `POST {basePath}/send/text` — Send text messages
+- `POST {basePath}/send/template` — Send templates
+- `POST {basePath}/send/interactive` — Send interactive messages
+- `POST {basePath}/send/location` — Send location
+- `GET  {basePath}/conversations` — List conversations
+- `GET  {basePath}/conversations/:phone` — Get conversation
+- `GET  {basePath}/conversations/:phone/messages` — Paginated messages
+
+### `templates` (optional)
+
+A template registry created with `defineTemplates()`. Enables type-safe template sending.
+
+```ts
+import { defineTemplates } from "better-zap";
+
+const templates = defineTemplates({
+  order_confirmation: {
+    language: "en",
+    components: [
+      {
+        type: "body",
+        parameters: [
+          { type: "text", name: "customerName" },
+          { type: "text", name: "orderId" },
+        ],
+      },
+    ],
+  },
+});
+```
+
+See [Template Registry](/docs/concepts/template-registry) for details.
+
+### `plugins` (optional)
+
+An array of Better Zap plugins. Plugins can inject context, services, and hooks.
+
+```ts
+plugins: [myQueuePlugin, myAnalyticsPlugin]
+```
+
+See [Plugins](/docs/concepts/plugins) for details.
+
+### `conversationSync` (optional)
+
+A Cloudflare Durable Object namespace for real-time conversation sync across workers.
+
+```ts
+conversationSync: env.CONVERSATION_SYNC
+```
+
+See [Durable Objects](/docs/concepts/durable-objects) for details.
+
+## WhatsAppLogStore Interface
+
+You must implement this interface to provide message persistence:
+
+```ts
+interface WhatsAppLogStore {
+  logIncoming(message: IncomingLogEntry): Promise<void>;
+  updateStatus(waMessageId: string, status: string, timestamp: number): Promise<void>;
+  isDuplicate(waMessageId: string): Promise<boolean>;
+  getFreeformMessageWindow(phone: string): Promise<FreeformMessageWindow | null>;
+  getConversations(): Promise<ConversationRecord[]>;
+  getConversationByPhone(phone: string): Promise<ConversationRecord | null>;
+  getMessagesByConversationPaginated(
+    conversationId: string,
+    cursor?: string,
+    limit?: number,
+  ): Promise<UIMessage[]>;
+}
+```
+
+## Getting Your Credentials
+
+### Access Token
+
+1. Go to [Meta Business Manager](https://business.facebook.com/)
+2. Navigate to **Business Settings > System Users**
+3. Create a System User with the `whatsapp_business_messaging` permission
+4. Generate a token — this is your `token`
+
+### Phone Number ID
+
+1. In your [Meta App Dashboard](https://developers.facebook.com/apps/), go to **WhatsApp > API Setup**
+2. Your **Phone Number ID** is displayed under the test number section
+
+### App Secret
+
+1. In your Meta App Dashboard, go to **Settings > Basic**
+2. Your **App Secret** is shown (click "Show" to reveal)
+
+### Webhook Verify Token
+
+This is any secret string you choose. You'll use the same value when configuring the webhook URL in Meta's dashboard.

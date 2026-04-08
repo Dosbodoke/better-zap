@@ -1,0 +1,244 @@
+---
+title: Deploy on Cloudflare Workers
+description: Step-by-step guide to deploying Better Zap on Cloudflare Workers.
+---
+
+This guide covers deploying a Better Zap application on Cloudflare Workers with D1 as the database.
+
+## Prerequisites
+
+- [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/) installed
+- A Cloudflare account
+- Your WhatsApp API credentials (see [Configuration](/docs/getting-started/configuration))
+
+## 1. Create the Project
+
+```bash
+npm create cloudflare@latest my-whatsapp-bot -- --template hono
+cd my-whatsapp-bot
+npm install better-zap @better-zap/hono hono
+```
+
+## 2. Create a D1 Database
+
+```bash
+wrangler d1 create whatsapp-logs
+```
+
+Copy the database ID into your `wrangler.toml`:
+
+```toml title="wrangler.toml"
+name = "my-whatsapp-bot"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "whatsapp-logs"
+database_id = "your-database-id"
+```
+
+## 3. Create the Database Schema
+
+```bash
+wrangler d1 execute whatsapp-logs --local --command "
+CREATE TABLE IF NOT EXISTS conversations (
+  id TEXT PRIMARY KEY,
+  phone TEXT NOT NULL UNIQUE,
+  contact_name TEXT,
+  last_message_content TEXT,
+  last_message_at TEXT,
+  last_message_direction TEXT,
+  unread_count INTEGER DEFAULT 0,
+  last_incoming_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS messages (
+  id TEXT PRIMARY KEY,
+  wa_message_id TEXT UNIQUE,
+  conversation_id TEXT NOT NULL,
+  direction TEXT NOT NULL,
+  content TEXT,
+  type TEXT,
+  status TEXT DEFAULT 'sent',
+  timestamp TEXT NOT NULL,
+  message_type TEXT,
+  user_id TEXT,
+  metadata TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (conversation_id) REFERENCES conversations(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, timestamp);
+CREATE INDEX IF NOT EXISTS idx_conversations_phone ON conversations(phone);
+"
+```
+
+## 4. Implement WhatsAppLogStore
+
+Create a D1 adapter that implements the `WhatsAppLogStore` interface:
+
+```ts title="src/database.ts"
+import type { WhatsAppLogStore } from "better-zap";
+
+export function createD1Store(db: D1Database): WhatsAppLogStore {
+  return {
+    async logIncoming(entry) {
+      // Upsert conversation
+      await db.prepare(`
+        INSERT INTO conversations (id, phone, contact_name, last_message_content, last_message_at, last_message_direction, last_incoming_at)
+        VALUES (?, ?, ?, ?, ?, 'incoming', ?)
+        ON CONFLICT(phone) DO UPDATE SET
+          contact_name = excluded.contact_name,
+          last_message_content = excluded.last_message_content,
+          last_message_at = excluded.last_message_at,
+          last_message_direction = 'incoming',
+          last_incoming_at = excluded.last_incoming_at,
+          unread_count = unread_count + 1
+      `).bind(
+        crypto.randomUUID(),
+        entry.phone,
+        entry.contactName,
+        entry.content,
+        entry.timestamp,
+        entry.timestamp,
+      ).run();
+
+      // Insert message
+      await db.prepare(`
+        INSERT INTO messages (id, wa_message_id, conversation_id, direction, content, type, status, timestamp)
+        SELECT ?, ?, c.id, 'incoming', ?, ?, 'sent', ?
+        FROM conversations c WHERE c.phone = ?
+      `).bind(
+        crypto.randomUUID(),
+        entry.waMessageId,
+        entry.content,
+        entry.messageType,
+        entry.timestamp,
+        entry.phone,
+      ).run();
+    },
+
+    async updateStatus(waMessageId, status, timestamp) {
+      await db.prepare(`
+        UPDATE messages SET status = ?, timestamp = ? WHERE wa_message_id = ?
+      `).bind(status, new Date(timestamp * 1000).toISOString(), waMessageId).run();
+    },
+
+    async isDuplicate(waMessageId) {
+      const result = await db.prepare(
+        "SELECT 1 FROM messages WHERE wa_message_id = ?"
+      ).bind(waMessageId).first();
+      return !!result;
+    },
+
+    async getFreeformMessageWindow(phone) {
+      const result = await db.prepare(
+        "SELECT last_incoming_at FROM conversations WHERE phone = ?"
+      ).bind(phone).first<{ last_incoming_at: string }>();
+      if (!result?.last_incoming_at) return null;
+      return {
+        lastIncomingAt: result.last_incoming_at,
+        expiresAt: new Date(
+          new Date(result.last_incoming_at).getTime() + 24 * 60 * 60 * 1000
+        ).toISOString(),
+      };
+    },
+
+    async getConversations() {
+      const { results } = await db.prepare(
+        "SELECT * FROM conversations ORDER BY last_message_at DESC"
+      ).all();
+      return results as any[];
+    },
+
+    async getConversationByPhone(phone) {
+      return await db.prepare(
+        "SELECT * FROM conversations WHERE phone = ?"
+      ).bind(phone).first() as any;
+    },
+
+    async getMessagesByConversationPaginated(conversationId, cursor, limit = 50) {
+      let query = "SELECT * FROM messages WHERE conversation_id = ?";
+      const bindings: any[] = [conversationId];
+
+      if (cursor) {
+        query += " AND timestamp < (SELECT timestamp FROM messages WHERE id = ?)";
+        bindings.push(cursor);
+      }
+
+      query += " ORDER BY timestamp DESC LIMIT ?";
+      bindings.push(limit);
+
+      const { results } = await db.prepare(query).bind(...bindings).all();
+      return results as any[];
+    },
+  };
+}
+```
+
+## 5. Wire It Up
+
+```ts title="src/index.ts"
+import { betterZap } from "@better-zap/hono";
+import { createD1Store } from "./database";
+
+type Env = {
+  DB: D1Database;
+  WHATSAPP_TOKEN: string;
+  WHATSAPP_PHONE_ID: string;
+  WEBHOOK_VERIFY_TOKEN: string;
+  WHATSAPP_APP_SECRET: string;
+};
+
+export default {
+  fetch(request: Request, env: Env, ctx: ExecutionContext) {
+    const zap = betterZap({
+      database: { whatsappLog: createD1Store(env.DB) },
+      config: {
+        token: env.WHATSAPP_TOKEN,
+        phoneId: env.WHATSAPP_PHONE_ID,
+        webhookToken: env.WEBHOOK_VERIFY_TOKEN,
+        appSecret: env.WHATSAPP_APP_SECRET,
+      },
+      webhook: {
+        onMessage: async (ctx) => {
+          await ctx.api.sendText(ctx.phone, `Echo: ${ctx.content}`);
+        },
+        onStatusUpdate: async (ctx) => {
+          console.log(`${ctx.status.id}: ${ctx.status.status}`);
+        },
+      },
+    });
+
+    return zap.handler(request, env, ctx);
+  },
+};
+```
+
+## 6. Deploy
+
+```bash
+# Set secrets
+wrangler secret put WHATSAPP_TOKEN
+wrangler secret put WHATSAPP_PHONE_ID
+wrangler secret put WEBHOOK_VERIFY_TOKEN
+wrangler secret put WHATSAPP_APP_SECRET
+
+# Apply migrations to production D1
+wrangler d1 execute whatsapp-logs --remote --file schema.sql
+
+# Deploy
+wrangler deploy
+```
+
+## 7. Configure the Webhook
+
+Set your webhook URL in [Meta's App Dashboard](https://developers.facebook.com/apps/):
+
+```
+https://my-whatsapp-bot.your-subdomain.workers.dev/api/whatsapp/webhook
+```
+
+Use the same verify token you set as `WEBHOOK_VERIFY_TOKEN`.

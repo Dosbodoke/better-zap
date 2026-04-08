@@ -1,0 +1,135 @@
+---
+title: Plugins
+description: Extend Better Zap with composable, type-safe plugins.
+---
+
+Plugins let you extend Better Zap's functionality by injecting context, services, and hooks into the message processing pipeline.
+
+## Creating a Plugin
+
+A plugin is an object with an `id`, an optional `init` function, and optional hooks:
+
+```ts
+import type { BetterZapPlugin, BetterZapDatabase } from "better-zap";
+
+const analyticsPlugin: BetterZapPlugin<
+  BetterZapDatabase,
+  { analytics: AnalyticsService },  // Context to inject
+  { analytics: AnalyticsService }   // Services to expose
+> = {
+  id: "analytics",
+
+  init: (ctx) => {
+    const analytics = new AnalyticsService(ctx.config);
+
+    return {
+      context: { analytics },
+      services: { analytics },
+    };
+  },
+
+  hooks: {
+    onMessage: async (ctx) => {
+      await ctx.analytics.trackMessage(ctx.phone, ctx.content);
+    },
+    onStatusUpdate: async (ctx) => {
+      await ctx.analytics.trackStatus(ctx.status);
+    },
+  },
+};
+```
+
+## Using Plugins
+
+Pass plugins to `betterZap()`:
+
+```ts
+const zap = betterZap({
+  // ...config
+  plugins: [analyticsPlugin, queuePlugin],
+  webhook: {
+    onMessage: async (ctx) => {
+      // Plugin context is merged and type-safe
+      await ctx.analytics.trackCustomEvent("webhook_received");
+    },
+    onStatusUpdate: async () => {},
+  },
+});
+
+// Plugin services are accessible
+zap.services.analytics.getReport();
+```
+
+## Plugin Lifecycle
+
+1. **`init()`** — Called once during `betterZap()` setup. Receives the database, config, core context, and core services. Returns additional context and services to merge.
+
+2. **`hooks.onMessage()`** — Called for each incoming message, **before** your `webhook.onMessage` callback. Receives the full merged context.
+
+3. **`hooks.onStatusUpdate()`** — Called for each status update, **before** your `webhook.onStatusUpdate` callback.
+
+Plugins are initialized sequentially in the order they appear in the array. Each plugin's context is available to subsequent plugins.
+
+## Type Inference
+
+The generic parameters on `BetterZapPlugin` enable full type inference:
+
+```ts
+BetterZapPlugin<
+  TDatabase,   // Your database type
+  TContext,     // What this plugin adds to the hook context
+  TServices,   // What this plugin adds to the services object
+>
+```
+
+When multiple plugins are used, their contexts and services are intersected:
+
+```ts
+// If pluginA adds { queue: QueueService }
+// and pluginB adds { analytics: AnalyticsService }
+// then ctx in onMessage has both: ctx.queue and ctx.analytics
+```
+
+## Init Context
+
+The `init` function receives:
+
+| Property | Type | Description |
+| --- | --- | --- |
+| `database` | `TDatabase` | Your database instance |
+| `config` | `BetterZapCoreConfig` | WhatsApp API config (token, phoneId, etc.) |
+| `context` | `BetterZapContext` | Core context + context from earlier plugins |
+| `services` | `BetterZapServices` | Core services + services from earlier plugins |
+| `log` | `Logger` | Logger instance |
+
+## Example: Queue Plugin
+
+```ts
+const queuePlugin: BetterZapPlugin<
+  MyDatabase,
+  { queuePosition: (phone: string) => Promise<number> },
+  { queue: QueueManager }
+> = {
+  id: "queue",
+
+  init: ({ database, log }) => {
+    const queue = new QueueManager(database, log);
+
+    return {
+      context: {
+        queuePosition: (phone: string) => queue.getPosition(phone),
+      },
+      services: { queue },
+    };
+  },
+
+  hooks: {
+    onMessage: async (ctx) => {
+      if (ctx.content === "fila" || ctx.content === "queue") {
+        const position = await ctx.queuePosition(ctx.phone);
+        await ctx.api.sendText(ctx.phone, `You are #${position} in the queue.`);
+      }
+    },
+  },
+};
+```

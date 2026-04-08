@@ -1,0 +1,133 @@
+---
+title: Building a Bot
+description: Create a simple auto-reply bot using Better Zap plugins.
+---
+
+This guide shows how to build a keyword-based auto-reply bot as a Better Zap plugin.
+
+## The Plugin
+
+```ts title="src/plugins/auto-reply.ts"
+import type { BetterZapPlugin, BetterZapDatabase } from "better-zap";
+
+type Reply = {
+  keywords: string[];
+  response: string;
+};
+
+const replies: Reply[] = [
+  {
+    keywords: ["hello", "hi", "hey", "oi", "ola"],
+    response: "Hello! How can I help you today?",
+  },
+  {
+    keywords: ["hours", "horario", "schedule"],
+    response: "We're open Monday to Friday, 9am to 6pm.",
+  },
+  {
+    keywords: ["price", "pricing", "preco", "valor"],
+    response: "Check out our pricing at example.com/pricing",
+  },
+];
+
+export const autoReplyPlugin: BetterZapPlugin<BetterZapDatabase> = {
+  id: "auto-reply",
+
+  hooks: {
+    onMessage: async (ctx) => {
+      const content = ctx.content.toLowerCase().trim();
+
+      for (const reply of replies) {
+        if (reply.keywords.some((kw) => content.includes(kw))) {
+          await ctx.api.sendText(ctx.phone, reply.response);
+          return;
+        }
+      }
+
+      // Default reply
+      await ctx.api.sendText(
+        ctx.phone,
+        "Thanks for your message! An agent will respond shortly.",
+      );
+    },
+  },
+};
+```
+
+## Using the Plugin
+
+```ts title="src/index.ts"
+import { betterZap } from "@better-zap/hono";
+import { autoReplyPlugin } from "./plugins/auto-reply";
+
+const zap = betterZap({
+  // ...config
+  plugins: [autoReplyPlugin],
+  webhook: {
+    onMessage: async (ctx) => {
+      // This runs AFTER the plugin's onMessage
+      // The bot already replied — you can log or track here
+      console.log(`Bot handled message from ${ctx.phone}`);
+    },
+    onStatusUpdate: async () => {},
+  },
+});
+
+export default zap.handler;
+```
+
+## Adding Interactive Menus
+
+Enhance the bot with interactive buttons:
+
+```ts
+hooks: {
+  onMessage: async (ctx) => {
+    const content = ctx.content.toLowerCase().trim();
+
+    if (content === "menu" || content === "help") {
+      await ctx.api.sendInteractiveButtons(
+        ctx.phone,
+        "What do you need help with?",
+        [
+          { id: "help_support", title: "Support" },
+          { id: "help_billing", title: "Billing" },
+          { id: "help_sales", title: "Sales" },
+        ],
+      );
+      return;
+    }
+
+    // Handle button replies
+    if (ctx.message.type === "interactive") {
+      const buttonId = ctx.message.interactive?.button_reply?.id;
+
+      switch (buttonId) {
+        case "help_support":
+          await ctx.api.sendText(ctx.phone, "Connecting you to support...");
+          break;
+        case "help_billing":
+          await ctx.api.sendText(ctx.phone, "Let me check your account...");
+          break;
+        case "help_sales":
+          await ctx.api.sendText(ctx.phone, "Our sales team will reach out!");
+          break;
+      }
+    }
+  },
+}
+```
+
+## Combining Multiple Plugins
+
+Plugins execute in order. Put the bot last if you want other plugins to process first:
+
+```ts
+plugins: [
+  analyticsPlugin,   // Tracks all messages
+  queuePlugin,       // Manages queue positions
+  autoReplyPlugin,   // Auto-replies to unhandled messages
+],
+```
+
+Each plugin's `onMessage` runs in sequence, and the context accumulates across all of them.

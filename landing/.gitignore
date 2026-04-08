@@ -1,6 +1,5 @@
-.next
-node_modules
-.source
-.env
-.DS_Store
-/dist/
+.next/
+.source/
+.open-next/
+.wrangler/
+node_modules/
