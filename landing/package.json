@@ -17,12 +17,19 @@
     "deploy": "pnpm run build:cloudflare && opennextjs-cloudflare deploy"
   },
   "dependencies": {
+    "@react-three/fiber": "^9.5.0",
+    "@types/three": "^0.183.1",
+    "clsx": "^2.1.1",
+    "framer-motion": "^12.38.0",
     "fumadocs-core": "^15.5.0",
     "fumadocs-mdx": "^11.6.0",
     "fumadocs-ui": "^15.5.0",
     "next": "^15.3.1",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "react-grab": "^0.1.31",
+    "tailwind-merge": "^3.5.0",
+    "three": "^0.183.2"
   },
   "devDependencies": {
     "@opennextjs/cloudflare": "^1.5.0",
