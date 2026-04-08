@@ -1,20 +1,16 @@
 "use client";
 
-/* eslint-disable react/no-unknown-property */
 import { useRef, useMemo } from "react";
 import { Canvas, useFrame, ThreeElements } from "@react-three/fiber";
 import * as THREE from "three";
 import { motion } from "framer-motion";
 import { GitHub as GitHubIcon } from "../icons/github";
 
-/* eslint-disable @typescript-eslint/no-namespace */
 declare module "react" {
   namespace JSX {
-    // eslint-disable-next-line @typescript-eslint/no-empty-interface
     interface IntrinsicElements extends ThreeElements {}
   }
 }
-/* eslint-enable @typescript-eslint/no-namespace */
 
 // --- Shader Code ---
 const vertexShader = `
