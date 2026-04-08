@@ -181,7 +181,7 @@ export default function HeroGeometric() {
             </div>
 
             {/* Content */}
-            <div className="relative z-10 w-full flex flex-col items-center justify-center px-6 py-12 md:py-0">
+            <div className="relative z-10 w-full flex flex-col items-center justify-center lg:justify-start px-6 py-12 md:py-0 lg:pt-[20vh]">
                 <div className="flex flex-col items-center text-center gap-2 md:gap-4 mb-8">
                     <motion.h1
                         initial={{ opacity: 0, y: 20 }}

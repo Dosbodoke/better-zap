@@ -82,7 +82,7 @@ export default async function LandingPage({
         {/* Bottom fade */}
         <div className="absolute bottom-0 left-0 right-0 z-30 h-32 bg-gradient-to-t from-[#f3f4f6] via-[#f3f4f6]/95 to-transparent pointer-events-none backdrop-blur-[1px]" />
         <main className="relative flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-          <div className="px-6 lg:px-16 pt-12 lg:pt-48 pb-40 space-y-16 lg:space-y-20 max-w-3xl mx-auto">
+          <div className="px-6 lg:px-16 pt-12 pb-40 space-y-16 lg:space-y-20 max-w-3xl mx-auto">
             <CodeShowcase lang={lang} />
             <FeatureGrid features={t.features} />
 
