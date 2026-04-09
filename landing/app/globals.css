@@ -13,3 +13,14 @@
 @utility animate-fade-in {
   animation: fade-in 0.7s ease-out forwards;
 }
+
+.sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  transition: transform 300ms ease;
+}
+
+.sidebar-logo:active {
+  transform: scale(0.97);
+}
