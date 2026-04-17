@@ -1,9 +1,9 @@
 "use client";
 
-import { useRef, useMemo } from "react";
-import { Canvas, useFrame, ThreeElements } from "@react-three/fiber";
+import { useMemo, useRef, type SVGProps } from "react";
+import { Canvas, type ThreeElements, useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { useTranslations, useLocale } from "next-intl";
 import { GitHub as GitHubIcon } from "../icons/github";
 
@@ -159,11 +159,90 @@ const GradientPlane = ({
   );
 };
 
+const WHATSAPP_WORD = "WhatsApp";
+
+function WhatsAppIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      aria-hidden="true"
+      focusable="false"
+      viewBox="0 0 24 24"
+      {...props}
+    >
+      <path
+        fill="#25D366"
+        d="M12 2.25a9.6 9.6 0 0 0-8.31 14.42L2.75 21.75l5.2-1.23A9.6 9.6 0 1 0 12 2.25Z"
+      />
+      <path
+        fill="#fff"
+        d="M8.37 7.12c.2-.45.4-.46.58-.46h.5c.16.01.38.06.58.48.22.5.74 1.78.8 1.91.07.13.1.29.02.46-.08.18-.12.29-.25.44-.12.15-.26.33-.37.44-.12.12-.25.26-.1.51.15.25.67 1.1 1.44 1.78.99.88 1.82 1.15 2.07 1.28.25.12.4.1.55-.06.15-.17.63-.74.8-.99.17-.25.33-.2.56-.12.23.08 1.46.69 1.71.81.25.13.42.19.48.29.06.1.06.59-.14 1.16-.21.57-1.18 1.09-1.65 1.13-.43.04-.98.06-1.58-.1-.37-.1-.84-.27-1.44-.53-2.54-1.1-4.2-3.65-4.33-3.82-.13-.17-1.03-1.37-1.03-2.61 0-1.25.65-1.86.88-2.11Z"
+      />
+    </svg>
+  );
+}
+
+function WhatsAppWordChip({
+  reduceMotion,
+}: {
+  reduceMotion: boolean;
+}) {
+  return (
+    <motion.span
+      initial={
+        reduceMotion ? false : { opacity: 0, scale: 0.82, rotate: -8, y: 12 }
+      }
+      animate={{ opacity: 1, scale: 1, rotate: -3, y: 0 }}
+      transition={
+        reduceMotion
+          ? { duration: 0 }
+          : {
+              type: "spring",
+              stiffness: 520,
+              damping: 24,
+              mass: 0.65,
+              delay: 0.48,
+            }
+      }
+      className="inline-flex origin-center transform-gpu items-center gap-[0.18em] rounded-lg bg-white px-[0.38em] py-[0.2em] align-middle font-sans text-[0.72em] font-extrabold not-italic leading-none tracking-tight text-[#128C4A] shadow-[7px_7px_0_rgba(37,211,102,0.18),0_18px_34px_rgba(19,19,19,0.16),inset_0_1px_0_rgba(255,255,255,1)] ring-1 ring-emerald-950/10 will-change-transform"
+      style={{ transformOrigin: "center center" }}
+    >
+      <WhatsAppIcon className="size-[0.74em] shrink-0" />
+      <span>WhatsApp</span>
+    </motion.span>
+  );
+}
+
+function HighlightedWhatsAppLine({
+  text,
+  reduceMotion,
+}: {
+  text: string;
+  reduceMotion: boolean;
+}) {
+  const wordIndex = text.indexOf(WHATSAPP_WORD);
+
+  if (wordIndex === -1) {
+    return <>{text}</>;
+  }
+
+  const beforeWord = text.slice(0, wordIndex).trim();
+  const afterWord = text.slice(wordIndex + WHATSAPP_WORD.length).trim();
+
+  return (
+    <>
+      {beforeWord ? <span className="whitespace-nowrap">{beforeWord}</span> : null}
+      <WhatsAppWordChip reduceMotion={reduceMotion} />
+      {afterWord ? <span className="whitespace-nowrap">{afterWord}</span> : null}
+    </>
+  );
+}
+
 // --- Main Component ---
 
 export default function HeroGeometric() {
   const t = useTranslations("heroMain");
   const locale = useLocale();
+  const reduceMotion = useReducedMotion();
 
   return (
     <div className="relative w-full h-full flex flex-col items-center justify-center bg-white text-black">
@@ -188,9 +267,12 @@ export default function HeroGeometric() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 1, ease: [0.16, 1, 0.3, 1], delay: 0.2 }}
-            className="text-5xl md:text-6xl lg:text-7xl leading-[0.9] tracking-tighter font-serif italic font-light text-[#1a1a1a]"
+            className="flex flex-wrap items-center justify-center gap-x-[0.22em] gap-y-3 text-5xl md:text-6xl lg:text-7xl leading-[0.9] tracking-tighter font-serif italic font-light text-[#1a1a1a]"
           >
-            {t("line1")}
+            <HighlightedWhatsAppLine
+              text={t("line1")}
+              reduceMotion={Boolean(reduceMotion)}
+            />
           </motion.h1>
           <motion.h1
             initial={{ opacity: 0, y: 20 }}
