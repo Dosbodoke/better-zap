@@ -110,9 +110,7 @@ export async function resolveGenerateOptions({
       : await findDefaultConfigPath(cwd);
   const fileConfig = configPath ? await loadConfigFile(configPath) : {};
   const templatesConfig =
-    fileConfig.templates ??
-    fileConfig.whatsappTemplates ??
-    fileConfig;
+    fileConfig.templates ?? fileConfig.whatsappTemplates ?? fileConfig;
 
   const outputValue =
     firstDefined(
@@ -151,7 +149,8 @@ export async function fetchAllMetaTemplates({
   wabaId,
 }: Required<Pick<GenerateOptions, "accessToken" | "wabaId">> &
   Pick<GenerateOptions, "apiVersion" | "fetchImpl">): Promise<MetaTemplate[]> {
-  let nextUrl: string | null = `https://graph.facebook.com/${apiVersion ?? DEFAULT_API_VERSION}/${wabaId}/message_templates?limit=100`;
+  let nextUrl: string | null =
+    `https://graph.facebook.com/${apiVersion ?? DEFAULT_API_VERSION}/${wabaId}/message_templates?limit=100`;
   const templates: MetaTemplate[] = [];
 
   while (nextUrl) {
@@ -164,7 +163,9 @@ export async function fetchAllMetaTemplates({
     if (!response.ok) {
       const errorPayload = (await response
         .json()
-        .catch(() => ({ error: { message: `HTTP ${response.status}` } }))) as MetaTemplatesResponse;
+        .catch(() => ({
+          error: { message: `HTTP ${response.status}` },
+        }))) as MetaTemplatesResponse;
       throw new Error(
         `[better-zap generate] Meta request failed: ${errorPayload.error?.message ?? `HTTP ${response.status}`}`,
       );
@@ -182,7 +183,9 @@ export function normalizeMetaTemplates(
   metaTemplates: MetaTemplate[],
 ): TemplateRegistry {
   const normalizedEntries = metaTemplates
-    .map((template) => [template.name, normalizeMetaTemplate(template)] as const)
+    .map(
+      (template) => [template.name, normalizeMetaTemplate(template)] as const,
+    )
     .sort(([left], [right]) => (left ?? "").localeCompare(right ?? ""));
 
   return Object.fromEntries(normalizedEntries);
@@ -217,7 +220,11 @@ export async function writeGeneratedTemplateFile({
   try {
     currentContent = await fs.readFile(output, "utf8");
   } catch (error) {
-    if (!(error instanceof Error) || !(error as NodeJS.ErrnoException).code || (error as NodeJS.ErrnoException).code !== "ENOENT") {
+    if (
+      !(error instanceof Error) ||
+      !(error as NodeJS.ErrnoException).code ||
+      (error as NodeJS.ErrnoException).code !== "ENOENT"
+    ) {
       throw error;
     }
   }
@@ -284,9 +291,7 @@ async function findDefaultConfigPath(cwd: string): Promise<string | null> {
   return null;
 }
 
-async function loadConfigFile(
-  configPath: string,
-): Promise<GenerateConfigFile> {
+async function loadConfigFile(configPath: string): Promise<GenerateConfigFile> {
   if (configPath.endsWith(".json")) {
     const rawConfig = await fs.readFile(configPath, "utf8");
     return JSON.parse(rawConfig) as GenerateConfigFile;
@@ -298,9 +303,13 @@ async function loadConfigFile(
   return module.default ?? module;
 }
 
-function normalizeMetaTemplate(template: MetaTemplate): TemplateRegistry[string] {
+function normalizeMetaTemplate(
+  template: MetaTemplate,
+): TemplateRegistry[string] {
   if (!template.name || !template.language) {
-    throw new Error("[better-zap generate] Template entry is missing name or language.");
+    throw new Error(
+      "[better-zap generate] Template entry is missing name or language.",
+    );
   }
 
   const normalizedComponents = [];
@@ -342,10 +351,9 @@ function normalizeBodyComponent(
 ): NonNullable<TemplateRegistry[string]["components"]>[number] {
   return {
     type: "body",
-    parameters: extractPlaceholderTokens(component.text).map((token, index) => ({
-      name: createTextParameterName("body", token, index + 1),
-      type: "text",
-    })),
+    parameters: extractPlaceholderTokens(component.text).map((token, index) =>
+      createTextParameterDefinition("body", token, index + 1),
+    ),
   };
 }
 
@@ -364,17 +372,21 @@ function normalizeHeaderComponent(
   if (format === "TEXT") {
     return {
       type: "header",
-      parameters: extractPlaceholderTokens(component.text).map((token, index) => ({
-        name: createTextParameterName("header", token, index + 1),
-        type: "text",
-      })),
+      parameters: extractPlaceholderTokens(component.text).map((token, index) =>
+        createTextParameterDefinition("header", token, index + 1),
+      ),
     };
   }
 
   if (format === "IMAGE" || format === "VIDEO" || format === "DOCUMENT") {
     return {
       type: "header",
-      parameters: [{ name: `header_${format.toLowerCase()}`, type: format.toLowerCase() as "image" | "video" | "document" }],
+      parameters: [
+        {
+          name: `header_${format.toLowerCase()}`,
+          type: format.toLowerCase() as "image" | "video" | "document",
+        },
+      ],
     };
   }
 
@@ -412,14 +424,13 @@ function normalizeButton(
       type: "button",
       subType: "url",
       index: String(index),
-      parameters: tokens.map((token, tokenIndex) => ({
-        name: createTextParameterName(
+      parameters: tokens.map((token, tokenIndex) =>
+        createTextParameterDefinition(
           `button_${index}_text`,
           token,
           tokenIndex + 1,
         ),
-        type: "text",
-      })),
+      ),
     };
   }
 
@@ -453,6 +464,22 @@ function createTextParameterName(
   return `${prefix}_${position}`;
 }
 
+function createTextParameterDefinition(
+  prefix: string,
+  token: string | undefined,
+  position: number,
+): {
+  name: string;
+  parameterName?: string;
+  type: "text";
+} {
+  return {
+    name: createTextParameterName(prefix, token, position),
+    ...(token && !/^\d+$/.test(token) ? { parameterName: token } : {}),
+    type: "text",
+  };
+}
+
 function sanitizeName(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9_]+/g, "_");
 }
@@ -461,7 +488,9 @@ function toUpper(value: string | undefined): string {
   return typeof value === "string" ? value.toUpperCase() : "";
 }
 
-function firstDefined(...values: Array<string | undefined>): string | undefined {
+function firstDefined(
+  ...values: Array<string | undefined>
+): string | undefined {
   return values.find((value) => typeof value === "string" && value.length > 0);
 }
 

@@ -27,6 +27,22 @@ const testTemplates = defineTemplates({
       },
     ],
   },
+  convite_evento_v3: {
+    language: "pt_BR",
+    components: [
+      {
+        type: "body",
+        parameters: [
+          { name: "body_data", parameterName: "data", type: "text" },
+          {
+            name: "body_endereco",
+            parameterName: "endereco",
+            type: "text",
+          },
+        ],
+      },
+    ],
+  },
   feedback_static_footer: {
     language: "pt_BR",
     components: [
@@ -115,6 +131,37 @@ describe("serializeTemplateFromRegistry", () => {
         },
       }),
     ).toThrow('Unexpected template params for "convite_evento_v1": extra');
+  });
+
+  it("includes Meta parameter_name for named template variables", () => {
+    const serialized = serializeTemplateFromRegistry(
+      testTemplates,
+      "convite_evento_v3",
+      {
+        params: {
+          body_data: "26/04/2026",
+          body_endereco: "Taguaparque",
+        },
+      },
+    );
+
+    expect(serialized.components).toEqual([
+      {
+        type: "body",
+        parameters: [
+          {
+            type: "text",
+            parameter_name: "data",
+            text: "26/04/2026",
+          },
+          {
+            type: "text",
+            parameter_name: "endereco",
+            text: "Taguaparque",
+          },
+        ],
+      },
+    ]);
   });
 
   it("skips components that do not require runtime params", () => {

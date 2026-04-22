@@ -65,7 +65,68 @@ describe("template generator CLI helpers", () => {
             type: "button",
             subType: "url",
             index: "1",
-            parameters: [{ name: "button_1_text_token", type: "text" }],
+            parameters: [
+              {
+                name: "button_1_text_token",
+                parameterName: "token",
+                type: "text",
+              },
+            ],
+          },
+        ],
+      },
+    });
+  });
+
+  it("preserves named Meta variables for generated text params", () => {
+    const registry = normalizeMetaTemplates([
+      {
+        name: "convite_evento_v3",
+        language: "pt_BR",
+        components: [
+          {
+            type: "BODY",
+            text: "{{data}}\n{{endereco}}",
+          },
+          {
+            type: "BUTTONS",
+            buttons: [
+              {
+                type: "URL",
+                url: "https://example.com/{{token_nomeado}}",
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    expect(registry).toEqual({
+      convite_evento_v3: {
+        language: "pt_BR",
+        components: [
+          {
+            type: "body",
+            parameters: [
+              { name: "body_data", parameterName: "data", type: "text" },
+              {
+                name: "body_endereco",
+                parameterName: "endereco",
+                type: "text",
+              },
+            ],
+          },
+          {
+            type: "button",
+            subType: "url",
+            index: "0",
+            parameters: [
+              {
+                name: "button_0_text_token_nomeado",
+                parameterName: "token_nomeado",
+                type: "text",
+              },
+            ],
           },
         ],
       },
@@ -85,7 +146,9 @@ describe("template generator CLI helpers", () => {
       },
     });
 
-    expect(content).toContain('export const whatsappTemplates = defineTemplates(');
+    expect(content).toContain(
+      "export const whatsappTemplates = defineTemplates(",
+    );
     expect(content).toContain('"avaliacao_evento_v1"');
     expect(content).toContain(
       "export type AppWhatsAppTemplates = typeof whatsappTemplates;",
@@ -101,7 +164,9 @@ describe("template generator CLI helpers", () => {
           components: [
             {
               type: "BUTTONS",
-              buttons: [{ type: "PHONE_NUMBER", phone_number: "+5561999999999" }],
+              buttons: [
+                { type: "PHONE_NUMBER", phone_number: "+5561999999999" },
+              ],
             },
           ],
         },

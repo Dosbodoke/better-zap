@@ -390,6 +390,72 @@ describe("betterZap plugins", () => {
     ]);
   });
 
+  it("sends Meta parameter_name for named typed template variables", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ messages: [{ id: "wamid.template.named" }] }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const zap = betterZap({
+      database: makeDatabase(),
+      config: {
+        token: "token",
+        phoneId: "phone-id",
+        webhookToken: "verify-token",
+        appSecret: TEST_META_APP_SECRET,
+      },
+      templates: defineTemplates({
+        convite_evento_v3: {
+          language: "pt_BR",
+          components: [
+            {
+              type: "body",
+              parameters: [
+                { name: "body_data", parameterName: "data", type: "text" },
+                {
+                  name: "body_endereco",
+                  parameterName: "endereco",
+                  type: "text",
+                },
+              ],
+            },
+          ],
+        },
+      } as const),
+      webhook: {
+        onMessage: vi.fn().mockResolvedValue(undefined),
+        onStatusUpdate: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+
+    await zap.api.send.template("5511999887766", "convite_evento_v3", {
+      params: {
+        body_data: "26/04/2026",
+        body_endereco: "Taguaparque",
+      },
+    });
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.template.components).toEqual([
+      {
+        type: "body",
+        parameters: [
+          {
+            type: "text",
+            parameter_name: "data",
+            text: "26/04/2026",
+          },
+          {
+            type: "text",
+            parameter_name: "endereco",
+            text: "Taguaparque",
+          },
+        ],
+      },
+    ]);
+  });
+
   it("keeps templateRaw available for direct component sends", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

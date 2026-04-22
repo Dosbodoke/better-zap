@@ -39,6 +39,7 @@ export interface TemplateParameterDefinition<
   TType extends SupportedTemplateParameterType = SupportedTemplateParameterType,
 > {
   name: string;
+  parameterName?: string;
   type: TType;
 }
 
@@ -205,45 +206,57 @@ function serializeTemplateParameter<
   parameter: TParameter,
   value: TemplateParameterInput<TParameter>,
 ): TemplateParameter {
+  const metaParameterName = parameter.parameterName
+    ? { parameter_name: parameter.parameterName }
+    : {};
+
   switch (parameter.type) {
     case "text":
       return {
         type: "text",
+        ...metaParameterName,
         text: value as TemplateParameterInputMap["text"],
       };
     case "payload":
       return {
         type: "payload",
+        ...metaParameterName,
         payload: value as TemplateParameterInputMap["payload"],
       };
     case "location":
       return {
         type: "location",
+        ...metaParameterName,
         location: value as TemplateParameterInputMap["location"],
       };
     case "image":
       return {
         type: "image",
+        ...metaParameterName,
         image: value as TemplateParameterInputMap["image"],
       };
     case "video":
       return {
         type: "video",
+        ...metaParameterName,
         video: value as TemplateParameterInputMap["video"],
       };
     case "document":
       return {
         type: "document",
+        ...metaParameterName,
         document: value as TemplateParameterInputMap["document"],
       };
     case "currency":
       return {
         type: "currency",
+        ...metaParameterName,
         currency: value as TemplateParameterInputMap["currency"],
       };
     case "date_time":
       return {
         type: "date_time",
+        ...metaParameterName,
         date_time: value as TemplateParameterInputMap["date_time"],
       };
   }

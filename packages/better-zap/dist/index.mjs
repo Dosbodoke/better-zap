@@ -622,37 +622,46 @@ function serializeTemplateFromRegistry(templates, templateName, options) {
 	};
 }
 function serializeTemplateParameter(parameter, value) {
+	const metaParameterName = parameter.parameterName ? { parameter_name: parameter.parameterName } : {};
 	switch (parameter.type) {
 		case "text": return {
 			type: "text",
+			...metaParameterName,
 			text: value
 		};
 		case "payload": return {
 			type: "payload",
+			...metaParameterName,
 			payload: value
 		};
 		case "location": return {
 			type: "location",
+			...metaParameterName,
 			location: value
 		};
 		case "image": return {
 			type: "image",
+			...metaParameterName,
 			image: value
 		};
 		case "video": return {
 			type: "video",
+			...metaParameterName,
 			video: value
 		};
 		case "document": return {
 			type: "document",
+			...metaParameterName,
 			document: value
 		};
 		case "currency": return {
 			type: "currency",
+			...metaParameterName,
 			currency: value
 		};
 		case "date_time": return {
 			type: "date_time",
+			...metaParameterName,
 			date_time: value
 		};
 	}
