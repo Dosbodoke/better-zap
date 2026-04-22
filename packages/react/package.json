@@ -1,6 +1,6 @@
 {
   "name": "@better-zap/react",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "React components for Better Zap.",
   "license": "ISC",
   "type": "module",
