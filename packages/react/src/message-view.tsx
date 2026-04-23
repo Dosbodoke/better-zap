@@ -9,9 +9,8 @@ import {
   LockIcon,
 } from "@hugeicons/core-free-icons";
 import type { Conversation, UIMessage } from "better-zap";
-import { cn } from "./utils";
+import { cn, getDisplayDate } from "./utils";
 import { MessageBubble } from "./message-bubble";
-import { getDisplayDate } from "../date";
 import { useWhatsappDashboard } from "./whatsapp-dashboard";
 
 interface MessageViewProps extends React.HTMLAttributes<HTMLDivElement> {
