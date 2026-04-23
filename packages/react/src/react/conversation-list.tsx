@@ -6,6 +6,10 @@ import { Message01Icon, UserIcon } from "@hugeicons/core-free-icons";
 import { cn } from "./utils";
 import type { Conversation } from "better-zap";
 import { ConversationSearch } from "./conversation-search";
+import {
+  ConversationFilterChips,
+  type ConversationFilterValue,
+} from "./conversation-filter-chips";
 import { useWhatsappDashboard } from "./whatsapp-dashboard";
 
 interface ConversationListProps {
@@ -27,12 +31,20 @@ export function ConversationList({
 }: ConversationListProps) {
   const { isMobile, mobileView, setMobileView } = useWhatsappDashboard();
   const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<ConversationFilterValue>("all");
 
-  const filtered = conversations.filter(
-    (c) =>
-      c.phone.includes(search) ||
-      c.contactName?.toLowerCase().includes(search.toLowerCase()),
-  );
+  const normalizedSearch = search.trim().toLowerCase();
+  const unreadConversationsCount = conversations.filter((c) => c.unreadCount > 0).length;
+  const filtered = conversations.filter((conversation) => {
+    const matchesSearch =
+      normalizedSearch.length === 0 ||
+      conversation.phone.toLowerCase().includes(normalizedSearch) ||
+      conversation.contactName?.toLowerCase().includes(normalizedSearch);
+
+    const matchesFilter = filter === "all" || conversation.unreadCount > 0;
+
+    return matchesSearch && matchesFilter;
+  });
 
   const handleSelect = (id: string) => {
     onSelect(id);
@@ -51,6 +63,11 @@ export function ConversationList({
       style={isVisible ? undefined : { display: "none" }}
     >
       <ConversationSearch value={search} onChange={setSearch} />
+      <ConversationFilterChips
+        value={filter}
+        onValueChange={setFilter}
+        unreadCount={unreadConversationsCount}
+      />
 
       {/* List */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden chat-scrollbar">
