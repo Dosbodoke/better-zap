@@ -1,6 +1,6 @@
 {
   "name": "better-zap",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Framework-agnostic Better Zap core for typed WhatsApp integrations.",
   "license": "ISC",
   "type": "module",

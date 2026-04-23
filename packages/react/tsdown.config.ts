@@ -6,7 +6,7 @@ export default defineConfig({
   dts: true,
   clean: true,
   copy: [
-    { from: "./src/react/tailwind.css", to: "./dist" },
-    { from: "./src/react/wpp-bg.webp", to: "./dist" },
+    { from: "./src/tailwind.css", to: "./dist" },
+    { from: "./src/wpp-bg.webp", to: "./dist" },
   ],
 });
