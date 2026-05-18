@@ -2,6 +2,7 @@ import { RootProvider } from "fumadocs-ui/provider";
 import { source } from "#lib/source";
 import { i18n } from "#lib/i18n";
 import { DocsLayout } from "fumadocs-ui/layouts/docs";
+import Image from "next/image";
 import type { ReactNode } from "react";
 
 export default async function DocsLayoutComponent({
@@ -30,9 +31,13 @@ export default async function DocsLayoutComponent({
           url: `/${lang}`,
           title: (
             <span className="sidebar-logo">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#25D366] text-white">
-                <span className="text-xl">⚡</span>
-              </div>
+              <Image
+                src="/favicon/favicon-32x32.png"
+                alt=""
+                width={24}
+                height={24}
+                className="h-6 w-6 rounded"
+              />
               <span>Better Zap</span>
             </span>
           ),

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import HeroGeometric from "../components/landing/HeroGeometricClient";
+import { BotAssistant } from "../components/landing/BotAssistant";
 import { CodeShowcase } from "../components/landing/CodeShowcase";
 import { FeatureGrid } from "../components/landing/FeatureGrid";
 import { Footer } from "../components/landing/Footer";
@@ -82,6 +83,7 @@ export default async function LandingPage({
           </main>
         </div>
       </div>
+      <BotAssistant />
     </LandingAnimations>
   );
 }

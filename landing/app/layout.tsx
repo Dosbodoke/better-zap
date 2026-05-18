@@ -4,6 +4,8 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
 export const metadata: Metadata = {
+  title: "Better Zap",
+  description: "A declarative first framework for building WhatsApp bots.",
   icons: {
     icon: [
       { url: "/favicon/favicon.ico" },

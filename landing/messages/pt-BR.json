@@ -50,6 +50,11 @@
     "privacy": "Privacidade",
     "terms": "Termos"
   },
+  "assistant": {
+    "label": "Assistente Better Zap",
+    "imageAlt": "Assistente robô do Better Zap",
+    "message": "Precisa de ajuda com seu bot?"
+  },
   "navbar": {
     "documentation": "Documentação",
     "getStarted": "Começar",
