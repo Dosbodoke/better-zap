@@ -1,11 +1,14 @@
 "use client";
 
 import { useMemo, useRef, type SVGProps } from "react";
+import { useGSAP } from "@gsap/react";
 import { Canvas, type ThreeElements, useFrame } from "@react-three/fiber";
+import gsap from "gsap";
 import * as THREE from "three";
-import { motion, useReducedMotion } from "framer-motion";
 import { useTranslations, useLocale } from "next-intl";
 import { GitHub as GitHubIcon } from "../icons/github";
+
+gsap.registerPlugin(useGSAP);
 
 declare module "react" {
   namespace JSX {
@@ -181,43 +184,23 @@ function WhatsAppIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
-function WhatsAppWordChip({
-  reduceMotion,
-}: {
-  reduceMotion: boolean;
-}) {
+function WhatsAppWordChip() {
   return (
-    <motion.span
-      initial={
-        reduceMotion ? false : { opacity: 0, scale: 0.82, rotate: -8, y: 12 }
-      }
-      animate={{ opacity: 1, scale: 1, rotate: -3, y: 0 }}
-      transition={
-        reduceMotion
-          ? { duration: 0 }
-          : {
-              type: "spring",
-              stiffness: 520,
-              damping: 24,
-              mass: 0.65,
-              delay: 0.48,
-            }
-      }
+    <span
+      data-hero-chip
       className="inline-flex origin-center transform-gpu items-center gap-[0.18em] rounded-lg bg-white px-[0.38em] py-[0.2em] align-middle font-sans text-[0.72em] font-extrabold not-italic leading-none tracking-tight text-[#128C4A] shadow-[7px_7px_0_rgba(37,211,102,0.18),0_18px_34px_rgba(19,19,19,0.16),inset_0_1px_0_rgba(255,255,255,1)] ring-1 ring-emerald-950/10 will-change-transform"
       style={{ transformOrigin: "center center" }}
     >
       <WhatsAppIcon className="size-[0.74em] shrink-0" />
       <span>WhatsApp</span>
-    </motion.span>
+    </span>
   );
 }
 
 function HighlightedWhatsAppLine({
   text,
-  reduceMotion,
 }: {
   text: string;
-  reduceMotion: boolean;
 }) {
   const wordIndex = text.indexOf(WHATSAPP_WORD);
 
@@ -231,7 +214,7 @@ function HighlightedWhatsAppLine({
   return (
     <>
       {beforeWord ? <span className="whitespace-nowrap">{beforeWord}</span> : null}
-      <WhatsAppWordChip reduceMotion={reduceMotion} />
+      <WhatsAppWordChip />
       {afterWord ? <span className="whitespace-nowrap">{afterWord}</span> : null}
     </>
   );
@@ -242,10 +225,64 @@ function HighlightedWhatsAppLine({
 export default function HeroGeometric() {
   const t = useTranslations("heroMain");
   const locale = useLocale();
-  const reduceMotion = useReducedMotion();
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useGSAP(
+    () => {
+      const heroElements = gsap.utils.toArray<HTMLElement>(
+        "[data-hero-item]",
+        rootRef.current,
+      );
+      const chip = rootRef.current?.querySelector<HTMLElement>("[data-hero-chip]");
+      const mm = gsap.matchMedia();
+
+      mm.add("(prefers-reduced-motion: reduce)", () => {
+        gsap.set(heroElements, { autoAlpha: 1, y: 0, clearProps: "transform" });
+        if (chip) {
+          gsap.set(chip, { autoAlpha: 1, rotation: -3, scale: 1, y: 0 });
+        }
+      });
+
+      mm.add("(prefers-reduced-motion: no-preference)", () => {
+        const tl = gsap.timeline({
+          defaults: { ease: "power3.out", duration: 0.85 },
+          delay: 0.2,
+        });
+
+        tl.fromTo(
+          heroElements,
+          { autoAlpha: 0, y: 20 },
+          { autoAlpha: 1, y: 0, stagger: 0.12 },
+          0,
+        );
+
+        if (chip) {
+          tl.fromTo(
+            chip,
+            { autoAlpha: 0, scale: 0.82, rotation: -8, y: 12 },
+            {
+              autoAlpha: 1,
+              scale: 1,
+              rotation: -3,
+              y: 0,
+              duration: 0.65,
+              ease: "back.out(1.8)",
+            },
+            0.28,
+          );
+        }
+      });
+
+      return () => mm.revert();
+    },
+    { scope: rootRef },
+  );
 
   return (
-    <div className="relative w-full h-full flex flex-col items-center justify-center bg-white text-black">
+    <div
+      ref={rootRef}
+      className="relative w-full h-full flex flex-col items-center justify-center bg-white text-black"
+    >
       {/* Background Shader */}
       <div className="absolute inset-0 z-0 pointer-events-none">
         <Canvas
@@ -263,42 +300,31 @@ export default function HeroGeometric() {
       {/* Content */}
       <div className="relative z-10 w-full flex flex-col items-center justify-center lg:justify-start px-6 py-12 md:py-0 lg:pt-[20vh]">
         <div className="flex flex-col items-center text-center gap-2 md:gap-4 mb-8">
-          <motion.h1
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 1, ease: [0.16, 1, 0.3, 1], delay: 0.2 }}
+          <h1
+            data-hero-item
             className="flex flex-wrap items-center justify-center gap-x-[0.22em] gap-y-3 text-5xl md:text-6xl lg:text-7xl leading-[0.9] tracking-tighter font-serif italic font-light text-[#1a1a1a]"
           >
-            <HighlightedWhatsAppLine
-              text={t("line1")}
-              reduceMotion={Boolean(reduceMotion)}
-            />
-          </motion.h1>
-          <motion.h1
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 1, ease: [0.16, 1, 0.3, 1], delay: 0.35 }}
+            <HighlightedWhatsAppLine text={t("line1")} />
+          </h1>
+          <h1
+            data-hero-item
             className="text-5xl md:text-6xl lg:text-7xl leading-[0.9] tracking-tighter font-bold text-black"
           >
             {t("line2")}
-          </motion.h1>
+          </h1>
         </div>
 
         <div className="max-w-[400px] text-center mb-8">
-          <motion.p
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.6, ease: "easeOut" }}
+          <p
+            data-hero-item
             className="text-base md:text-lg leading-relaxed text-neutral-600 font-normal"
           >
             {t("description")}
-          </motion.p>
+          </p>
         </div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, delay: 0.8, ease: "easeOut" }}
+        <div
+          data-hero-item
           className="flex gap-4"
         >
           <a
@@ -316,7 +342,7 @@ export default function HeroGeometric() {
             <GitHubIcon className="h-4 w-4" />
             GitHub
           </a>
-        </motion.div>
+        </div>
       </div>
     </div>
   );

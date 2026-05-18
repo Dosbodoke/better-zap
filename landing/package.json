@@ -17,13 +17,14 @@
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy"
   },
   "dependencies": {
+    "@gsap/react": "^2.1.2",
     "@react-three/fiber": "^9.5.0",
     "@types/three": "^0.183.1",
     "clsx": "^2.1.1",
-    "framer-motion": "^12.38.0",
     "fumadocs-core": "^15.5.0",
     "fumadocs-mdx": "^11.6.0",
     "fumadocs-ui": "^15.5.0",
+    "gsap": "^3.15.0",
     "next": "^15.3.1",
     "next-intl": "^4.9.0",
     "react": "^19.1.0",

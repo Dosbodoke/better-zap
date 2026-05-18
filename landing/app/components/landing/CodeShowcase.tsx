@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, type ComponentType, type SVGProps } from "react";
-import { motion } from "framer-motion";
 import { useTranslations } from "next-intl";
 import { NPM } from "../icons/npm";
 import { Pnpm } from "../icons/pnpm";
@@ -32,10 +31,9 @@ export function CodeShowcase() {
 
   return (
     <div className="space-y-10 lg:pt-[20vh]">
-      <motion.header
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 1, ease: [0.16, 1, 0.3, 1], delay: 0.2 }}
+      <header
+        data-desktop-intro
+        data-scroll-reveal
         className="space-y-6"
       >
         <h1 className="text-4xl lg:text-6xl font-bold tracking-tighter bg-gradient-to-br from-zinc-900 via-zinc-500 to-zinc-900 bg-clip-text text-transparent leading-[1.1] pb-2">
@@ -44,12 +42,11 @@ export function CodeShowcase() {
         <p className="text-lg text-zinc-500 leading-relaxed max-w-2xl font-normal">
           {t("hero.description")}
         </p>
-      </motion.header>
+      </header>
 
-      <motion.ul
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 1, ease: [0.16, 1, 0.3, 1], delay: 0.35 }}
+      <ul
+        data-desktop-intro
+        data-scroll-reveal
         className="space-y-3"
       >
         {bulletKeys.map((key) => (
@@ -74,13 +71,11 @@ export function CodeShowcase() {
             {t(`hero.bullets.${key}`)}
           </li>
         ))}
-      </motion.ul>
+      </ul>
 
       {/* Installation code block */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.8, delay: 0.6, ease: "easeOut" }}
+      <div
+        data-scroll-reveal
         className="scroll-mt-20 pt-10"
         id="installation"
       >
@@ -120,13 +115,11 @@ export function CodeShowcase() {
             </div>
           </div>
         </div>
-      </motion.div>
+      </div>
 
       {/* Usage code block */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.8, delay: 0.8, ease: "easeOut" }}
+      <div
+        data-scroll-reveal
         className="scroll-mt-20 pt-10"
         id="usage"
       >
@@ -239,7 +232,7 @@ export function CodeShowcase() {
             </pre>
           </div>
         </div>
-      </motion.div>
+      </div>
     </div>
   );
 }

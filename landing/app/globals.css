@@ -14,6 +14,24 @@
   animation: fade-in 0.7s ease-out forwards;
 }
 
+[data-hero-shell],
+[data-desktop-intro],
+[data-scroll-reveal],
+[data-hero-item],
+[data-hero-chip] {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-hero-shell],
+  [data-desktop-intro],
+  [data-scroll-reveal],
+  [data-hero-item],
+  [data-hero-chip] {
+    opacity: 1;
+  }
+}
+
 .sidebar-logo {
   display: flex;
   align-items: center;

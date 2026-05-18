@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
@@ -9,9 +10,13 @@ export async function Footer({ lang }: { lang: string }) {
       <div>
         <div className="mb-10">
           <Link href={`/${lang}`} className="flex items-center gap-2 font-bold tracking-tight text-zinc-900 mb-3">
-            <div className="flex h-6 w-6 items-center justify-center rounded bg-[#25D366] text-white text-xs">
-              <span>⚡</span>
-            </div>
+            <Image
+              src="/favicon/favicon-32x32.png"
+              alt=""
+              width={24}
+              height={24}
+              className="h-6 w-6 rounded"
+            />
             <span>Better Zap</span>
           </Link>
           <p className="text-sm text-zinc-500 leading-relaxed max-w-xs">
