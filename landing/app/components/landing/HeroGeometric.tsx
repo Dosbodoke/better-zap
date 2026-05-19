@@ -281,10 +281,10 @@ export default function HeroGeometric() {
   return (
     <div
       ref={rootRef}
-      className="relative w-full h-full flex flex-col items-center justify-center bg-white text-black"
+      className="relative flex h-full w-full flex-col items-center justify-center bg-[#E8FFF0] text-black"
     >
       {/* Background Shader */}
-      <div className="absolute inset-0 z-0 pointer-events-none">
+      <div className="pointer-events-none absolute -inset-1 z-0">
         <Canvas
           camera={{ position: [0, 0, 1] }}
           dpr={[1, 1]}

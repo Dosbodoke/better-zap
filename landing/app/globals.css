@@ -14,7 +14,6 @@
   animation: fade-in 0.7s ease-out forwards;
 }
 
-[data-hero-shell],
 [data-desktop-intro],
 [data-scroll-reveal],
 [data-hero-item],
@@ -23,7 +22,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  [data-hero-shell],
   [data-desktop-intro],
   [data-scroll-reveal],
   [data-hero-item],

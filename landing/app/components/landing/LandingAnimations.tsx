@@ -28,7 +28,6 @@ export function LandingAnimations({ children }: { children: ReactNode }) {
         },
         (context) => {
           const { isDesktop, reduceMotion } = context.conditions ?? {};
-          const heroShell = root.querySelector<HTMLElement>("[data-hero-shell]");
           const desktopIntro = gsap.utils.toArray<HTMLElement>(
             "[data-desktop-intro]",
             root,
@@ -42,11 +41,7 @@ export function LandingAnimations({ children }: { children: ReactNode }) {
               : "[data-scroll-reveal]",
             root,
           );
-          const allTargets = [
-            ...(heroShell ? [heroShell] : []),
-            ...desktopIntro,
-            ...revealTargets,
-          ];
+          const allTargets = [...desktopIntro, ...revealTargets];
 
           if (reduceMotion) {
             gsap.set(allTargets, {
@@ -64,15 +59,6 @@ export function LandingAnimations({ children }: { children: ReactNode }) {
               defaults: { duration: 0.85, ease: "power3.out" },
             });
 
-            if (heroShell) {
-              introTimeline.fromTo(
-                heroShell,
-                { autoAlpha: 0, x: 18, scale: 0.985 },
-                { autoAlpha: 1, x: 0, scale: 1, duration: 1 },
-                0,
-              );
-            }
-
             if (desktopIntro.length > 0) {
               introTimeline.fromTo(
                 desktopIntro,
@@ -81,19 +67,13 @@ export function LandingAnimations({ children }: { children: ReactNode }) {
                 0.08,
               );
             }
-          } else if (heroShell) {
-            gsap.fromTo(
-              heroShell,
-              { autoAlpha: 0, y: 18, scale: 0.985 },
-              { autoAlpha: 1, y: 0, scale: 1, duration: 0.9, ease: "power3.out" },
-            );
           }
 
           if (revealTargets.length > 0) {
             gsap.set(revealTargets, { autoAlpha: 0, y: 28 });
 
             ScrollTrigger.batch(revealTargets, {
-              scroller: isDesktop ? scrollContainer ?? undefined : undefined,
+              scroller: isDesktop ? (scrollContainer ?? undefined) : undefined,
               start: "top 84%",
               once: true,
               onEnter: (batch) => {

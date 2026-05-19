@@ -33,10 +33,7 @@ export default async function LandingPage({
       <div className="flex flex-col lg:flex-row w-full h-full min-h-screen lg:h-screen bg-[#f3f4f6] text-zinc-900">
         <div className="lg:basis-1/2 lg:max-w-[50%] lg:h-screen lg:sticky lg:top-0 bg-[#f3f4f6] flex flex-col z-20">
           <div className="relative w-full h-[55vh] lg:h-full p-4 lg:pt-3 lg:pb-3 lg:pl-3 lg:pr-1.5">
-            <div
-              data-hero-shell
-              className="relative w-full h-full rounded-xl lg:rounded-2xl border border-zinc-200/50 overflow-hidden bg-white"
-            >
+            <div className="relative w-full h-full rounded-xl lg:rounded-2xl border border-zinc-200/50 overflow-hidden bg-white">
               <HeroGeometric />
             </div>
           </div>
