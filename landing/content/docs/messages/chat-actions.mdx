@@ -41,7 +41,7 @@ The typing indicator disappears automatically after a few seconds or when you se
 webhook: {
   onMessage: async (ctx) => {
     // Show typing while we process
-    await ctx.api.typingIndicator(ctx.phone);
+    await ctx.api.typingIndicator(ctx.message.id);
 
     const reply = await generateBotReply(ctx.content);
     await ctx.api.sendText(ctx.phone, reply);

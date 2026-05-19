@@ -1,14 +1,14 @@
 ---
 title: Building a Bot
-description: Create a simple auto-reply bot using Better Zap plugins.
+description: Create a simple auto-reply bot with Better Zap webhook handlers.
 ---
 
-This guide shows how to build a keyword-based auto-reply bot as a Better Zap plugin.
+Bot replies are a first-class Better Zap workflow. Handle incoming messages in `webhook.onMessage`, then use `ctx.api` to send text, templates, buttons, locations, reactions, and chat actions from the same context.
 
-## The Plugin
+## Basic Auto-Reply Bot
 
-```ts title="src/plugins/auto-reply.ts"
-import type { BetterZapPlugin, BetterZapDatabase } from "better-zap";
+```ts title="src/index.ts"
+import { betterZap } from "@better-zap/hono";
 
 type Reply = {
   keywords: string[];
@@ -30,12 +30,13 @@ const replies: Reply[] = [
   },
 ];
 
-export const autoReplyPlugin: BetterZapPlugin<BetterZapDatabase> = {
-  id: "auto-reply",
-
-  hooks: {
+const zap = betterZap({
+  // ...config
+  webhook: {
     onMessage: async (ctx) => {
       const content = ctx.content.toLowerCase().trim();
+
+      await ctx.api.markAsRead(ctx.message.id);
 
       for (const reply of replies) {
         if (reply.keywords.some((kw) => content.includes(kw))) {
@@ -44,30 +45,10 @@ export const autoReplyPlugin: BetterZapPlugin<BetterZapDatabase> = {
         }
       }
 
-      // Default reply
       await ctx.api.sendText(
         ctx.phone,
         "Thanks for your message! An agent will respond shortly.",
       );
-    },
-  },
-};
-```
-
-## Using the Plugin
-
-```ts title="src/index.ts"
-import { betterZap } from "@better-zap/hono";
-import { autoReplyPlugin } from "./plugins/auto-reply";
-
-const zap = betterZap({
-  // ...config
-  plugins: [autoReplyPlugin],
-  webhook: {
-    onMessage: async (ctx) => {
-      // This runs AFTER the plugin's onMessage
-      // The bot already replied — you can log or track here
-      console.log(`Bot handled message from ${ctx.phone}`);
     },
     onStatusUpdate: async () => {},
   },
@@ -76,12 +57,20 @@ const zap = betterZap({
 export default zap.handler;
 ```
 
-## Adding Interactive Menus
-
-Enhance the bot with interactive buttons:
+Messages sent through `ctx.api.sendText()` are logged as `bot_reply` by default. Pass a custom logging category only when you need to separate a specific flow:
 
 ```ts
-hooks: {
+await ctx.api.sendText(ctx.phone, "Your order is confirmed.", {
+  messageType: "order_update",
+});
+```
+
+## Adding Interactive Menus
+
+Use the same `onMessage` handler for buttons and menus:
+
+```ts
+webhook: {
   onMessage: async (ctx) => {
     const content = ctx.content.toLowerCase().trim();
 
@@ -98,36 +87,47 @@ hooks: {
       return;
     }
 
-    // Handle button replies
     if (ctx.message.type === "interactive") {
       const buttonId = ctx.message.interactive?.button_reply?.id;
 
       switch (buttonId) {
         case "help_support":
           await ctx.api.sendText(ctx.phone, "Connecting you to support...");
-          break;
+          return;
         case "help_billing":
           await ctx.api.sendText(ctx.phone, "Let me check your account...");
-          break;
+          return;
         case "help_sales":
           await ctx.api.sendText(ctx.phone, "Our sales team will reach out!");
-          break;
+          return;
       }
     }
+
+    await ctx.api.sendText(
+      ctx.phone,
+      "Send \"menu\" to choose a support option.",
+    );
   },
+  onStatusUpdate: async () => {},
 }
 ```
 
-## Combining Multiple Plugins
+## Showing Typing State
 
-Plugins execute in order. Put the bot last if you want other plugins to process first:
+For slower bot flows, show a typing indicator before doing the expensive work:
 
 ```ts
-plugins: [
-  analyticsPlugin,   // Tracks all messages
-  queuePlugin,       // Manages queue positions
-  autoReplyPlugin,   // Auto-replies to unhandled messages
-],
+webhook: {
+  onMessage: async (ctx) => {
+    await ctx.api.typingIndicator(ctx.message.id);
+
+    const reply = await generateBotReply(ctx.content);
+    await ctx.api.sendText(ctx.phone, reply);
+  },
+  onStatusUpdate: async () => {},
+}
 ```
 
-Each plugin's `onMessage` runs in sequence, and the context accumulates across all of them.
+## When to Use Plugins
+
+Use plugins for reusable cross-cutting behavior, such as analytics, queue state, shared services, or context injection. Keep the bot's conversation logic in `webhook.onMessage` unless you are intentionally packaging that behavior for reuse across multiple Better Zap apps.
