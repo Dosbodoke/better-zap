@@ -1,3 +1,12 @@
+import { getTranslations } from "next-intl/server";
+
+const featureKeys = [
+  { key: "runAnywhere" as const, icon: "Server" as const },
+  { key: "typeSafeTemplates" as const, icon: "Shield" as const },
+  { key: "composablePlugins" as const, icon: "Puzzle" as const },
+  { key: "fullApiSupport" as const, icon: "Zap" as const },
+];
+
 const iconMap: Record<string, React.ReactNode> = {
   // Server - for "Run Anywhere"
   Server: (
@@ -25,7 +34,15 @@ const iconMap: Record<string, React.ReactNode> = {
   ),
 };
 
-export function FeatureGrid({ features }: { features: { title: string; description: string; icon: string }[] }) {
+export async function FeatureGrid() {
+  const t = await getTranslations();
+
+  const features = featureKeys.map(({ key, icon }) => ({
+    title: t(`features.${key}.title`),
+    description: t(`features.${key}.description`),
+    icon,
+  }));
+
   return (
     <div>
       <h2 className="text-2xl font-semibold tracking-tight bg-gradient-to-br from-zinc-900 via-zinc-500 to-zinc-900 bg-clip-text text-transparent pb-1 mb-6">

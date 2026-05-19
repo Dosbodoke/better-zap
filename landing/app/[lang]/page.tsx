@@ -7,13 +7,6 @@ import { FeatureGrid } from "../components/landing/FeatureGrid";
 import { Footer } from "../components/landing/Footer";
 import { LandingAnimations } from "../components/landing/LandingAnimations";
 
-const featureKeys = [
-  { key: "runAnywhere" as const, icon: "Server" as const },
-  { key: "typeSafeTemplates" as const, icon: "Shield" as const },
-  { key: "composablePlugins" as const, icon: "Puzzle" as const },
-  { key: "fullApiSupport" as const, icon: "Zap" as const },
-];
-
 export default async function LandingPage({
   params,
 }: {
@@ -21,12 +14,6 @@ export default async function LandingPage({
 }) {
   const { lang } = await params;
   const t = await getTranslations();
-
-  const features = featureKeys.map(({ key, icon }) => ({
-    title: t(`features.${key}.title`),
-    description: t(`features.${key}.description`),
-    icon,
-  }));
 
   return (
     <LandingAnimations>
@@ -52,7 +39,7 @@ export default async function LandingPage({
             <div className="px-6 lg:px-16 pt-12 pb-40 space-y-16 lg:space-y-20 max-w-3xl mx-auto">
               <CodeShowcase />
               <div data-scroll-reveal>
-                <FeatureGrid features={features} />
+                <FeatureGrid />
               </div>
 
               {/* CTA */}
