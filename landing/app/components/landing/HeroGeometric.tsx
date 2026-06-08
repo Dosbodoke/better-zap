@@ -234,10 +234,24 @@ export default function HeroGeometric() {
         rootRef.current,
       );
       const chip = rootRef.current?.querySelector<HTMLElement>("[data-hero-chip]");
+      const background = rootRef.current?.querySelector<HTMLElement>(
+        "[data-hero-background]",
+      );
+      const actions = gsap.utils.toArray<HTMLElement>(
+        "[data-hero-action]",
+        rootRef.current,
+      );
       const mm = gsap.matchMedia();
 
       mm.add("(prefers-reduced-motion: reduce)", () => {
-        gsap.set(heroElements, { autoAlpha: 1, y: 0, clearProps: "transform" });
+        gsap.set([...heroElements, ...actions], {
+          autoAlpha: 1,
+          y: 0,
+          clearProps: "transform",
+        });
+        if (background) {
+          gsap.set(background, { autoAlpha: 1, scale: 1 });
+        }
         if (chip) {
           gsap.set(chip, { autoAlpha: 1, rotation: -3, scale: 1, y: 0 });
         }
@@ -245,15 +259,29 @@ export default function HeroGeometric() {
 
       mm.add("(prefers-reduced-motion: no-preference)", () => {
         const tl = gsap.timeline({
-          defaults: { ease: "power3.out", duration: 0.85 },
-          delay: 0.2,
+          defaults: { ease: "power3.out", duration: 0.78 },
+          delay: 0.12,
         });
 
-        tl.fromTo(
+        if (background) {
+          tl.fromTo(
+            background,
+            { autoAlpha: 0, scale: 1.025 },
+            { autoAlpha: 1, scale: 1, duration: 1.1, ease: "power2.out" },
+            0,
+          );
+        }
+
+        tl.addLabel("copy", 0.14).fromTo(
           heroElements,
-          { autoAlpha: 0, y: 20 },
-          { autoAlpha: 1, y: 0, stagger: 0.12 },
-          0,
+          { autoAlpha: 0, y: 24 },
+          {
+            autoAlpha: 1,
+            y: 0,
+            stagger: 0.1,
+            clearProps: "transform",
+          },
+          "copy",
         );
 
         if (chip) {
@@ -268,9 +296,23 @@ export default function HeroGeometric() {
               duration: 0.65,
               ease: "back.out(1.8)",
             },
-            0.28,
+            "copy+=0.16",
           );
         }
+
+        tl.fromTo(
+          actions,
+          { autoAlpha: 0, y: 12, scale: 0.97 },
+          {
+            autoAlpha: 1,
+            y: 0,
+            scale: 1,
+            duration: 0.5,
+            stagger: 0.08,
+            clearProps: "transform",
+          },
+          "copy+=0.42",
+        );
       });
 
       return () => mm.revert();
@@ -284,7 +326,10 @@ export default function HeroGeometric() {
       className="relative flex h-full w-full flex-col items-center justify-center bg-[#E8FFF0] text-black"
     >
       {/* Background Shader */}
-      <div className="pointer-events-none absolute -inset-1 z-0">
+      <div
+        data-hero-background
+        className="pointer-events-none absolute -inset-1 z-0"
+      >
         <Canvas
           camera={{ position: [0, 0, 1] }}
           dpr={[1, 1]}
@@ -323,17 +368,16 @@ export default function HeroGeometric() {
           </p>
         </div>
 
-        <div
-          data-hero-item
-          className="flex gap-4"
-        >
+        <div className="flex gap-4">
           <a
+            data-hero-action
             href={`/${locale}/docs/getting-started`}
             className="rounded-lg bg-[#131313] px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#333]"
           >
             {t("getStarted")}
           </a>
           <a
+            data-hero-action
             href="https://github.com/Dosbodoke/better-zap"
             target="_blank"
             rel="noopener noreferrer"

@@ -42,10 +42,11 @@ export function BotAssistant() {
       mm.add("(prefers-reduced-motion: no-preference)", () => {
         const intro = gsap.timeline({
           defaults: { ease: "power3.out" },
-          delay: 0.65,
+          delay: 0.8,
         });
 
         intro
+          .addLabel("arrive")
           .fromTo(
             robot,
             { autoAlpha: 0, y: 34, scale: 0.84, rotation: 4 },
@@ -57,8 +58,9 @@ export function BotAssistant() {
               duration: 0.85,
               ease: "back.out(1.35)",
             },
-            0,
+            "arrive",
           )
+          .addLabel("speak", "arrive+=0.32")
           .fromTo(
             balloon,
             { autoAlpha: 0, y: 16, x: 10, scale: 0.86 },
@@ -70,36 +72,41 @@ export function BotAssistant() {
               duration: 0.55,
               ease: "back.out(1.7)",
             },
-            0.34,
+            "speak",
           )
           .fromTo(
             tail,
             { autoAlpha: 0, scale: 0.35 },
-            { autoAlpha: 1, scale: 1, duration: 0.28 },
-            0.5,
-          )
-          .to(
-            robot,
             {
-              y: -7,
-              duration: 2.2,
-              ease: "sine.inOut",
-              repeat: -1,
-              yoyo: true,
+              autoAlpha: 1,
+              scale: 1,
+              duration: 0.28,
+              transformOrigin: "80% 100%",
             },
-            1.1,
-          )
+            "speak+=0.16",
+          );
+
+        const idle = gsap
+          .timeline({
+            delay: intro.delay() + intro.duration() + 0.15,
+            repeat: -1,
+            yoyo: true,
+            defaults: { duration: 2.4, ease: "sine.inOut" },
+          })
+          .to(robot, { y: -7, rotation: -1.2 }, 0)
           .to(
             balloon,
             {
               y: -4,
-              duration: 2.2,
-              ease: "sine.inOut",
-              repeat: -1,
-              yoyo: true,
+              rotation: 0.6,
             },
-            1.2,
+            0.08,
           );
+
+        return () => {
+          intro.kill();
+          idle.kill();
+        };
       });
 
       return () => mm.revert();

@@ -44,8 +44,8 @@ export async function Footer({ lang }: { lang: string }) {
           <div>
             <h4 className="font-semibold text-xs uppercase tracking-wider text-zinc-400 mb-4">{t("legal")}</h4>
             <ul className="space-y-2.5 text-sm text-zinc-600">
-              <li><Link href="#" className="hover:text-[#25D366] transition-colors">{t("privacy")}</Link></li>
-              <li><Link href="#" className="hover:text-[#25D366] transition-colors">{t("terms")}</Link></li>
+              <li><Link href={`/${lang}/privacy`} className="hover:text-[#25D366] transition-colors">{t("privacy")}</Link></li>
+              <li><Link href={`/${lang}/terms`} className="hover:text-[#25D366] transition-colors">{t("terms")}</Link></li>
             </ul>
           </div>
         </div>

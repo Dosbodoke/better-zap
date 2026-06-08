@@ -23,7 +23,6 @@ export function LandingAnimations({ children }: { children: ReactNode }) {
       mm.add(
         {
           isDesktop: "(min-width: 1024px)",
-          isMobile: "(max-width: 1023px)",
           reduceMotion: "(prefers-reduced-motion: reduce)",
         },
         (context) => {
@@ -56,40 +55,54 @@ export function LandingAnimations({ children }: { children: ReactNode }) {
 
           if (isDesktop) {
             const introTimeline = gsap.timeline({
-              defaults: { duration: 0.85, ease: "power3.out" },
+              defaults: { duration: 0.7, ease: "power3.out" },
             });
 
             if (desktopIntro.length > 0) {
-              introTimeline.fromTo(
-                desktopIntro,
-                { autoAlpha: 0, y: 18 },
-                { autoAlpha: 1, y: 0, stagger: 0.12 },
-                0.08,
-              );
+              introTimeline
+                .addLabel("content", 0.12)
+                .fromTo(
+                  desktopIntro,
+                  { autoAlpha: 0, y: 22 },
+                  {
+                    autoAlpha: 1,
+                    y: 0,
+                    stagger: 0.1,
+                    clearProps: "transform",
+                  },
+                  "content",
+                );
             }
           }
 
           if (revealTargets.length > 0) {
-            gsap.set(revealTargets, { autoAlpha: 0, y: 28 });
+            gsap.set(revealTargets, {
+              autoAlpha: 0,
+              y: isDesktop ? 28 : 18,
+              scale: isDesktop ? 0.985 : 1,
+              transformOrigin: "50% 20%",
+            });
 
             ScrollTrigger.batch(revealTargets, {
               scroller: isDesktop ? (scrollContainer ?? undefined) : undefined,
-              start: "top 84%",
+              start: "clamp(top 88%)",
               once: true,
+              interval: 0.08,
+              batchMax: isDesktop ? 2 : 1,
               onEnter: (batch) => {
                 gsap.to(batch, {
                   autoAlpha: 1,
                   y: 0,
-                  duration: 0.75,
-                  stagger: 0.08,
+                  scale: 1,
+                  duration: 0.68,
+                  stagger: 0.1,
                   ease: "power3.out",
-                  overwrite: true,
+                  overwrite: "auto",
+                  clearProps: "transform",
                 });
               },
             });
           }
-
-          ScrollTrigger.refresh();
         },
       );
 

@@ -75,6 +75,7 @@ export function CodeShowcase() {
 
       {/* Installation code block */}
       <div
+        data-desktop-intro
         data-scroll-reveal
         className="scroll-mt-20 pt-10"
         id="installation"

@@ -17,7 +17,8 @@
 [data-desktop-intro],
 [data-scroll-reveal],
 [data-hero-item],
-[data-hero-chip] {
+[data-hero-chip],
+[data-hero-action] {
   opacity: 0;
 }
 
@@ -25,7 +26,8 @@
   [data-desktop-intro],
   [data-scroll-reveal],
   [data-hero-item],
-  [data-hero-chip] {
+  [data-hero-chip],
+  [data-hero-action] {
     opacity: 1;
   }
 }
