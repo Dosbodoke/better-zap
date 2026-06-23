@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useEffect, useRef, useCallback } from "react";
+import React, { useContext, useMemo } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   ArrowLeft02Icon,
@@ -8,6 +8,7 @@ import {
   Message01Icon,
   LockIcon,
 } from "@hugeicons/core-free-icons";
+import { LegendList } from "@legendapp/list/react";
 import type { Conversation, UIMessage } from "better-zap";
 import { cn, getDisplayDate } from "./utils";
 import { MessageBubble } from "./message-bubble";
@@ -114,14 +115,20 @@ export function MessageViewHeader({
 }
 
 // Content Component (Scrollable area)
-const SCROLL_TOP_THRESHOLD = 50;
-
 interface MessageViewContentProps extends React.HTMLAttributes<HTMLDivElement> {
   children?: React.ReactNode;
   autoScroll?: boolean;
   /** Called when the user scrolls to the top of the container. */
   onScrollTop?: () => void;
 }
+
+interface MessageViewScrollContextValue {
+  autoScroll: boolean;
+  onScrollTop?: () => void;
+}
+
+const MessageViewScrollContext =
+  React.createContext<MessageViewScrollContextValue | null>(null);
 
 export function MessageViewContent({
   children,
@@ -130,55 +137,17 @@ export function MessageViewContent({
   className,
   ...props
 }: MessageViewContentProps) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const prevScrollHeightRef = useRef<number>(0);
-
-  useEffect(() => {
-    if (autoScroll && scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [children, autoScroll]);
-
-  // When older messages are prepended, preserve scroll position
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-
-    const newScrollHeight = el.scrollHeight;
-    const prevScrollHeight = prevScrollHeightRef.current;
-
-    if (prevScrollHeight > 0 && newScrollHeight > prevScrollHeight) {
-      const addedHeight = newScrollHeight - prevScrollHeight;
-      // Only adjust if the user was near the top (loading older messages)
-      if (el.scrollTop < SCROLL_TOP_THRESHOLD + addedHeight) {
-        el.scrollTop = addedHeight;
-      }
-    }
-
-    prevScrollHeightRef.current = newScrollHeight;
-  });
-
-  const handleScroll = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el || !onScrollTop) return;
-
-    if (el.scrollTop <= SCROLL_TOP_THRESHOLD) {
-      onScrollTop();
-    }
-  }, [onScrollTop]);
-
   return (
-    <div
-      ref={scrollRef}
-      className={cn(
-        "flex flex-1 flex-col overflow-y-auto p-4 pb-0 chat-scrollbar",
-        className,
-      )}
-      onScroll={handleScroll}
-      {...props}
+    <MessageViewScrollContext.Provider
+      value={{ autoScroll, onScrollTop }}
     >
-      {children}
-    </div>
+      <div
+        className={cn("flex min-h-0 flex-1 flex-col p-4 pb-0", className)}
+        {...props}
+      >
+        {children}
+      </div>
+    </MessageViewScrollContext.Provider>
   );
 }
 
@@ -189,54 +158,93 @@ interface MessageListProps {
   className?: string;
 }
 
+type MessageListItem =
+  | {
+      type: "date";
+      id: string;
+      date: string;
+    }
+  | {
+      type: "message";
+      id: string;
+      message: UIMessage;
+    };
+
 export function MessageList({
   messages,
   renderMessageLabel,
   className,
 }: MessageListProps) {
-  const messageGroups = useMemo(() => {
-    const groups: { date: string; messages: UIMessage[] }[] = [];
-    let currentGroup: { date: string; messages: UIMessage[] } | null = null;
+  const scrollContext = useContext(MessageViewScrollContext);
+  const autoScroll = scrollContext?.autoScroll ?? true;
+  const onScrollTop = scrollContext?.onScrollTop;
+
+  const { items, stickyHeaderIndices } = useMemo(() => {
+    const itemsNew: MessageListItem[] = [];
+    const stickyHeaderIndicesNew: number[] = [];
+    let currentDate: string | null = null;
 
     messages.forEach((msg) => {
       const displayDate = getDisplayDate(msg.sentAt);
 
-      if (!currentGroup || currentGroup.date !== displayDate) {
-        currentGroup = {
+      if (currentDate !== displayDate) {
+        currentDate = displayDate;
+        stickyHeaderIndicesNew.push(itemsNew.length);
+        itemsNew.push({
+          type: "date",
+          id: `date:${displayDate}`,
           date: displayDate,
-          messages: [],
-        };
-        groups.push(currentGroup);
+        });
       }
 
-      currentGroup.messages.push(msg);
+      itemsNew.push({
+        type: "message",
+        id: msg.id,
+        message: msg,
+      });
     });
 
-    return groups;
+    return { items: itemsNew, stickyHeaderIndices: stickyHeaderIndicesNew };
   }, [messages]);
 
   return (
-    <div className={cn("flex flex-col pb-4", className)}>
-      {messageGroups.map((group) => (
-        <div key={group.date} className="flex flex-col gap-1">
-          <DateDivider date={group.date} />
-          {group.messages.map((msg) => (
-            <MessageBubble
-              key={msg.id}
-              content={msg.content || ""}
-              sender={msg.direction === "incoming" ? "user" : "bot"}
-              timestamp={new Date(msg.sentAt).toLocaleTimeString("pt-BR", {
+    <LegendList
+      alignItemsAtEnd
+      className={cn("chat-scrollbar", className)}
+      contentContainerStyle={{ paddingBottom: 16 }}
+      data={items}
+      estimatedItemSize={72}
+      getItemType={(item) => item.type}
+      initialScrollAtEnd={autoScroll}
+      keyExtractor={(item) => item.id}
+      maintainScrollAtEnd={autoScroll}
+      maintainVisibleContentPosition
+      onStartReached={onScrollTop ? () => onScrollTop() : undefined}
+      onStartReachedThreshold={0.1}
+      recycleItems
+      renderItem={({ item }) =>
+        item.type === "date" ? (
+          <DateDivider date={item.date} />
+        ) : (
+          <MessageBubble
+            content={item.message.content || ""}
+            sender={item.message.direction === "incoming" ? "user" : "bot"}
+            timestamp={new Date(item.message.sentAt).toLocaleTimeString(
+              "pt-BR",
+              {
                 hour: "2-digit",
                 minute: "2-digit",
-              })}
-              status={msg.status}
-              templateName={msg.templateName || undefined}
-              label={renderMessageLabel?.(msg)}
-            />
-          ))}
-        </div>
-      ))}
-    </div>
+              },
+            )}
+            status={item.message.status}
+            templateName={item.message.templateName || undefined}
+            label={renderMessageLabel?.(item.message)}
+          />
+        )
+      }
+      stickyHeaderIndices={stickyHeaderIndices}
+      style={{ height: "100%", minHeight: 0 }}
+    />
   );
 }
 

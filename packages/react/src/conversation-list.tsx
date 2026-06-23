@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Message01Icon, UserIcon } from "@hugeicons/core-free-icons";
+import { LegendList } from "@legendapp/list/react";
 import { cn } from "./utils";
 import type { Conversation } from "better-zap";
 import { ConversationSearch } from "./conversation-search";
@@ -69,8 +70,7 @@ export function ConversationList({
         unreadCount={unreadConversationsCount}
       />
 
-      {/* List */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden chat-scrollbar">
+      <div className="min-h-0 flex-1">
         {isLoading ? (
           <div className="flex items-center justify-center h-full text-sm text-[#667781]">
             Carregando...
@@ -85,14 +85,23 @@ export function ConversationList({
             <p className="text-sm">Nenhuma conversa encontrada</p>
           </div>
         ) : (
-          filtered.map((conversation) => (
-            <ConversationItem
-              key={conversation.id}
-              conversation={conversation}
-              isSelected={selectedConversationId === conversation.id}
-              onClick={() => handleSelect(conversation.id)}
-            />
-          ))
+          <LegendList
+            className="chat-scrollbar"
+            data={filtered}
+            estimatedItemSize={72}
+            extraData={selectedConversationId}
+            getFixedItemSize={() => 72}
+            keyExtractor={(conversation) => conversation.id}
+            recycleItems
+            renderItem={({ item: conversation }) => (
+              <ConversationItem
+                conversation={conversation}
+                isSelected={selectedConversationId === conversation.id}
+                onClick={() => handleSelect(conversation.id)}
+              />
+            )}
+            style={{ height: "100%", overflowX: "hidden" }}
+          />
         )}
       </div>
     </div>
