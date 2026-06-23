@@ -150,21 +150,27 @@ See [Durable Objects](/docs/concepts/durable-objects) for details.
 You must implement this interface to provide message persistence:
 
 ```ts
+type CreateWhatsAppLogParams = {
+  phone: string;
+  userId?: string;
+  contactName?: string;
+  direction: WhatsAppDirection;
+  messageType: WhatsAppMessageType;
+  content: string;
+  templateName?: string;
+  waMessageId?: string;
+  status: WhatsAppStatus;
+  errorMessage?: string;
+  metadata?: any;
+  sentAt: string;
+};
+
 interface WhatsAppLogStore {
-  createWhatsAppLog(params: {
-    phone: string;
-    userId?: string;
-    contactName?: string;
-    direction: WhatsAppDirection;
-    messageType: WhatsAppMessageType;
-    content: string;
-    templateName?: string;
-    waMessageId?: string;
-    status: WhatsAppStatus;
-    errorMessage?: string;
-    metadata?: any;
-    sentAt: string;
-  }): Promise<WhatsAppLogRecord>;
+  createWhatsAppLog(params: CreateWhatsAppLogParams): Promise<WhatsAppLogRecord>;
+
+  createWhatsAppLogIfNotExists(
+    params: CreateWhatsAppLogParams & { waMessageId: string },
+  ): Promise<{ record: WhatsAppLogRecord; created: boolean }>;
 
   getMessageByWaId(waMessageId: string): Promise<WhatsAppLogRecord | null>;
   updateWhatsAppLogByWaMessageId(
@@ -199,6 +205,11 @@ interface WhatsAppLogStore {
   hasRecentOutgoingMessage(phone: string, withinHours: number): Promise<boolean>;
 }
 ```
+
+`createWhatsAppLogIfNotExists` must be atomic in your database implementation.
+Incoming webhook deduplication depends on this method inserting the row and
+detecting duplicate `waMessageId` values in one database operation or
+transaction.
 
 `updateStatusIfProgressed` must be atomic in your database implementation so duplicate or out-of-order webhook status events cannot regress a message.
 
