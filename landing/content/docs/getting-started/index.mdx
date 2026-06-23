@@ -43,7 +43,7 @@ type Env = {
 const app = {
   fetch(request: Request, env: Env, ctx: ExecutionContext) {
     const zap = betterZap({
-      database: { whatsappLog: createD1Store(env.DB) }, // See the D1 guide
+      database: { whatsappLog: createD1Store(env.DB) }, // Implements WhatsAppLogStore; see the D1 guide
       config: {
         token: env.WHATSAPP_TOKEN,
         phoneId: env.WHATSAPP_PHONE_ID,

@@ -46,31 +46,40 @@ CREATE TABLE IF NOT EXISTS conversations (
   id TEXT PRIMARY KEY,
   phone TEXT NOT NULL UNIQUE,
   contact_name TEXT,
-  last_message_content TEXT,
-  last_message_at TEXT,
-  last_message_direction TEXT,
-  unread_count INTEGER DEFAULT 0,
-  last_incoming_at TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  unread_count INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'active',
+  last_message_at TEXT NOT NULL,
+  last_message_preview TEXT,
+  last_direction TEXT NOT NULL,
+  message_count INTEGER NOT NULL DEFAULT 0,
+  last_incoming_message_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS messages (
   id TEXT PRIMARY KEY,
   wa_message_id TEXT UNIQUE,
   conversation_id TEXT NOT NULL,
-  direction TEXT NOT NULL,
-  content TEXT,
-  type TEXT,
-  status TEXT DEFAULT 'sent',
-  timestamp TEXT NOT NULL,
-  message_type TEXT,
+  phone TEXT NOT NULL,
   user_id TEXT,
+  direction TEXT NOT NULL,
+  message_type TEXT NOT NULL,
+  content TEXT,
+  template_name TEXT,
+  status TEXT NOT NULL DEFAULT 'sent',
+  error_message TEXT,
   metadata TEXT,
+  sent_at TEXT NOT NULL,
+  delivered_at TEXT,
+  read_at TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (conversation_id) REFERENCES conversations(id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, timestamp);
+CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, sent_at);
+CREATE INDEX IF NOT EXISTS idx_messages_wa_id ON messages(wa_message_id);
+CREATE INDEX IF NOT EXISTS idx_messages_recent_outgoing ON messages(phone, direction, sent_at);
 CREATE INDEX IF NOT EXISTS idx_conversations_phone ON conversations(phone);
 "
 ```
@@ -82,81 +91,240 @@ Create a D1 adapter that implements the `WhatsAppLogStore` interface:
 ```ts title="src/database.ts"
 import type { WhatsAppLogStore } from "better-zap";
 
+type ConversationRow = {
+  id: string;
+  phone: string;
+  contact_name: string | null;
+  unread_count: number;
+  status: string;
+  last_message_at: string;
+  last_message_preview: string | null;
+  last_direction: string;
+  message_count: number;
+  last_incoming_message_at: string | null;
+};
+
+type MessageRow = {
+  id: string;
+  conversation_id: string;
+  user_id: string | null;
+  phone: string;
+  wa_message_id: string | null;
+  direction: string;
+  message_type: string;
+  content: string | null;
+  template_name: string | null;
+  status: string;
+  error_message: string | null;
+  metadata: string | null;
+  sent_at: string;
+  delivered_at: string | null;
+  read_at: string | null;
+};
+
+const statusRank = {
+  sent: 1,
+  delivered: 2,
+  read: 3,
+  failed: 4,
+} as const;
+
+function toConversation(row: ConversationRow) {
+  return {
+    id: row.id,
+    phone: row.phone,
+    contactName: row.contact_name,
+    unreadCount: row.unread_count,
+    status: row.status,
+    lastMessageAt: row.last_message_at,
+    lastMessagePreview: row.last_message_preview,
+    lastDirection: row.last_direction,
+    messageCount: row.message_count,
+    lastIncomingMessageAt: row.last_incoming_message_at,
+  };
+}
+
+function toMessage(row: MessageRow) {
+  return {
+    id: row.id,
+    conversationId: row.conversation_id,
+    userId: row.user_id,
+    phone: row.phone,
+    waMessageId: row.wa_message_id,
+    direction: row.direction as "incoming" | "outgoing",
+    messageType: row.message_type as any,
+    content: row.content,
+    templateName: row.template_name,
+    status: row.status as "sent" | "delivered" | "read" | "failed",
+    errorMessage: row.error_message,
+    metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
+    sentAt: row.sent_at,
+    deliveredAt: row.delivered_at,
+    readAt: row.read_at,
+  };
+}
+
 export function createD1Store(db: D1Database): WhatsAppLogStore {
   return {
-    async logIncoming(entry) {
-      // Upsert conversation
+    async createWhatsAppLog(params) {
+      const conversationId = crypto.randomUUID();
+      const messageId = crypto.randomUUID();
+      const lastIncomingAt = params.direction === "incoming" ? params.sentAt : null;
+
       await db.prepare(`
-        INSERT INTO conversations (id, phone, contact_name, last_message_content, last_message_at, last_message_direction, last_incoming_at)
-        VALUES (?, ?, ?, ?, ?, 'incoming', ?)
+        INSERT INTO conversations (
+          id, phone, contact_name, last_message_at, last_message_preview,
+          last_direction, message_count, last_incoming_message_at, unread_count
+        )
+        VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
         ON CONFLICT(phone) DO UPDATE SET
-          contact_name = excluded.contact_name,
-          last_message_content = excluded.last_message_content,
+          contact_name = COALESCE(excluded.contact_name, conversations.contact_name),
           last_message_at = excluded.last_message_at,
-          last_message_direction = 'incoming',
-          last_incoming_at = excluded.last_incoming_at,
-          unread_count = unread_count + 1
+          last_message_preview = excluded.last_message_preview,
+          last_direction = excluded.last_direction,
+          message_count = conversations.message_count + 1,
+          last_incoming_message_at = COALESCE(
+            excluded.last_incoming_message_at,
+            conversations.last_incoming_message_at
+          ),
+          unread_count = conversations.unread_count + excluded.unread_count,
+          updated_at = datetime('now')
       `).bind(
-        crypto.randomUUID(),
-        entry.phone,
-        entry.contactName,
-        entry.content,
-        entry.timestamp,
-        entry.timestamp,
+        conversationId,
+        params.phone,
+        params.contactName ?? null,
+        params.sentAt,
+        params.content,
+        params.direction,
+        lastIncomingAt,
+        params.direction === "incoming" ? 1 : 0,
       ).run();
 
-      // Insert message
+      const conversation = await db.prepare(
+        "SELECT id FROM conversations WHERE phone = ?"
+      ).bind(params.phone).first<{ id: string }>();
+
       await db.prepare(`
-        INSERT INTO messages (id, wa_message_id, conversation_id, direction, content, type, status, timestamp)
-        SELECT ?, ?, c.id, 'incoming', ?, ?, 'sent', ?
-        FROM conversations c WHERE c.phone = ?
+        INSERT INTO messages (
+          id, wa_message_id, conversation_id, phone, user_id, direction,
+          message_type, content, template_name, status, error_message, metadata,
+          sent_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
-        crypto.randomUUID(),
-        entry.waMessageId,
-        entry.content,
-        entry.messageType,
-        entry.timestamp,
-        entry.phone,
+        messageId,
+        params.waMessageId ?? null,
+        conversation?.id ?? conversationId,
+        params.phone,
+        params.userId ?? null,
+        params.direction,
+        params.messageType,
+        params.content,
+        params.templateName ?? null,
+        params.status,
+        params.errorMessage ?? null,
+        params.metadata ? JSON.stringify(params.metadata) : null,
+        params.sentAt,
       ).run();
-    },
 
-    async updateStatus(waMessageId, status, timestamp) {
-      await db.prepare(`
-        UPDATE messages SET status = ?, timestamp = ? WHERE wa_message_id = ?
-      `).bind(status, new Date(timestamp * 1000).toISOString(), waMessageId).run();
-    },
-
-    async isDuplicate(waMessageId) {
-      const result = await db.prepare(
-        "SELECT 1 FROM messages WHERE wa_message_id = ?"
-      ).bind(waMessageId).first();
-      return !!result;
-    },
-
-    async getFreeformMessageWindow(phone) {
-      const result = await db.prepare(
-        "SELECT last_incoming_at FROM conversations WHERE phone = ?"
-      ).bind(phone).first<{ last_incoming_at: string }>();
-      if (!result?.last_incoming_at) return null;
       return {
-        lastIncomingAt: result.last_incoming_at,
-        expiresAt: new Date(
-          new Date(result.last_incoming_at).getTime() + 24 * 60 * 60 * 1000
-        ).toISOString(),
+        id: messageId,
+        conversationId: conversation?.id ?? conversationId,
+        userId: params.userId ?? null,
+        phone: params.phone,
+        waMessageId: params.waMessageId ?? null,
+        direction: params.direction,
+        messageType: params.messageType,
+        content: params.content,
+        templateName: params.templateName ?? null,
+        status: params.status,
+        errorMessage: params.errorMessage ?? null,
+        metadata: params.metadata,
+        sentAt: params.sentAt,
       };
+    },
+
+    async getMessageByWaId(waMessageId) {
+      const row = await db.prepare(
+        "SELECT * FROM messages WHERE wa_message_id = ?"
+      ).bind(waMessageId).first<MessageRow>();
+      return row ? toMessage(row) : null;
+    },
+
+    async updateWhatsAppLogByWaMessageId(waMessageId, updates) {
+      const columns: string[] = [];
+      const values: unknown[] = [];
+
+      const set = (column: string, value: unknown) => {
+        columns.push(`${column} = ?`);
+        values.push(value);
+      };
+
+      if (updates.status) set("status", updates.status);
+      if (updates.errorMessage !== undefined) set("error_message", updates.errorMessage);
+      if (updates.deliveredAt !== undefined) set("delivered_at", updates.deliveredAt);
+      if (updates.readAt !== undefined) set("read_at", updates.readAt);
+      if (updates.metadata !== undefined) {
+        set("metadata", updates.metadata ? JSON.stringify(updates.metadata) : null);
+      }
+
+      if (columns.length === 0) return;
+
+      await db.prepare(`
+        UPDATE messages SET ${columns.join(", ")} WHERE wa_message_id = ?
+      `).bind(...values, waMessageId).run();
+    },
+
+    updateStatusIfProgressed: async (waMessageId, newStatus, updates) => {
+      const nowRank = statusRank[newStatus];
+      const result = await db.prepare(`
+        UPDATE messages
+        SET
+          status = ?,
+          delivered_at = COALESCE(?, delivered_at),
+          read_at = COALESCE(?, read_at),
+          error_message = COALESCE(?, error_message),
+          metadata = COALESCE(?, metadata)
+        WHERE wa_message_id = ?
+          AND ? > CASE status
+            WHEN 'sent' THEN 1
+            WHEN 'delivered' THEN 2
+            WHEN 'read' THEN 3
+            WHEN 'failed' THEN 4
+            ELSE 0
+          END
+      `).bind(
+        newStatus,
+        updates.deliveredAt ?? null,
+        updates.readAt ?? null,
+        updates.errorMessage ?? null,
+        updates.metadata ? JSON.stringify(updates.metadata) : null,
+        waMessageId,
+        nowRank,
+      ).run();
+
+      return result.meta.changes > 0;
+    },
+
+    async getConversationById(conversationId) {
+      const row = await db.prepare(
+        "SELECT * FROM conversations WHERE id = ?"
+      ).bind(conversationId).first<ConversationRow>();
+      return row ? toConversation(row) : null;
+    },
+
+    async getConversationByPhone(phone) {
+      const row = await db.prepare(
+        "SELECT * FROM conversations WHERE phone = ?"
+      ).bind(phone).first<ConversationRow>();
+      return row ? toConversation(row) : null;
     },
 
     async getConversations() {
       const { results } = await db.prepare(
         "SELECT * FROM conversations ORDER BY last_message_at DESC"
-      ).all();
-      return results as any[];
-    },
-
-    async getConversationByPhone(phone) {
-      return await db.prepare(
-        "SELECT * FROM conversations WHERE phone = ?"
-      ).bind(phone).first() as any;
+      ).all<ConversationRow>();
+      return results.map(toConversation);
     },
 
     async getMessagesByConversationPaginated(conversationId, cursor, limit = 50) {
@@ -164,15 +332,36 @@ export function createD1Store(db: D1Database): WhatsAppLogStore {
       const bindings: any[] = [conversationId];
 
       if (cursor) {
-        query += " AND timestamp < (SELECT timestamp FROM messages WHERE id = ?)";
+        query += " AND sent_at < (SELECT sent_at FROM messages WHERE id = ?)";
         bindings.push(cursor);
       }
 
-      query += " ORDER BY timestamp DESC LIMIT ?";
+      query += " ORDER BY sent_at DESC LIMIT ?";
       bindings.push(limit);
 
-      const { results } = await db.prepare(query).bind(...bindings).all();
-      return results as any[];
+      const { results } = await db.prepare(query).bind(...bindings).all<MessageRow>();
+      return results.map((row) => ({
+        id: row.id,
+        phone: row.phone,
+        content: row.content,
+        direction: row.direction,
+        status: row.status,
+        sentAt: row.sent_at,
+        templateName: row.template_name,
+        messageType: row.message_type,
+        metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
+      }));
+    },
+
+    async hasRecentOutgoingMessage(phone, withinHours) {
+      const since = new Date(Date.now() - withinHours * 60 * 60 * 1000).toISOString();
+      const row = await db.prepare(`
+        SELECT 1 FROM messages
+        WHERE phone = ? AND direction = 'outgoing' AND sent_at >= ?
+        LIMIT 1
+      `).bind(phone, since).first();
+
+      return !!row;
     },
   };
 }
