@@ -13,6 +13,11 @@ import type {
   TemplateRegistry,
 } from "better-zap";
 
+export type BetterZapAuthorizeAppRequest = (input: {
+  request: Request;
+  env?: unknown;
+}) => boolean | Promise<boolean>;
+
 export interface BetterZapConfig<
   TDatabase extends BetterZapDatabase = BetterZapDatabase,
   TPlugins extends readonly BetterZapPlugin<TDatabase, any, any>[] =
@@ -35,6 +40,7 @@ export interface BetterZapConfig<
     ) => Promise<void>;
   };
   basePath?: string;
+  authorizeAppRequest?: BetterZapAuthorizeAppRequest;
   logger?: LoggerConfig;
 }
 
