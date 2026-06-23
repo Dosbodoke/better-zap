@@ -21,6 +21,7 @@ import {
   hasConfiguredTemplates,
   normalizeConversationRecord,
   normalizeConversationRecords,
+  serializeError,
   serializeTemplateFromRegistry,
 } from "better-zap";
 import type { BetterZap, BetterZapApi, BetterZapConfig } from "./better-zap.types";
@@ -160,6 +161,27 @@ export function betterZap<
   });
 
   app.route("/webhook", webhookRouter);
+
+  if (options.authorizeAppRequest) {
+    app.use("*", async (c, next) => {
+      try {
+        const allowed = await options.authorizeAppRequest?.({
+          request: c.req.raw,
+          env: c.env,
+        });
+
+        if (!allowed) {
+          return c.json({ error: "Unauthorized" }, 401);
+        }
+
+        await next();
+      } catch (error) {
+        log.error("app_api.authorization_failed", serializeError(error));
+        return c.json({ error: "Authorization failed" }, 500);
+      }
+    });
+  }
+
   app.post("/send/text", handleSendText);
   app.post("/send/template", createSendTemplateHandler(templates));
   app.post("/send/interactive", handleSendInteractive);
