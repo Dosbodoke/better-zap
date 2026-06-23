@@ -3,6 +3,7 @@ import { defineTemplates } from "better-zap";
 import type {
   BetterZapDatabase,
   ConversationRecord,
+  WhatsAppLogRecord,
   WhatsAppLogStore,
 } from "better-zap";
 import { betterZap } from "./better-zap";
@@ -10,24 +11,36 @@ import { betterZap } from "./better-zap";
 const TEST_META_APP_SECRET = "test-meta-app-secret";
 const textEncoder = new TextEncoder();
 
+type CreateWhatsAppLogParams = Parameters<
+  WhatsAppLogStore["createWhatsAppLog"]
+>[0];
+
+function makeLogRecord(params: CreateWhatsAppLogParams): WhatsAppLogRecord {
+  return {
+    id: params.waMessageId ?? "log-1",
+    conversationId: "conversation-1",
+    phone: params.phone,
+    userId: params.userId ?? null,
+    waMessageId: params.waMessageId ?? null,
+    direction: params.direction,
+    messageType: params.messageType,
+    content: params.content,
+    templateName: params.templateName ?? null,
+    status: params.status,
+    errorMessage: params.errorMessage ?? null,
+    metadata: params.metadata,
+    sentAt: params.sentAt,
+    deliveredAt: null,
+    readAt: null,
+  };
+}
+
 function makeStore(): WhatsAppLogStore {
   return {
-    createWhatsAppLog: vi.fn(async (params) => ({
-      id: params.waMessageId ?? "log-1",
-      conversationId: "conversation-1",
-      phone: params.phone,
-      userId: params.userId ?? null,
-      waMessageId: params.waMessageId ?? null,
-      direction: params.direction,
-      messageType: params.messageType,
-      content: params.content,
-      templateName: params.templateName ?? null,
-      status: params.status,
-      errorMessage: params.errorMessage ?? null,
-      metadata: params.metadata,
-      sentAt: params.sentAt,
-      deliveredAt: null,
-      readAt: null,
+    createWhatsAppLog: vi.fn(async (params) => makeLogRecord(params)),
+    createWhatsAppLogIfNotExists: vi.fn(async (params) => ({
+      record: makeLogRecord(params),
+      created: true,
     })),
     getMessageByWaId: vi.fn().mockResolvedValue(null),
     updateWhatsAppLogByWaMessageId: vi.fn().mockResolvedValue(undefined),
@@ -662,6 +675,36 @@ describe("betterZap plugins", () => {
     expect(response.status).toBe(200);
     expect(authorizeAppRequest).not.toHaveBeenCalled();
     expect(onMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips message hooks when atomic incoming logging reports a duplicate", async () => {
+    const store = makeStore();
+    const onMessage = vi.fn().mockResolvedValue(undefined);
+    store.createWhatsAppLogIfNotExists = vi.fn(async (params) => ({
+      record: makeLogRecord(params),
+      created: false,
+    }));
+
+    const zap = betterZap({
+      database: makeDatabase({ whatsappLog: store }),
+      config: {
+        token: "token",
+        phoneId: "phone-id",
+        webhookToken: "verify-token",
+        appSecret: TEST_META_APP_SECRET,
+      },
+      webhook: {
+        onMessage,
+        onStatusUpdate: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+
+    const response = await postWebhook(zap, makeTextMessage());
+
+    expect(response.status).toBe(200);
+    expect(store.createWhatsAppLogIfNotExists).toHaveBeenCalledTimes(1);
+    expect(store.getConversationById).not.toHaveBeenCalled();
+    expect(onMessage).not.toHaveBeenCalled();
   });
 
   it("returns 500 and logs when app API auth throws", async () => {

@@ -84,6 +84,9 @@ CREATE INDEX IF NOT EXISTS idx_conversations_phone ON conversations(phone);
 "
 ```
 
+The `wa_message_id TEXT UNIQUE` constraint is required for atomic incoming
+webhook deduplication.
+
 ## 4. Implement WhatsAppLogStore
 
 Create a D1 adapter that implements the `WhatsAppLogStore` interface:
@@ -242,6 +245,92 @@ export function createD1Store(db: D1Database): WhatsAppLogStore {
         metadata: params.metadata,
         sentAt: params.sentAt,
       };
+    },
+
+    async createWhatsAppLogIfNotExists(params) {
+      const conversationId = crypto.randomUUID();
+      const messageId = crypto.randomUUID();
+
+      await db.prepare(`
+        INSERT INTO conversations (
+          id, phone, contact_name, last_message_at, last_message_preview,
+          last_direction, message_count, last_incoming_message_at, unread_count
+        )
+        VALUES (?, ?, ?, ?, ?, ?, 0, NULL, 0)
+        ON CONFLICT(phone) DO NOTHING
+      `).bind(
+        conversationId,
+        params.phone,
+        params.contactName ?? null,
+        params.sentAt,
+        params.content,
+        params.direction,
+      ).run();
+
+      const conversation = await db.prepare(
+        "SELECT id FROM conversations WHERE phone = ?"
+      ).bind(params.phone).first<{ id: string }>();
+
+      const insert = await db.prepare(`
+        INSERT INTO messages (
+          id, wa_message_id, conversation_id, phone, user_id, direction,
+          message_type, content, template_name, status, error_message, metadata,
+          sent_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(wa_message_id) DO NOTHING
+      `).bind(
+        messageId,
+        params.waMessageId,
+        conversation?.id ?? conversationId,
+        params.phone,
+        params.userId ?? null,
+        params.direction,
+        params.messageType,
+        params.content,
+        params.templateName ?? null,
+        params.status,
+        params.errorMessage ?? null,
+        params.metadata ? JSON.stringify(params.metadata) : null,
+        params.sentAt,
+      ).run();
+
+      if (insert.meta.changes === 0) {
+        const existing = await db.prepare(
+          "SELECT * FROM messages WHERE wa_message_id = ?"
+        ).bind(params.waMessageId).first<MessageRow>();
+        if (!existing) throw new Error("Duplicate message row not found");
+        return { record: toMessage(existing), created: false };
+      }
+
+      await db.prepare(`
+        UPDATE conversations
+        SET
+          contact_name = COALESCE(?, contact_name),
+          last_message_at = ?,
+          last_message_preview = ?,
+          last_direction = ?,
+          message_count = message_count + 1,
+          last_incoming_message_at = ?,
+          unread_count = unread_count + ?,
+          updated_at = datetime('now')
+        WHERE id = ?
+      `).bind(
+        params.contactName ?? null,
+        params.sentAt,
+        params.content,
+        params.direction,
+        params.direction === "incoming" ? params.sentAt : null,
+        params.direction === "incoming" ? 1 : 0,
+        conversation?.id ?? conversationId,
+      ).run();
+
+      const row = await db.prepare(
+        "SELECT * FROM messages WHERE id = ?"
+      ).bind(messageId).first<MessageRow>();
+
+      if (!row) throw new Error("Inserted message row not found");
+      return { record: toMessage(row), created: true };
     },
 
     async getMessageByWaId(waMessageId) {
