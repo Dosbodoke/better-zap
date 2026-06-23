@@ -151,19 +151,56 @@ You must implement this interface to provide message persistence:
 
 ```ts
 interface WhatsAppLogStore {
-  logIncoming(message: IncomingLogEntry): Promise<void>;
-  updateStatus(waMessageId: string, status: string, timestamp: number): Promise<void>;
-  isDuplicate(waMessageId: string): Promise<boolean>;
-  getFreeformMessageWindow(phone: string): Promise<FreeformMessageWindow | null>;
-  getConversations(): Promise<ConversationRecord[]>;
+  createWhatsAppLog(params: {
+    phone: string;
+    userId?: string;
+    contactName?: string;
+    direction: WhatsAppDirection;
+    messageType: WhatsAppMessageType;
+    content: string;
+    templateName?: string;
+    waMessageId?: string;
+    status: WhatsAppStatus;
+    errorMessage?: string;
+    metadata?: any;
+    sentAt: string;
+  }): Promise<WhatsAppLogRecord>;
+
+  getMessageByWaId(waMessageId: string): Promise<WhatsAppLogRecord | null>;
+  updateWhatsAppLogByWaMessageId(
+    waMessageId: string,
+    updates: Partial<WhatsAppLogRecord>,
+  ): Promise<void>;
+  updateStatusIfProgressed(
+    waMessageId: string,
+    newStatus: WhatsAppStatus,
+    updates: Partial<WhatsAppLogRecord>,
+  ): Promise<boolean>;
+  getConversationById(conversationId: string): Promise<ConversationRecord | null>;
   getConversationByPhone(phone: string): Promise<ConversationRecord | null>;
+  getConversations(): Promise<ConversationRecord[]>;
   getMessagesByConversationPaginated(
     conversationId: string,
-    cursor?: string,
+    cursor?: string | null,
     limit?: number,
-  ): Promise<UIMessage[]>;
+  ): Promise<
+    Array<{
+      id: string;
+      phone?: string;
+      content: string | null;
+      direction: string;
+      status: string;
+      sentAt: string;
+      templateName?: string | null;
+      messageType?: string | null;
+      metadata?: any;
+    }>
+  >;
+  hasRecentOutgoingMessage(phone: string, withinHours: number): Promise<boolean>;
 }
 ```
+
+`updateStatusIfProgressed` must be atomic in your database implementation so duplicate or out-of-order webhook status events cannot regress a message.
 
 ## Getting Your Credentials
 
