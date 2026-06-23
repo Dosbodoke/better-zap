@@ -30,6 +30,27 @@ const zapClient = createZapClient({
 | `fetch` | `typeof fetch` | `globalThis.fetch` | Custom fetch implementation |
 | `templates` | `TemplateRegistry` | `{}` | Template registry for type inference only |
 
+### Authorization Headers
+
+`createZapClient()` does not have a first-class auth option. If your server uses `authorizeAppRequest`, pass a custom `fetch` that adds the authorization header for app API requests:
+
+```ts
+const zapClient = createZapClient({
+  baseURL: "https://api.example.com",
+  fetch: (input, init) => {
+    const headers = new Headers(init?.headers);
+    headers.set("Authorization", `Bearer ${appApiToken}`);
+
+    return fetch(input, {
+      ...init,
+      headers,
+    });
+  },
+});
+```
+
+Keep WhatsApp and Meta credentials on your server. Browser clients should only receive application-scoped credentials that your server is prepared to authorize.
+
 ## Typed Templates
 
 Pass your template registry for compile-time type checking:

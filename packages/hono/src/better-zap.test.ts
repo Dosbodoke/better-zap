@@ -554,6 +554,164 @@ describe("betterZap plugins", () => {
     });
   });
 
+  it("returns 401 and does not send to Meta when app API auth denies text sends", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const zap = betterZap({
+      database: makeDatabase(),
+      config: {
+        token: "token",
+        phoneId: "phone-id",
+        webhookToken: "verify-token",
+        appSecret: TEST_META_APP_SECRET,
+      },
+      authorizeAppRequest: vi.fn().mockResolvedValue(false),
+      webhook: {
+        onMessage: vi.fn().mockResolvedValue(undefined),
+        onStatusUpdate: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+
+    const response = await sendRequest(
+      zap,
+      new Request("http://localhost/api/whatsapp/send/text", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          to: "5511999887766",
+          body: "Hello!",
+        }),
+      }),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(payload).toEqual({ error: "Unauthorized" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("allows app API text sends when app API auth approves", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ messages: [{ id: "wamid.authorized" }] }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const store = makeStore();
+    store.getConversationByPhone = vi
+      .fn()
+      .mockResolvedValue(makeConversationRecord());
+
+    const zap = betterZap({
+      database: makeDatabase({ whatsappLog: store }),
+      config: {
+        token: "token",
+        phoneId: "phone-id",
+        webhookToken: "verify-token",
+        appSecret: TEST_META_APP_SECRET,
+      },
+      authorizeAppRequest: vi.fn().mockResolvedValue(true),
+      webhook: {
+        onMessage: vi.fn().mockResolvedValue(undefined),
+        onStatusUpdate: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+
+    const response = await sendRequest(
+      zap,
+      new Request("http://localhost/api/whatsapp/send/text", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          to: "5511999887766",
+          body: "Hello!",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not run app API auth for signed webhook delivery", async () => {
+    const authorizeAppRequest = vi.fn().mockResolvedValue(false);
+    const onMessage = vi.fn().mockResolvedValue(undefined);
+
+    const zap = betterZap({
+      database: makeDatabase(),
+      config: {
+        token: "token",
+        phoneId: "phone-id",
+        webhookToken: "verify-token",
+        appSecret: TEST_META_APP_SECRET,
+      },
+      authorizeAppRequest,
+      webhook: {
+        onMessage,
+        onStatusUpdate: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+
+    const response = await postWebhook(zap, makeTextMessage());
+
+    expect(response.status).toBe(200);
+    expect(authorizeAppRequest).not.toHaveBeenCalled();
+    expect(onMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns 500 and logs when app API auth throws", async () => {
+    const log = vi.fn();
+
+    const zap = betterZap({
+      database: makeDatabase(),
+      config: {
+        token: "token",
+        phoneId: "phone-id",
+        webhookToken: "verify-token",
+        appSecret: TEST_META_APP_SECRET,
+      },
+      authorizeAppRequest: vi.fn().mockRejectedValue(new Error("auth boom")),
+      webhook: {
+        onMessage: vi.fn().mockResolvedValue(undefined),
+        onStatusUpdate: vi.fn().mockResolvedValue(undefined),
+      },
+      logger: {
+        log,
+      },
+    });
+
+    const response = await sendRequest(
+      zap,
+      new Request("http://localhost/api/whatsapp/send/text", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          to: "5511999887766",
+          body: "Hello!",
+        }),
+      }),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(payload).toEqual({ error: "Authorization failed" });
+    expect(log).toHaveBeenCalledWith(
+      "error",
+      "app_api.authorization_failed",
+      expect.objectContaining({
+        message: "auth boom",
+        name: "Error",
+      }),
+    );
+  });
+
   it("returns a structured CONTEXT_WINDOW_CLOSED error for text sends outside the window", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);

@@ -37,6 +37,7 @@ type Env = {
   WHATSAPP_PHONE_ID: string;
   WEBHOOK_VERIFY_TOKEN: string;
   WHATSAPP_APP_SECRET: string;
+  APP_API_TOKEN: string;
 };
 
 const app = {
@@ -58,6 +59,10 @@ const app = {
           console.log(`Status: ${ctx.status.status}`);
         },
       },
+      authorizeAppRequest: ({ request }) => {
+        const authorization = request.headers.get("Authorization");
+        return authorization === `Bearer ${env.APP_API_TOKEN}`;
+      },
     });
 
     return zap.handler(request, env, ctx);
@@ -76,6 +81,7 @@ WHATSAPP_TOKEN=your_system_user_access_token
 WHATSAPP_PHONE_ID=your_phone_number_id
 WEBHOOK_VERIFY_TOKEN=any_secret_string_you_choose
 WHATSAPP_APP_SECRET=your_app_secret_from_meta
+APP_API_TOKEN=your_app_api_bearer_token
 ```
 
 For production, use `wrangler secret put`:
@@ -85,6 +91,7 @@ wrangler secret put WHATSAPP_TOKEN
 wrangler secret put WHATSAPP_PHONE_ID
 wrangler secret put WEBHOOK_VERIFY_TOKEN
 wrangler secret put WHATSAPP_APP_SECRET
+wrangler secret put APP_API_TOKEN
 ```
 
 ## 5. Configure the webhook in Meta
