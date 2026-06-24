@@ -22,8 +22,38 @@ const zap = betterZap({
     onMessage: async (ctx) => { /* ... */ },
     onStatusUpdate: async (ctx) => { /* ... */ },
   },
+  authorizeAppRequest: ({ request }) => {
+    return request.headers.get("Authorization") === `Bearer ${env.APP_API_TOKEN}`;
+  },
 });
 ```
+
+## Authorization
+
+Meta webhook routes must stay public so Meta can verify and deliver events. App API routes should be protected when your handler is reachable from browsers or the public internet.
+
+Use `authorizeAppRequest` to authorize non-webhook API requests:
+
+```ts
+authorizeAppRequest?: (input: {
+  request: Request;
+  env?: unknown;
+}) => boolean | Promise<boolean>;
+```
+
+The hook runs for:
+
+- `POST /send/text`
+- `POST /send/template`
+- `POST /send/interactive`
+- `POST /send/location`
+- `GET /conversations`
+- `GET /conversations/:phone`
+- `GET /conversations/:phone/messages`
+
+It does not run for `GET /webhook` or `POST /webhook`.
+
+If the hook returns `false`, the API route returns `401` with `{ error: "Unauthorized" }`. If the hook throws, the API route returns `500` with `{ error: "Authorization failed" }`.
 
 ## Return Value
 

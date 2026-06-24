@@ -150,20 +150,67 @@ See [Durable Objects](/docs/concepts/durable-objects) for details.
 You must implement this interface to provide message persistence:
 
 ```ts
+type CreateWhatsAppLogParams = {
+  phone: string;
+  userId?: string;
+  contactName?: string;
+  direction: WhatsAppDirection;
+  messageType: WhatsAppMessageType;
+  content: string;
+  templateName?: string;
+  waMessageId?: string;
+  status: WhatsAppStatus;
+  errorMessage?: string;
+  metadata?: any;
+  sentAt: string;
+};
+
 interface WhatsAppLogStore {
-  logIncoming(message: IncomingLogEntry): Promise<void>;
-  updateStatus(waMessageId: string, status: string, timestamp: number): Promise<void>;
-  isDuplicate(waMessageId: string): Promise<boolean>;
-  getFreeformMessageWindow(phone: string): Promise<FreeformMessageWindow | null>;
-  getConversations(): Promise<ConversationRecord[]>;
+  createWhatsAppLog(
+    params: CreateWhatsAppLogParams,
+  ): Promise<{ record: WhatsAppLogRecord; created: boolean }>;
+
+  getMessageByWaId(waMessageId: string): Promise<WhatsAppLogRecord | null>;
+  updateWhatsAppLogByWaMessageId(
+    waMessageId: string,
+    updates: Partial<WhatsAppLogRecord>,
+  ): Promise<void>;
+  updateStatusIfProgressed(
+    waMessageId: string,
+    newStatus: WhatsAppStatus,
+    updates: Partial<WhatsAppLogRecord>,
+  ): Promise<boolean>;
+  getConversationById(conversationId: string): Promise<ConversationRecord | null>;
   getConversationByPhone(phone: string): Promise<ConversationRecord | null>;
+  getConversations(): Promise<ConversationRecord[]>;
   getMessagesByConversationPaginated(
     conversationId: string,
-    cursor?: string,
+    cursor?: string | null,
     limit?: number,
-  ): Promise<UIMessage[]>;
+  ): Promise<
+    Array<{
+      id: string;
+      phone?: string;
+      content: string | null;
+      direction: string;
+      status: string;
+      sentAt: string;
+      templateName?: string | null;
+      messageType?: string | null;
+      metadata?: any;
+    }>
+  >;
+  hasRecentOutgoingMessage(phone: string, withinHours: number): Promise<boolean>;
 }
 ```
+
+`createWhatsAppLog` must be atomic when `params.waMessageId` is present.
+Incoming webhook deduplication depends on this method inserting the row or
+returning the existing row and `created: false` in one database operation or
+transaction. When `waMessageId` is omitted, return the inserted row with
+`created: true`.
+
+`updateStatusIfProgressed` must be atomic in your database implementation so duplicate or out-of-order webhook status events cannot regress a message.
 
 ## Getting Your Credentials
 

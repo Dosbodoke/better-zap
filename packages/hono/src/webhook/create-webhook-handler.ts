@@ -204,10 +204,9 @@ async function processChange<Env extends Record<string, any>>(
 
 /**
  * Processes a single incoming message:
- * 1. Deduplicates by waMessageId
- * 2. Extracts human-readable content
- * 3. Logs the message for audit trail
- * 4. Calls {@link WebhookConfig.onMessage}
+ * 1. Extracts human-readable content
+ * 2. Atomically logs and deduplicates by waMessageId
+ * 3. Calls {@link WebhookConfig.onMessage}
  */
 async function processIncomingMessage(
   message: IncomingMessage,
@@ -223,15 +222,6 @@ async function processIncomingMessage(
     messageType: message.type,
   });
 
-  // Deduplication: skip if this waMessageId was already logged
-  if (await config.logger.isDuplicate(message.id)) {
-    log.info("webhook.duplicate_ignored", {
-      waMessageId: message.id,
-      phone,
-    });
-    return;
-  }
-
   const content = getMessageContent(message);
   const sentAt = new Date(parseInt(message.timestamp, 10) * 1000);
   const normalizedSentAt = Number.isNaN(sentAt.getTime())
@@ -240,7 +230,7 @@ async function processIncomingMessage(
 
   // Automatic logging (audit trail)
   const { id, type, text, from, timestamp, ...rawMetadata } = message;
-  await config.logger.logIncoming({
+  const created = await config.logger.logIncoming({
     phone,
     waMessageId: message.id,
     content,
@@ -248,6 +238,13 @@ async function processIncomingMessage(
     senderName: contact?.profile?.name,
     metadata: Object.keys(rawMetadata).length > 0 ? rawMetadata : undefined,
   });
+  if (!created) {
+    log.info("webhook.duplicate_ignored", {
+      waMessageId: message.id,
+      phone,
+    });
+    return;
+  }
 
   const ctx: MessageContext = {
     message,

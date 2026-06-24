@@ -7,11 +7,9 @@ const textEncoder = new TextEncoder();
 
 const mockOnMessage = vi.fn();
 const mockOnStatusUpdate = vi.fn();
-const mockDeduplicator = { hasProcessed: vi.fn().mockResolvedValue(false) };
 const mockLogger = {
-  logIncoming: vi.fn().mockResolvedValue(undefined),
+  logIncoming: vi.fn().mockResolvedValue(true),
   updateStatus: vi.fn().mockResolvedValue(true),
-  isDuplicate: mockDeduplicator.hasProcessed,
 };
 const mockLog = {
   debug: vi.fn(),
@@ -152,7 +150,7 @@ describe("createWebhookHandler", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockDeduplicator.hasProcessed.mockResolvedValue(false);
+    mockLogger.logIncoming.mockResolvedValue(true);
     app = createTestApp();
   });
 
@@ -198,14 +196,17 @@ describe("createWebhookHandler", () => {
       );
     });
 
-    it("evaluates deduplicator before onMessage", async () => {
-      mockDeduplicator.hasProcessed.mockResolvedValue(true);
+    it("skips onMessage when incoming logging reports a duplicate", async () => {
+      mockLogger.logIncoming.mockResolvedValue(false);
       const res = await postWebhook(app, makeTextMessage());
+
       expect(res.status).toBe(200);
-      expect(mockDeduplicator.hasProcessed).toHaveBeenCalledWith(
-        "wamid.incoming1",
-      );
+      expect(mockLogger.logIncoming).toHaveBeenCalledOnce();
       expect(mockOnMessage).not.toHaveBeenCalled();
+      expect(mockLog.info).toHaveBeenCalledWith("webhook.duplicate_ignored", {
+        waMessageId: "wamid.incoming1",
+        phone: "5511999887766",
+      });
     });
 
     it("processes status updates", async () => {

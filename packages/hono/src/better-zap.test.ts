@@ -3,6 +3,7 @@ import { defineTemplates } from "better-zap";
 import type {
   BetterZapDatabase,
   ConversationRecord,
+  WhatsAppLogRecord,
   WhatsAppLogStore,
 } from "better-zap";
 import { betterZap } from "./better-zap";
@@ -10,24 +11,35 @@ import { betterZap } from "./better-zap";
 const TEST_META_APP_SECRET = "test-meta-app-secret";
 const textEncoder = new TextEncoder();
 
+type CreateWhatsAppLogParams = Parameters<
+  WhatsAppLogStore["createWhatsAppLog"]
+>[0];
+
+function makeLogRecord(params: CreateWhatsAppLogParams): WhatsAppLogRecord {
+  return {
+    id: params.waMessageId ?? "log-1",
+    conversationId: "conversation-1",
+    phone: params.phone,
+    userId: params.userId ?? null,
+    waMessageId: params.waMessageId ?? null,
+    direction: params.direction,
+    messageType: params.messageType,
+    content: params.content,
+    templateName: params.templateName ?? null,
+    status: params.status,
+    errorMessage: params.errorMessage ?? null,
+    metadata: params.metadata,
+    sentAt: params.sentAt,
+    deliveredAt: null,
+    readAt: null,
+  };
+}
+
 function makeStore(): WhatsAppLogStore {
   return {
     createWhatsAppLog: vi.fn(async (params) => ({
-      id: params.waMessageId ?? "log-1",
-      conversationId: "conversation-1",
-      phone: params.phone,
-      userId: params.userId ?? null,
-      waMessageId: params.waMessageId ?? null,
-      direction: params.direction,
-      messageType: params.messageType,
-      content: params.content,
-      templateName: params.templateName ?? null,
-      status: params.status,
-      errorMessage: params.errorMessage ?? null,
-      metadata: params.metadata,
-      sentAt: params.sentAt,
-      deliveredAt: null,
-      readAt: null,
+      record: makeLogRecord(params),
+      created: true,
     })),
     getMessageByWaId: vi.fn().mockResolvedValue(null),
     updateWhatsAppLogByWaMessageId: vi.fn().mockResolvedValue(undefined),
@@ -552,6 +564,194 @@ describe("betterZap plugins", () => {
       lastIncomingMessageAt: conversation.lastIncomingMessageAt,
       expiresAt: expectedExpiresAt,
     });
+  });
+
+  it("returns 401 and does not send to Meta when app API auth denies text sends", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const zap = betterZap({
+      database: makeDatabase(),
+      config: {
+        token: "token",
+        phoneId: "phone-id",
+        webhookToken: "verify-token",
+        appSecret: TEST_META_APP_SECRET,
+      },
+      authorizeAppRequest: vi.fn().mockResolvedValue(false),
+      webhook: {
+        onMessage: vi.fn().mockResolvedValue(undefined),
+        onStatusUpdate: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+
+    const response = await sendRequest(
+      zap,
+      new Request("http://localhost/api/whatsapp/send/text", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          to: "5511999887766",
+          body: "Hello!",
+        }),
+      }),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(payload).toEqual({ error: "Unauthorized" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("allows app API text sends when app API auth approves", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ messages: [{ id: "wamid.authorized" }] }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const store = makeStore();
+    store.getConversationByPhone = vi
+      .fn()
+      .mockResolvedValue(makeConversationRecord());
+
+    const zap = betterZap({
+      database: makeDatabase({ whatsappLog: store }),
+      config: {
+        token: "token",
+        phoneId: "phone-id",
+        webhookToken: "verify-token",
+        appSecret: TEST_META_APP_SECRET,
+      },
+      authorizeAppRequest: vi.fn().mockResolvedValue(true),
+      webhook: {
+        onMessage: vi.fn().mockResolvedValue(undefined),
+        onStatusUpdate: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+
+    const response = await sendRequest(
+      zap,
+      new Request("http://localhost/api/whatsapp/send/text", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          to: "5511999887766",
+          body: "Hello!",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not run app API auth for signed webhook delivery", async () => {
+    const authorizeAppRequest = vi.fn().mockResolvedValue(false);
+    const onMessage = vi.fn().mockResolvedValue(undefined);
+
+    const zap = betterZap({
+      database: makeDatabase(),
+      config: {
+        token: "token",
+        phoneId: "phone-id",
+        webhookToken: "verify-token",
+        appSecret: TEST_META_APP_SECRET,
+      },
+      authorizeAppRequest,
+      webhook: {
+        onMessage,
+        onStatusUpdate: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+
+    const response = await postWebhook(zap, makeTextMessage());
+
+    expect(response.status).toBe(200);
+    expect(authorizeAppRequest).not.toHaveBeenCalled();
+    expect(onMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips message hooks when atomic incoming logging reports a duplicate", async () => {
+    const store = makeStore();
+    const onMessage = vi.fn().mockResolvedValue(undefined);
+    store.createWhatsAppLog = vi.fn(async (params) => ({
+      record: makeLogRecord(params),
+      created: false,
+    }));
+
+    const zap = betterZap({
+      database: makeDatabase({ whatsappLog: store }),
+      config: {
+        token: "token",
+        phoneId: "phone-id",
+        webhookToken: "verify-token",
+        appSecret: TEST_META_APP_SECRET,
+      },
+      webhook: {
+        onMessage,
+        onStatusUpdate: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+
+    const response = await postWebhook(zap, makeTextMessage());
+
+    expect(response.status).toBe(200);
+    expect(store.createWhatsAppLog).toHaveBeenCalledTimes(1);
+    expect(store.getConversationById).not.toHaveBeenCalled();
+    expect(onMessage).not.toHaveBeenCalled();
+  });
+
+  it("returns 500 and logs when app API auth throws", async () => {
+    const log = vi.fn();
+
+    const zap = betterZap({
+      database: makeDatabase(),
+      config: {
+        token: "token",
+        phoneId: "phone-id",
+        webhookToken: "verify-token",
+        appSecret: TEST_META_APP_SECRET,
+      },
+      authorizeAppRequest: vi.fn().mockRejectedValue(new Error("auth boom")),
+      webhook: {
+        onMessage: vi.fn().mockResolvedValue(undefined),
+        onStatusUpdate: vi.fn().mockResolvedValue(undefined),
+      },
+      logger: {
+        log,
+      },
+    });
+
+    const response = await sendRequest(
+      zap,
+      new Request("http://localhost/api/whatsapp/send/text", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          to: "5511999887766",
+          body: "Hello!",
+        }),
+      }),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(payload).toEqual({ error: "Authorization failed" });
+    expect(log).toHaveBeenCalledWith(
+      "error",
+      "app_api.authorization_failed",
+      expect.objectContaining({
+        message: "auth boom",
+        name: "Error",
+      }),
+    );
   });
 
   it("returns a structured CONTEXT_WINDOW_CLOSED error for text sends outside the window", async () => {

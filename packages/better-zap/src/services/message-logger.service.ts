@@ -54,25 +54,29 @@ export interface WhatsAppLogRecord {
   readAt?: string | null;
 }
 
+export type CreateWhatsAppLogParams = {
+  phone: string;
+  userId?: string;
+  contactName?: string;
+  direction: WhatsAppDirection;
+  messageType: WhatsAppMessageType;
+  content: string;
+  templateName?: string;
+  waMessageId?: string;
+  status: WhatsAppStatus;
+  errorMessage?: string;
+  metadata?: any;
+  sentAt: string;
+};
+
 /**
  * Interface for database persistence of WhatsApp logs.
  * Decouples Better Zap from any specific application database package.
  */
 export interface WhatsAppLogStore {
-  createWhatsAppLog(params: {
-    phone: string;
-    userId?: string;
-    contactName?: string;
-    direction: WhatsAppDirection;
-    messageType: WhatsAppMessageType;
-    content: string;
-    templateName?: string;
-    waMessageId?: string;
-    status: WhatsAppStatus;
-    errorMessage?: string;
-    metadata?: any;
-    sentAt: string;
-  }): Promise<WhatsAppLogRecord>;
+  createWhatsAppLog(
+    params: CreateWhatsAppLogParams,
+  ): Promise<{ record: WhatsAppLogRecord; created: boolean }>;
 
   getMessageByWaId(waMessageId: string): Promise<WhatsAppLogRecord | null>;
 
@@ -202,7 +206,7 @@ export class MessageLoggerService {
     templateName?: string;
     metadata?: Record<string, any>;
   }): Promise<string> {
-    const inserted = await this.store.createWhatsAppLog({
+    const { record: inserted } = await this.store.createWhatsAppLog({
       phone: params.phone,
       userId: params.userId,
       direction: "outgoing",
@@ -293,8 +297,8 @@ export class MessageLoggerService {
     sentAt: string;
     senderName?: string;
     metadata?: Record<string, unknown>;
-  }): Promise<void> {
-    const inserted = await this.store.createWhatsAppLog({
+  }): Promise<boolean> {
+    const { record: inserted, created } = await this.store.createWhatsAppLog({
       phone: params.phone,
       contactName: params.senderName,
       waMessageId: params.waMessageId,
@@ -306,6 +310,10 @@ export class MessageLoggerService {
       sentAt: params.sentAt,
     });
 
+    if (!created) {
+      return false;
+    }
+
     const conversation = await this.getConversationById(inserted.conversationId);
     if (conversation) {
       await this.notify({
@@ -314,5 +322,6 @@ export class MessageLoggerService {
         conversation,
       });
     }
+    return true;
   }
 }
