@@ -37,8 +37,7 @@ function makeLogRecord(params: CreateWhatsAppLogParams): WhatsAppLogRecord {
 
 function makeStore(): WhatsAppLogStore {
   return {
-    createWhatsAppLog: vi.fn(async (params) => makeLogRecord(params)),
-    createWhatsAppLogIfNotExists: vi.fn(async (params) => ({
+    createWhatsAppLog: vi.fn(async (params) => ({
       record: makeLogRecord(params),
       created: true,
     })),
@@ -680,7 +679,7 @@ describe("betterZap plugins", () => {
   it("skips message hooks when atomic incoming logging reports a duplicate", async () => {
     const store = makeStore();
     const onMessage = vi.fn().mockResolvedValue(undefined);
-    store.createWhatsAppLogIfNotExists = vi.fn(async (params) => ({
+    store.createWhatsAppLog = vi.fn(async (params) => ({
       record: makeLogRecord(params),
       created: false,
     }));
@@ -702,7 +701,7 @@ describe("betterZap plugins", () => {
     const response = await postWebhook(zap, makeTextMessage());
 
     expect(response.status).toBe(200);
-    expect(store.createWhatsAppLogIfNotExists).toHaveBeenCalledTimes(1);
+    expect(store.createWhatsAppLog).toHaveBeenCalledTimes(1);
     expect(store.getConversationById).not.toHaveBeenCalled();
     expect(onMessage).not.toHaveBeenCalled();
   });

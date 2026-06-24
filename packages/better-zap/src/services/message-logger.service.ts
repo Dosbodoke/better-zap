@@ -76,10 +76,6 @@ export type CreateWhatsAppLogParams = {
 export interface WhatsAppLogStore {
   createWhatsAppLog(
     params: CreateWhatsAppLogParams,
-  ): Promise<WhatsAppLogRecord>;
-
-  createWhatsAppLogIfNotExists(
-    params: CreateWhatsAppLogParams & { waMessageId: string },
   ): Promise<{ record: WhatsAppLogRecord; created: boolean }>;
 
   getMessageByWaId(waMessageId: string): Promise<WhatsAppLogRecord | null>;
@@ -210,7 +206,7 @@ export class MessageLoggerService {
     templateName?: string;
     metadata?: Record<string, any>;
   }): Promise<string> {
-    const inserted = await this.store.createWhatsAppLog({
+    const { record: inserted } = await this.store.createWhatsAppLog({
       phone: params.phone,
       userId: params.userId,
       direction: "outgoing",
@@ -302,18 +298,17 @@ export class MessageLoggerService {
     senderName?: string;
     metadata?: Record<string, unknown>;
   }): Promise<boolean> {
-    const { record: inserted, created } =
-      await this.store.createWhatsAppLogIfNotExists({
-        phone: params.phone,
-        contactName: params.senderName,
-        waMessageId: params.waMessageId,
-        direction: "incoming",
-        messageType: "incoming",
-        content: params.content,
-        status: "delivered",
-        metadata: params.metadata,
-        sentAt: params.sentAt,
-      });
+    const { record: inserted, created } = await this.store.createWhatsAppLog({
+      phone: params.phone,
+      contactName: params.senderName,
+      waMessageId: params.waMessageId,
+      direction: "incoming",
+      messageType: "incoming",
+      content: params.content,
+      status: "delivered",
+      metadata: params.metadata,
+      sentAt: params.sentAt,
+    });
 
     if (!created) {
       return false;

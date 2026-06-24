@@ -166,10 +166,8 @@ type CreateWhatsAppLogParams = {
 };
 
 interface WhatsAppLogStore {
-  createWhatsAppLog(params: CreateWhatsAppLogParams): Promise<WhatsAppLogRecord>;
-
-  createWhatsAppLogIfNotExists(
-    params: CreateWhatsAppLogParams & { waMessageId: string },
+  createWhatsAppLog(
+    params: CreateWhatsAppLogParams,
   ): Promise<{ record: WhatsAppLogRecord; created: boolean }>;
 
   getMessageByWaId(waMessageId: string): Promise<WhatsAppLogRecord | null>;
@@ -206,10 +204,11 @@ interface WhatsAppLogStore {
 }
 ```
 
-`createWhatsAppLogIfNotExists` must be atomic in your database implementation.
-Incoming webhook deduplication depends on this method inserting the row and
-detecting duplicate `waMessageId` values in one database operation or
-transaction.
+`createWhatsAppLog` must be atomic when `params.waMessageId` is present.
+Incoming webhook deduplication depends on this method inserting the row or
+returning the existing row and `created: false` in one database operation or
+transaction. When `waMessageId` is omitted, return the inserted row with
+`created: true`.
 
 `updateStatusIfProgressed` must be atomic in your database implementation so duplicate or out-of-order webhook status events cannot regress a message.
 

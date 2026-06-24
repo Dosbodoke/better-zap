@@ -510,7 +510,7 @@ var MessageLoggerService = class {
 	* Log outgoing message for LGPD compliance
 	*/
 	async logOutgoing(params) {
-		const inserted = await this.store.createWhatsAppLog({
+		const { record: inserted } = await this.store.createWhatsAppLog({
 			phone: params.phone,
 			userId: params.userId,
 			direction: "outgoing",
@@ -566,7 +566,7 @@ var MessageLoggerService = class {
 	* Log incoming message (for audit trail)
 	*/
 	async logIncoming(params) {
-		const { record: inserted, created } = await this.store.createWhatsAppLogIfNotExists({
+		const { record: inserted, created } = await this.store.createWhatsAppLog({
 			phone: params.phone,
 			contactName: params.senderName,
 			waMessageId: params.waMessageId,

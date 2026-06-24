@@ -172,84 +172,6 @@ export function createD1Store(db: D1Database): WhatsAppLogStore {
     async createWhatsAppLog(params) {
       const conversationId = crypto.randomUUID();
       const messageId = crypto.randomUUID();
-      const lastIncomingAt = params.direction === "incoming" ? params.sentAt : null;
-
-      await db.prepare(`
-        INSERT INTO conversations (
-          id, phone, contact_name, last_message_at, last_message_preview,
-          last_direction, message_count, last_incoming_message_at, unread_count
-        )
-        VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
-        ON CONFLICT(phone) DO UPDATE SET
-          contact_name = COALESCE(excluded.contact_name, conversations.contact_name),
-          last_message_at = excluded.last_message_at,
-          last_message_preview = excluded.last_message_preview,
-          last_direction = excluded.last_direction,
-          message_count = conversations.message_count + 1,
-          last_incoming_message_at = COALESCE(
-            excluded.last_incoming_message_at,
-            conversations.last_incoming_message_at
-          ),
-          unread_count = conversations.unread_count + excluded.unread_count,
-          updated_at = datetime('now')
-      `).bind(
-        conversationId,
-        params.phone,
-        params.contactName ?? null,
-        params.sentAt,
-        params.content,
-        params.direction,
-        lastIncomingAt,
-        params.direction === "incoming" ? 1 : 0,
-      ).run();
-
-      const conversation = await db.prepare(
-        "SELECT id FROM conversations WHERE phone = ?"
-      ).bind(params.phone).first<{ id: string }>();
-
-      await db.prepare(`
-        INSERT INTO messages (
-          id, wa_message_id, conversation_id, phone, user_id, direction,
-          message_type, content, template_name, status, error_message, metadata,
-          sent_at
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).bind(
-        messageId,
-        params.waMessageId ?? null,
-        conversation?.id ?? conversationId,
-        params.phone,
-        params.userId ?? null,
-        params.direction,
-        params.messageType,
-        params.content,
-        params.templateName ?? null,
-        params.status,
-        params.errorMessage ?? null,
-        params.metadata ? JSON.stringify(params.metadata) : null,
-        params.sentAt,
-      ).run();
-
-      return {
-        id: messageId,
-        conversationId: conversation?.id ?? conversationId,
-        userId: params.userId ?? null,
-        phone: params.phone,
-        waMessageId: params.waMessageId ?? null,
-        direction: params.direction,
-        messageType: params.messageType,
-        content: params.content,
-        templateName: params.templateName ?? null,
-        status: params.status,
-        errorMessage: params.errorMessage ?? null,
-        metadata: params.metadata,
-        sentAt: params.sentAt,
-      };
-    },
-
-    async createWhatsAppLogIfNotExists(params) {
-      const conversationId = crypto.randomUUID();
-      const messageId = crypto.randomUUID();
 
       await db.prepare(`
         INSERT INTO conversations (
@@ -281,7 +203,7 @@ export function createD1Store(db: D1Database): WhatsAppLogStore {
         ON CONFLICT(wa_message_id) DO NOTHING
       `).bind(
         messageId,
-        params.waMessageId,
+        params.waMessageId ?? null,
         conversation?.id ?? conversationId,
         params.phone,
         params.userId ?? null,
