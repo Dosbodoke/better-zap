@@ -60,7 +60,7 @@ export function LandingAnimations({ children }: { children: ReactNode }) {
 
             if (desktopIntro.length > 0) {
               introTimeline
-                .addLabel("content", 0.12)
+                .addLabel("content", 0.34)
                 .fromTo(
                   desktopIntro,
                   { autoAlpha: 0, y: 22 },

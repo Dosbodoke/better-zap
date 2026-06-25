@@ -343,7 +343,7 @@ export default function HeroGeometric() {
       </div>
 
       {/* Content */}
-      <div className="relative z-10 w-full flex flex-col items-center justify-center lg:justify-start px-6 py-12 md:py-0 lg:pt-[20vh]">
+      <div className="relative z-10 w-full flex flex-col items-center justify-center lg:justify-start px-6 py-12 md:py-0 lg:pt-[20vh] lg:-translate-y-14">
         <div className="flex flex-col items-center text-center gap-2 md:gap-4 mb-8">
           <h1
             data-hero-item
