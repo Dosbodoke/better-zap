@@ -184,7 +184,7 @@ export function CodeShowcase() {
                     6
                   </span>
                   <span>
-                    {" "}
+                    {"  "}
                     to:{" "}
                     <span className="text-emerald-700">
                       &quot;5511999999999&quot;
@@ -197,7 +197,7 @@ export function CodeShowcase() {
                     7
                   </span>
                   <span>
-                    {" "}
+                    {"  "}
                     template:{" "}
                     <span className="text-emerald-700">
                       &quot;order_confirmation&quot;
@@ -209,19 +209,24 @@ export function CodeShowcase() {
                   <span className="text-zinc-300 select-none w-5 text-right shrink-0">
                     8
                   </span>
-                  <span> components: {"{"}</span>
+                  <span>{"  "}components: {"{"}</span>
                 </span>
                 <span className="flex gap-3">
                   <span className="text-zinc-300 select-none w-5 text-right shrink-0">
                     9
                   </span>
-                  <span> body: {"{ order_id: '123' }"}</span>
+                  <span>
+                    {"    "}body: {"{ "}
+                    order_id:{" "}
+                    <span className="text-emerald-700">&quot;123&quot;</span>
+                    {" }"},
+                  </span>
                 </span>
                 <span className="flex gap-3">
                   <span className="text-zinc-300 select-none w-5 text-right shrink-0">
                     10
                   </span>
-                  <span> {"}"}</span>
+                  <span>{"  },"}</span>
                 </span>
                 <span className="flex gap-3">
                   <span className="text-zinc-300 select-none w-5 text-right shrink-0">
