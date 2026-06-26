@@ -324,4 +324,48 @@ export class MessageLoggerService {
     }
     return true;
   }
+
+  /**
+   * Log an imported WhatsApp message with an explicit direction and timestamp.
+   * Used by coexistence history imports and app echo webhooks where the message
+   * did not originate from the local send API call.
+   */
+  async logImportedMessage(params: {
+    phone: string;
+    waMessageId: string;
+    direction: WhatsAppDirection;
+    content: string;
+    sentAt: string;
+    senderName?: string;
+    messageType?: WhatsAppMessageType;
+    metadata?: Record<string, unknown>;
+  }): Promise<boolean> {
+    const { record: inserted, created } = await this.store.createWhatsAppLog({
+      phone: params.phone,
+      contactName: params.senderName,
+      waMessageId: params.waMessageId,
+      direction: params.direction,
+      messageType:
+        params.messageType ??
+        (params.direction === "incoming" ? "incoming" : "bot_reply"),
+      content: params.content,
+      status: params.direction === "incoming" ? "delivered" : "sent",
+      metadata: params.metadata,
+      sentAt: params.sentAt,
+    });
+
+    if (!created) {
+      return false;
+    }
+
+    const conversation = await this.getConversationById(inserted.conversationId);
+    if (conversation) {
+      await this.notify({
+        type: "NEW_MESSAGE",
+        message: inserted,
+        conversation,
+      });
+    }
+    return true;
+  }
 }

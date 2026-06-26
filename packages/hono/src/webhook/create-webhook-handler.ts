@@ -1,6 +1,12 @@
 import { Hono } from "hono";
-import { serializeError } from "better-zap";
+import { formatPhone, serializeError } from "better-zap";
 import type {
+  BetterZapDatabase,
+  CoexistenceAccountUpdateValue,
+  CoexistenceHistoryValue,
+  CoexistenceSmbAppStateSyncValue,
+  CoexistenceSmbMessageEchoesValue,
+  CoexistenceUnsupportedValue,
   IncomingMessage,
   Logger,
   MessageStatus,
@@ -12,6 +18,7 @@ import type {
   WebhookEntry,
   WebhookError,
   WebhookPayload,
+  WhatsAppDirection,
 } from "better-zap";
 import { verifyMetaWebhookSignature } from "./signature-verification";
 import { getMessageContent } from "./message-content";
@@ -30,15 +37,68 @@ export type WebhookConfig = {
   logger: MessageLoggerService;
   /** Structured logger for operational logging. */
   log: Logger;
+  /** Optional database contracts used for automatic coexistence persistence. */
+  database?: BetterZapDatabase;
   /** Called once per incoming message, after SDK pre-processing. */
   onMessage: (ctx: MessageContext) => Promise<void>;
   /** Called once per delivery status update (sent → delivered → read → failed). */
   onStatusUpdate: (ctx: StatusContext) => Promise<void>;
+  /** Called once per history webhook after SDK pre-processing. */
+  onCoexistenceHistory?: (ctx: CoexistenceHistoryContext) => Promise<void>;
+  /** Called once per SMB app state sync webhook after SDK pre-processing. */
+  onSmbAppStateSync?: (ctx: SmbAppStateSyncContext) => Promise<void>;
+  /** Called once per app message echo webhook after SDK pre-processing. */
+  onSmbMessageEcho?: (ctx: SmbMessageEchoContext) => Promise<void>;
+  /** Called once per coexistence account lifecycle webhook. */
+  onCoexistenceAccountUpdate?: (
+    ctx: CoexistenceAccountUpdateContext,
+  ) => Promise<void>;
+  /** Called when a coexistence webhook contains unsupported/error content. */
+  onCoexistenceUnsupportedMessage?: (
+    ctx: CoexistenceUnsupportedMessageContext,
+  ) => Promise<void>;
   /**
    * Called for Meta platform-level errors.
    * @default Uses the configured {@link WebhookConfig.log} logger's {@code error} method.
    */
   onError?: (error: WebhookError) => void;
+};
+
+export interface CoexistenceHistoryContext {
+  value: CoexistenceHistoryValue;
+  change: WebhookChange;
+  importedMessages: number;
+  duplicateMessages: number;
+}
+
+export interface SmbAppStateSyncContext {
+  value: CoexistenceSmbAppStateSyncValue;
+  change: WebhookChange;
+  upsertedContacts: number;
+  removedContacts: number;
+}
+
+export interface SmbMessageEchoContext {
+  value: CoexistenceSmbMessageEchoesValue;
+  change: WebhookChange;
+  importedMessages: number;
+  duplicateMessages: number;
+}
+
+export interface CoexistenceAccountUpdateContext {
+  value: CoexistenceAccountUpdateValue;
+  change: WebhookChange;
+}
+
+export interface CoexistenceUnsupportedMessageContext {
+  value: CoexistenceHistoryValue | CoexistenceUnsupportedValue;
+  change: WebhookChange;
+  errors: WebhookError[];
+}
+
+type CoexistenceWebhookContact = {
+  profile?: { name?: string };
+  wa_id: string;
 };
 
 // ============================================
@@ -161,10 +221,40 @@ async function processEntry<Env extends Record<string, any>>(
   }
 }
 
-/** Routes messages, statuses, and errors to the appropriate handler. */
+/** Routes webhook changes to field-specific processors. */
 async function processChange<Env extends Record<string, any>>(
   change: WebhookChange,
   env: Env,
+  config: WebhookConfig,
+  log: Logger,
+): Promise<void> {
+  switch (change.field) {
+    case "messages":
+      await processMessagesChange(change, env, config, log);
+      return;
+    case "history":
+      await processHistoryChange(change, config, log);
+      return;
+    case "smb_app_state_sync":
+      await processSmbAppStateSyncChange(change, config, log);
+      return;
+    case "smb_message_echoes":
+      await processSmbMessageEchoesChange(change, config, log);
+      return;
+    case "account_update":
+      await processAccountUpdateChange(change, config, log);
+      return;
+    default:
+      await processMessagesChange(change, env, config, log);
+      log.debug("webhook.unknown_field_ignored", { field: change.field });
+      return;
+  }
+}
+
+/** Routes ordinary messages, statuses, and errors to the existing handlers. */
+async function processMessagesChange<Env extends Record<string, any>>(
+  change: WebhookChange,
+  _env: Env,
   config: WebhookConfig,
   log: Logger,
 ): Promise<void> {
@@ -199,6 +289,337 @@ async function processChange<Env extends Record<string, any>>(
         });
       }
     }
+  }
+}
+
+async function processHistoryChange(
+  change: WebhookChange,
+  config: WebhookConfig,
+  log: Logger,
+): Promise<void> {
+  const value = change.value as CoexistenceHistoryValue;
+  const requestId = value.request_id;
+  let importedMessages = 0;
+  let duplicateMessages = 0;
+  let hasHistoryErrors = (value.errors?.length ?? 0) > 0;
+
+  if (requestId && config.database?.coexistence) {
+    await config.database.coexistence.updateSyncJobByRequestId(requestId, {
+      status: "processing",
+      metadata: { field: "history" },
+    });
+  }
+
+  if (value.errors && value.errors.length > 0) {
+    await processCoexistenceErrors(change, value, config, log);
+  }
+
+  for (const chunk of value.history ?? []) {
+    if (chunk.errors && chunk.errors.length > 0) {
+      hasHistoryErrors = true;
+      await processCoexistenceErrors(
+        change,
+        { ...value, errors: chunk.errors },
+        config,
+        log,
+      );
+    }
+
+    for (const message of chunk.messages ?? []) {
+      const result = await importCoexistenceMessage({
+        message,
+        contacts: value.contacts,
+        metadata: value.metadata,
+        requestId,
+        source: "history",
+        config,
+      });
+
+      if (result === "created") {
+        importedMessages += 1;
+      } else if (result === "duplicate") {
+        duplicateMessages += 1;
+      }
+    }
+
+    for (const status of chunk.statuses ?? []) {
+      await processStatusUpdate(status, config, log);
+    }
+  }
+
+  if (requestId && config.database?.coexistence) {
+    await config.database.coexistence.updateSyncJobByRequestId(requestId, {
+      status: hasHistoryErrors ? "failed" : "completed",
+      metadata: {
+        field: "history",
+        importedMessages,
+        duplicateMessages,
+      },
+    });
+  }
+
+  await runOptionalHook(
+    () =>
+      config.onCoexistenceHistory?.({
+        value,
+        change,
+        importedMessages,
+        duplicateMessages,
+      }),
+    "webhook.on_coexistence_history_hook_failed",
+    log,
+  );
+}
+
+async function processSmbAppStateSyncChange(
+  change: WebhookChange,
+  config: WebhookConfig,
+  log: Logger,
+): Promise<void> {
+  const value = change.value as CoexistenceSmbAppStateSyncValue;
+  let upsertedContacts = 0;
+  let removedContacts = 0;
+
+  if (value.request_id && config.database?.coexistence) {
+    await config.database.coexistence.updateSyncJobByRequestId(value.request_id, {
+      status: "processing",
+      metadata: { field: "smb_app_state_sync" },
+    });
+  }
+
+  if (config.database?.coexistence) {
+    for (const contact of value.contacts ?? []) {
+      if (contact.removed) {
+        await config.database.coexistence.removeContact({
+          waId: contact.wa_id,
+          phoneNumberId: value.metadata?.phone_number_id,
+        });
+        removedContacts += 1;
+        continue;
+      }
+
+      await config.database.coexistence.upsertContact({
+        waId: contact.wa_id,
+        phoneNumberId: value.metadata?.phone_number_id,
+        displayName: contact.profile?.name,
+        removed: false,
+        updatedAt: new Date().toISOString(),
+        metadata: contact,
+      });
+      upsertedContacts += 1;
+    }
+  }
+
+  if (value.request_id && config.database?.coexistence) {
+    await config.database.coexistence.updateSyncJobByRequestId(value.request_id, {
+      status: "completed",
+      metadata: {
+        field: "smb_app_state_sync",
+        upsertedContacts,
+        removedContacts,
+      },
+    });
+  }
+
+  await runOptionalHook(
+    () =>
+      config.onSmbAppStateSync?.({
+        value,
+        change,
+        upsertedContacts,
+        removedContacts,
+      }),
+    "webhook.on_smb_app_state_sync_hook_failed",
+    log,
+  );
+}
+
+async function processSmbMessageEchoesChange(
+  change: WebhookChange,
+  config: WebhookConfig,
+  log: Logger,
+): Promise<void> {
+  const value = change.value as CoexistenceSmbMessageEchoesValue;
+  let importedMessages = 0;
+  let duplicateMessages = 0;
+
+  for (const message of value.messages ?? []) {
+    const result = await importCoexistenceMessage({
+      message,
+      contacts: value.contacts,
+      metadata: value.metadata,
+      source: "smb_message_echoes",
+      forceDirection: "outgoing",
+      config,
+    });
+
+    if (result === "created") {
+      importedMessages += 1;
+    } else if (result === "duplicate") {
+      duplicateMessages += 1;
+    }
+  }
+
+  await runOptionalHook(
+    () =>
+      config.onSmbMessageEcho?.({
+        value,
+        change,
+        importedMessages,
+        duplicateMessages,
+      }),
+    "webhook.on_smb_message_echo_hook_failed",
+    log,
+  );
+}
+
+async function processAccountUpdateChange(
+  change: WebhookChange,
+  config: WebhookConfig,
+  log: Logger,
+): Promise<void> {
+  const value = change.value as CoexistenceAccountUpdateValue;
+
+  if (config.database?.coexistence) {
+    await config.database.coexistence.recordLifecycleEvent({
+      wabaId: value.waba_info?.waba_id,
+      phoneNumberId: value.phone_number_id,
+      accountId: value.waba_info?.owner_business_id,
+      event: value.event ?? "account_update",
+      payload: value,
+      createdAt: new Date().toISOString(),
+    });
+  }
+
+  await runOptionalHook(
+    () => config.onCoexistenceAccountUpdate?.({ value, change }),
+    "webhook.on_coexistence_account_update_hook_failed",
+    log,
+  );
+}
+
+async function processCoexistenceErrors(
+  change: WebhookChange,
+  value: CoexistenceHistoryValue | CoexistenceUnsupportedValue,
+  config: WebhookConfig,
+  log: Logger,
+): Promise<void> {
+  const errors = value.errors ?? [];
+  const requestId =
+    "request_id" in value && typeof value.request_id === "string"
+      ? value.request_id
+      : undefined;
+
+  if (requestId && config.database?.coexistence) {
+    await config.database.coexistence.updateSyncJobByRequestId(requestId, {
+      status: "failed",
+      metadata: {
+        field: change.field,
+        errors,
+        isHistoryOptOut: errors.some((error) => error.code === 2593109),
+      },
+    });
+  }
+
+  await runOptionalHook(
+    () =>
+      config.onCoexistenceUnsupportedMessage?.({
+        value,
+        change,
+        errors,
+      }),
+    "webhook.on_coexistence_unsupported_hook_failed",
+    log,
+  );
+}
+
+async function importCoexistenceMessage(input: {
+  message: IncomingMessage;
+  contacts?: CoexistenceWebhookContact[];
+  metadata?: { display_phone_number?: string; phone_number_id?: string };
+  requestId?: string;
+  source: "history" | "smb_message_echoes";
+  forceDirection?: WhatsAppDirection;
+  config: WebhookConfig;
+}): Promise<"created" | "duplicate" | "skipped"> {
+  if (!input.config.database?.coexistence) {
+    return "skipped";
+  }
+
+  const direction =
+    input.forceDirection ??
+    resolveMessageDirection(input.message, input.metadata?.display_phone_number);
+  const contact = resolveCoexistenceContact(input.contacts, input.message);
+  const phone = resolveConversationPhone(input.message, direction, contact);
+  const created = await input.config.logger.logImportedMessage({
+    phone,
+    waMessageId: input.message.id,
+    direction,
+    content: getMessageContent(input.message),
+    sentAt: parseWebhookTimestamp(input.message.timestamp),
+    senderName: contact?.profile?.name,
+    metadata: {
+      source: input.source,
+      requestId: input.requestId,
+      phoneNumberId: input.metadata?.phone_number_id,
+      raw: input.message,
+    },
+  });
+
+  return created ? "created" : "duplicate";
+}
+
+function resolveMessageDirection(
+  message: IncomingMessage,
+  businessDisplayPhoneNumber: string | undefined,
+): WhatsAppDirection {
+  if (!businessDisplayPhoneNumber) {
+    return "incoming";
+  }
+
+  return formatPhone(message.from) === formatPhone(businessDisplayPhoneNumber)
+    ? "outgoing"
+    : "incoming";
+}
+
+function resolveConversationPhone(
+  message: IncomingMessage,
+  direction: WhatsAppDirection,
+  contact: CoexistenceWebhookContact | undefined,
+): string {
+  if (direction === "incoming") {
+    return message.from;
+  }
+
+  const messageWithRecipient = message as IncomingMessage & {
+    to?: string;
+    recipient_id?: string;
+  };
+
+  return (
+    messageWithRecipient.to ??
+    messageWithRecipient.recipient_id ??
+    contact?.wa_id ??
+    message.from
+  );
+}
+
+function parseWebhookTimestamp(timestamp: string): string {
+  const sentAt = new Date(parseInt(timestamp, 10) * 1000);
+  return Number.isNaN(sentAt.getTime())
+    ? new Date().toISOString()
+    : sentAt.toISOString();
+}
+
+async function runOptionalHook(
+  run: () => Promise<void> | undefined,
+  logEvent: string,
+  log: Logger,
+): Promise<void> {
+  try {
+    await run();
+  } catch (error) {
+    log.error(logEvent, serializeError(error));
   }
 }
 
@@ -318,6 +739,16 @@ function resolveContact(
   contacts: WebhookContact[] | undefined,
   message: IncomingMessage,
 ): WebhookContact | undefined {
+  if (!contacts || contacts.length === 0) {
+    return undefined;
+  }
+  return contacts.find((c) => c.wa_id === message.from) ?? contacts[0];
+}
+
+function resolveCoexistenceContact(
+  contacts: CoexistenceWebhookContact[] | undefined,
+  message: IncomingMessage,
+): CoexistenceWebhookContact | undefined {
   if (!contacts || contacts.length === 0) {
     return undefined;
   }

@@ -114,6 +114,7 @@ export function betterZap<
     appSecret: config.appSecret,
     logger,
     log,
+    database,
     onMessage: async (ctx) => {
       const hookContext = {
         ...ctx,
@@ -148,6 +149,41 @@ export function betterZap<
         hookContext as StatusContext &
           BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>,
       );
+    },
+    onCoexistenceHistory: async (ctx) => {
+      await webhookHooks.onCoexistenceHistory?.({
+        ...ctx,
+        ...pluginRuntime.context,
+      } as typeof ctx &
+        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>);
+    },
+    onSmbAppStateSync: async (ctx) => {
+      await webhookHooks.onSmbAppStateSync?.({
+        ...ctx,
+        ...pluginRuntime.context,
+      } as typeof ctx &
+        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>);
+    },
+    onSmbMessageEcho: async (ctx) => {
+      await webhookHooks.onSmbMessageEcho?.({
+        ...ctx,
+        ...pluginRuntime.context,
+      } as typeof ctx &
+        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>);
+    },
+    onCoexistenceAccountUpdate: async (ctx) => {
+      await webhookHooks.onCoexistenceAccountUpdate?.({
+        ...ctx,
+        ...pluginRuntime.context,
+      } as typeof ctx &
+        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>);
+    },
+    onCoexistenceUnsupportedMessage: async (ctx) => {
+      await webhookHooks.onCoexistenceUnsupportedMessage?.({
+        ...ctx,
+        ...pluginRuntime.context,
+      } as typeof ctx &
+        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>);
     },
   });
 
