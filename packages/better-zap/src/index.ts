@@ -18,6 +18,7 @@ export type {
   WebhookPayload,
   WebhookEntry,
   WebhookChange,
+  WhatsAppWebhookField,
   WebhookValue,
   WebhookContact,
   IncomingMessage,
@@ -31,6 +32,51 @@ export type {
   UIMessage,
   UIMessageStatus,
 } from "./types/whatsapp.types";
+
+export type {
+  CoexistenceAccountUpdateValue,
+  CoexistenceAccountUpdateWebhook,
+  CoexistenceConnectedAccountIdentifiers,
+  CoexistenceConnectedAccountRecord,
+  CoexistenceContactRecord,
+  CoexistenceCredentialProvider,
+  CoexistenceEmbeddedSignupConfig,
+  CoexistenceEmbeddedSignupConfigInput,
+  CoexistenceEmbeddedSignupSetup,
+  CoexistenceErrorValue,
+  CoexistenceErrorWebhook,
+  CoexistenceFeatureType,
+  CoexistenceGraphResult,
+  CoexistenceHistoryValue,
+  CoexistenceHistoryWebhook,
+  CoexistenceLifecycleEventRecord,
+  CoexistenceMessageEditValue,
+  CoexistenceMessageEditWebhook,
+  CoexistenceMessageRevokeValue,
+  CoexistenceMessageRevokeWebhook,
+  CoexistenceOnboardingSessionRecord,
+  CoexistencePhoneStatusResponse,
+  CoexistenceRawEventStatusRecord,
+  CoexistenceSessionEventPayload,
+  CoexistenceSessionInfoVersion,
+  CoexistenceSmbAppStateSyncValue,
+  CoexistenceSmbAppStateSyncWebhook,
+  CoexistenceSmbMessageEchoesValue,
+  CoexistenceSmbMessageEchoesWebhook,
+  CoexistenceStore,
+  CoexistenceSyncJobRecord,
+  CoexistenceSyncRequest,
+  CoexistenceSyncResponse,
+  CoexistenceSyncType,
+  CoexistenceTokenExchangeResult,
+  CoexistenceUnsupportedValue,
+  CoexistenceUnsupportedWebhook,
+  CoexistenceWebhookBase,
+  CoexistenceWebhookPayload,
+  CoexistenceWebhookValueBase,
+  MetaAccessTokenProvider,
+  MetaGraphApiErrorBody,
+} from "./types/coexistence.types";
 
 export {
   FREEFORM_MESSAGE_WINDOW_MS,
@@ -66,6 +112,11 @@ export {
   type ZapClient,
 } from "./client";
 export { WhatsAppService, type OutgoingLoggingMetadata } from "./services/whatsapp.service";
+export {
+  CoexistenceService,
+  type CoexistenceServiceConfig,
+} from "./services/coexistence.service";
+export { createCoexistenceEmbeddedSignupConfig } from "./coexistence";
 export {
   MessageLoggerService,
   WHATSAPP_MESSAGE_TYPES,
