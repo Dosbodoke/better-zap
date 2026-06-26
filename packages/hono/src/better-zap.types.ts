@@ -12,6 +12,13 @@ import type {
   StatusContext,
   TemplateRegistry,
 } from "better-zap";
+import type {
+  CoexistenceAccountUpdateContext,
+  CoexistenceHistoryContext,
+  CoexistenceUnsupportedMessageContext,
+  SmbAppStateSyncContext,
+  SmbMessageEchoContext,
+} from "./webhook/create-webhook-handler";
 
 export type BetterZapAuthorizeAppRequest = (input: {
   request: Request;
@@ -36,6 +43,26 @@ export interface BetterZapConfig<
     ) => Promise<void>;
     onStatusUpdate: (
       ctx: StatusContext &
+        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>,
+    ) => Promise<void>;
+    onCoexistenceHistory?: (
+      ctx: CoexistenceHistoryContext &
+        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>,
+    ) => Promise<void>;
+    onSmbAppStateSync?: (
+      ctx: SmbAppStateSyncContext &
+        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>,
+    ) => Promise<void>;
+    onSmbMessageEcho?: (
+      ctx: SmbMessageEchoContext &
+        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>,
+    ) => Promise<void>;
+    onCoexistenceAccountUpdate?: (
+      ctx: CoexistenceAccountUpdateContext &
+        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>,
+    ) => Promise<void>;
+    onCoexistenceUnsupportedMessage?: (
+      ctx: CoexistenceUnsupportedMessageContext &
         BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>,
     ) => Promise<void>;
   };
