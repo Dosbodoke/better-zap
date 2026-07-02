@@ -1,0 +1,54 @@
+name: Nightly
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to publish as a nightly snapshot
+        required: true
+        default: coex
+  push:
+    branches:
+      - coex
+  schedule:
+    # 05:17 UTC daily. Scheduled workflows run from the default branch, so the
+    # checkout step below explicitly publishes the coex branch by default.
+    - cron: "17 5 * * *"
+
+concurrency:
+  group: nightly-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  publish-nightly:
+    if: github.repository == 'Dosbodoke/better-zap'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      NIGHTLY_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.event_name == 'schedule' && 'coex' || github.ref }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.NIGHTLY_REF }}
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm typecheck
+      - run: pnpm landing:typecheck
+      - run: pnpm test
+      - run: pnpm pack:check
+      - run: pnpm version-packages:nightly
+      - run: pnpm release:publish:nightly
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: true

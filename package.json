@@ -11,8 +11,10 @@
     "release:check": "pnpm build && pnpm typecheck && pnpm landing:typecheck && pnpm test && pnpm pack:check && pnpm changeset status --verbose",
     "changeset": "changeset",
     "version-packages": "changeset version",
+    "version-packages:nightly": "changeset version --snapshot nightly",
     "release:publish": "changeset publish",
-    "release:publish:next": "changeset publish --tag next"
+    "release:publish:next": "changeset publish --tag next",
+    "release:publish:nightly": "changeset publish --tag nightly --no-git-tag"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.6",
