@@ -3,6 +3,11 @@
   "version": "0.1.0",
   "description": "Framework-agnostic Better Zap core for typed WhatsApp integrations.",
   "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Dosbodoke/better-zap",
+    "directory": "packages/better-zap"
+  },
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
