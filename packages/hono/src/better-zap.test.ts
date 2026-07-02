@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { defineTemplates } from "better-zap";
 import type {
   BetterZapDatabase,
+  CoexistenceStore,
   ConversationRecord,
   WhatsAppLogRecord,
   WhatsAppLogStore,
@@ -77,6 +78,20 @@ function makeDatabase(overrides: Record<string, unknown> = {}) {
     whatsappLog: makeStore(),
     ...overrides,
   } satisfies BetterZapDatabase;
+}
+
+function makeCoexistenceStore(): CoexistenceStore {
+  return {
+    upsertConnectedAccount: vi.fn().mockResolvedValue(undefined),
+    getConnectedAccountByWabaId: vi.fn().mockResolvedValue(null),
+    getConnectedAccountByPhoneNumberId: vi.fn().mockResolvedValue(null),
+    recordOnboardingSession: vi.fn().mockResolvedValue(undefined),
+    createSyncJob: vi.fn().mockResolvedValue(undefined),
+    updateSyncJobByRequestId: vi.fn().mockResolvedValue(undefined),
+    upsertContact: vi.fn().mockResolvedValue(undefined),
+    removeContact: vi.fn().mockResolvedValue(undefined),
+    recordLifecycleEvent: vi.fn().mockResolvedValue(undefined),
+  };
 }
 
 function makeWebhookPayload(overrides: Record<string, unknown> = {}) {
@@ -752,6 +767,363 @@ describe("betterZap plugins", () => {
         name: "Error",
       }),
     );
+  });
+
+  it("returns 501 for coexistence app routes when coexistence is not configured", async () => {
+    const zap = betterZap({
+      database: makeDatabase(),
+      config: {
+        token: "token",
+        phoneId: "phone-id",
+        webhookToken: "verify-token",
+        appSecret: TEST_META_APP_SECRET,
+      },
+      webhook: {
+        onMessage: vi.fn().mockResolvedValue(undefined),
+        onStatusUpdate: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+
+    const response = await sendRequest(
+      zap,
+      new Request(
+        "http://localhost/api/whatsapp/coexistence/phone-numbers/phone_123/status",
+      ),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(501);
+    expect(payload).toEqual({ error: "Coexistence routes are not configured" });
+  });
+
+  it("records embedded signup callbacks and connected accounts", async () => {
+    const coexistenceStore = makeCoexistenceStore();
+    const service = {
+      exchangeEmbeddedSignupCode: vi.fn().mockResolvedValue({
+        success: true,
+        data: {
+          accessToken: "user-access-token",
+          tokenType: "bearer",
+          raw: { access_token: "user-access-token" },
+        },
+      }),
+    };
+    const session = {
+      event: "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING",
+      data: {
+        waba_id: "waba_123",
+        business_id: "business_123",
+        phone_number_id: "phone_123",
+        display_phone_number: "+15551234567",
+        code: "embedded-signup-code",
+      },
+    };
+
+    const zap = betterZap({
+      database: makeDatabase({ coexistence: coexistenceStore }),
+      config: {
+        token: "token",
+        phoneId: "phone-id",
+        webhookToken: "verify-token",
+        appSecret: TEST_META_APP_SECRET,
+      },
+      coexistence: {
+        service: service as any,
+      },
+      webhook: {
+        onMessage: vi.fn().mockResolvedValue(undefined),
+        onStatusUpdate: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+
+    const response = await sendRequest(
+      zap,
+      new Request(
+        "http://localhost/api/whatsapp/coexistence/embedded-signup/callback",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            code: "embedded-signup-code",
+            redirectUri: "https://example.com/coexistence/callback",
+            session,
+          }),
+        },
+      ),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toMatchObject({
+      success: true,
+      session,
+    });
+    expect(payload).not.toHaveProperty("token");
+    expect(JSON.stringify(payload)).not.toContain("user-access-token");
+    expect(service.exchangeEmbeddedSignupCode).toHaveBeenCalledWith({
+      code: "embedded-signup-code",
+      redirectUri: "https://example.com/coexistence/callback",
+    });
+    expect(coexistenceStore.recordOnboardingSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING",
+        accountId: "business_123",
+        wabaId: "waba_123",
+        phoneNumberId: "phone_123",
+        payload: session,
+      }),
+    );
+    expect(coexistenceStore.upsertConnectedAccount).toHaveBeenCalledWith(
+      expect.objectContaining({
+        wabaId: "waba_123",
+        businessId: "business_123",
+        accountId: "business_123",
+        phoneNumberId: "phone_123",
+        displayPhoneNumber: "+15551234567",
+        metadata: { onboardingEvent: "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING" },
+      }),
+    );
+    expect(
+      JSON.stringify(
+        (coexistenceStore.upsertConnectedAccount as any).mock.calls[0]?.[0],
+      ),
+    ).not.toContain("user-access-token");
+  });
+
+  it("returns 501 for embedded signup callbacks when coexistence storage is missing", async () => {
+    const service = {
+      exchangeEmbeddedSignupCode: vi.fn(),
+    };
+    const zap = betterZap({
+      database: makeDatabase(),
+      config: {
+        token: "token",
+        phoneId: "phone-id",
+        webhookToken: "verify-token",
+        appSecret: TEST_META_APP_SECRET,
+      },
+      coexistence: {
+        service: service as any,
+      },
+      webhook: {
+        onMessage: vi.fn().mockResolvedValue(undefined),
+        onStatusUpdate: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+
+    const response = await sendRequest(
+      zap,
+      new Request(
+        "http://localhost/api/whatsapp/coexistence/embedded-signup/callback",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: "code", session: { event: "event" } }),
+        },
+      ),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(501);
+    expect(payload).toEqual({ error: "Coexistence storage is not configured" });
+    expect(service.exchangeEmbeddedSignupCode).not.toHaveBeenCalled();
+  });
+
+  it("returns normalized coexistence phone status", async () => {
+    const service = {
+      getPhoneStatus: vi.fn().mockResolvedValue({
+        success: true,
+        data: {
+          id: "phone_123",
+          is_on_biz_app: true,
+          platform_type: "CLOUD_API",
+        },
+      }),
+    };
+    const zap = betterZap({
+      database: makeDatabase(),
+      config: {
+        token: "token",
+        phoneId: "phone-id",
+        webhookToken: "verify-token",
+        appSecret: TEST_META_APP_SECRET,
+      },
+      coexistence: {
+        service: service as any,
+      },
+      webhook: {
+        onMessage: vi.fn().mockResolvedValue(undefined),
+        onStatusUpdate: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+
+    const response = await sendRequest(
+      zap,
+      new Request(
+        "http://localhost/api/whatsapp/coexistence/phone-numbers/phone_123/status",
+      ),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toEqual({
+      id: "phone_123",
+      is_on_biz_app: true,
+      platform_type: "CLOUD_API",
+    });
+    expect(service.getPhoneStatus).toHaveBeenCalledWith({
+      phoneNumberId: "phone_123",
+    });
+  });
+
+  it("requests contacts sync and persists the returned request id", async () => {
+    const coexistenceStore = makeCoexistenceStore();
+    let graphRequestBody: Record<string, any> | null = null;
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      graphRequestBody = JSON.parse(String(init?.body));
+      return new Response(
+        JSON.stringify({ success: true, request_id: "contacts_request_123" }),
+        { status: 200 },
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const zap = betterZap({
+      database: makeDatabase({ coexistence: coexistenceStore }),
+      config: {
+        token: "token",
+        phoneId: "phone-id",
+        webhookToken: "verify-token",
+        appSecret: TEST_META_APP_SECRET,
+      },
+      coexistence: {
+        accessToken: "coexistence-access-token",
+        graphBaseUrl: "https://graph.example.test",
+      },
+      webhook: {
+        onMessage: vi.fn().mockResolvedValue(undefined),
+        onStatusUpdate: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+
+    const response = await sendRequest(
+      zap,
+      new Request(
+        "http://localhost/api/whatsapp/coexistence/phone-numbers/phone_123/sync/contacts",
+        { method: "POST" },
+      ),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toEqual({
+      success: true,
+      request_id: "contacts_request_123",
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://graph.example.test/v25.0/phone_123/smb_app_data",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          Authorization: "Bearer coexistence-access-token",
+        }),
+      }),
+    );
+    expect(graphRequestBody).toEqual({ sync_type: "smb_app_state_sync" });
+    expect(coexistenceStore.createSyncJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestId: "contacts_request_123",
+        syncType: "smb_app_state_sync",
+        phoneNumberId: "phone_123",
+        status: "requested",
+      }),
+    );
+  });
+
+  it("requests history sync without creating a fake sync job when request id is absent", async () => {
+    const coexistenceStore = makeCoexistenceStore();
+    let graphRequestBody: Record<string, any> | null = null;
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      graphRequestBody = JSON.parse(String(init?.body));
+      return new Response(JSON.stringify({ success: true }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const zap = betterZap({
+      database: makeDatabase({ coexistence: coexistenceStore }),
+      config: {
+        token: "token",
+        phoneId: "phone-id",
+        webhookToken: "verify-token",
+        appSecret: TEST_META_APP_SECRET,
+      },
+      coexistence: {
+        accessToken: "coexistence-access-token",
+        graphBaseUrl: "https://graph.example.test",
+      },
+      webhook: {
+        onMessage: vi.fn().mockResolvedValue(undefined),
+        onStatusUpdate: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+
+    const response = await sendRequest(
+      zap,
+      new Request(
+        "http://localhost/api/whatsapp/coexistence/phone-numbers/phone_123/sync/history",
+        { method: "POST" },
+      ),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toEqual({ success: true });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://graph.example.test/v25.0/phone_123/smb_app_data",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          Authorization: "Bearer coexistence-access-token",
+        }),
+      }),
+    );
+    expect(graphRequestBody).toEqual({ sync_type: "history" });
+    expect(coexistenceStore.createSyncJob).not.toHaveBeenCalled();
+  });
+
+  it("rejects unauthorized coexistence app route requests", async () => {
+    const service = {
+      getPhoneStatus: vi.fn(),
+    };
+    const zap = betterZap({
+      database: makeDatabase(),
+      config: {
+        token: "token",
+        phoneId: "phone-id",
+        webhookToken: "verify-token",
+        appSecret: TEST_META_APP_SECRET,
+      },
+      coexistence: {
+        service: service as any,
+      },
+      authorizeAppRequest: vi.fn().mockResolvedValue(false),
+      webhook: {
+        onMessage: vi.fn().mockResolvedValue(undefined),
+        onStatusUpdate: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+
+    const response = await sendRequest(
+      zap,
+      new Request(
+        "http://localhost/api/whatsapp/coexistence/phone-numbers/phone_123/status",
+      ),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(payload).toEqual({ error: "Unauthorized" });
+    expect(service.getPhoneStatus).not.toHaveBeenCalled();
   });
 
   it("returns a structured CONTEXT_WINDOW_CLOSED error for text sends outside the window", async () => {

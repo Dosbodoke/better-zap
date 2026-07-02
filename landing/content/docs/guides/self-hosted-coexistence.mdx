@@ -1,0 +1,101 @@
+---
+title: Self-Hosted Coexistence
+description: Configure WhatsApp Business App coexistence routes in a self-hosted Hono app.
+---
+
+WhatsApp Business App coexistence lets an approved Meta app connect a phone
+number that remains usable in the WhatsApp Business App. In self-hosted Better
+Zap, your server owns the Embedded Signup callback, token exchange, storage, and
+sync requests. Better Zap only provides the Hono routes and core Graph helpers.
+
+## Requirements
+
+Coexistence is partner-gated by Meta. Your Meta app must have the capabilities
+and permissions required for WhatsApp Business App coexistence before these
+routes can complete onboarding or sync data.
+
+Use Embedded Signup v4. The signup config must request the coexistence feature:
+
+```ts
+import { createCoexistenceEmbeddedSignupConfig } from "better-zap";
+
+const embeddedSignupConfig = createCoexistenceEmbeddedSignupConfig({
+  configId: "your_embedded_signup_config_id",
+});
+```
+
+This helper sets `featureType` to
+`"whatsapp_business_app_onboarding"` and uses the coexistence session info
+format. Do not run normal Cloud API phone-number registration for coexistence
+numbers; the phone number stays connected to the WhatsApp Business App.
+
+## Configure Hono
+
+Enable the app routes with `coexistence`. Webhook persistence still belongs
+under `database.coexistence`, so use the same store for onboarding sessions,
+connected accounts, sync jobs, contact updates, and lifecycle events.
+
+```ts
+import { betterZap } from "@better-zap/hono";
+
+export default {
+  fetch(request: Request, env: Env, ctx: ExecutionContext) {
+    const zap = betterZap({
+      database: {
+        whatsappLog: createWhatsAppLogStore(env.DB),
+        coexistence: createCoexistenceStore(env.DB),
+      },
+      config: {
+        token: env.WHATSAPP_TOKEN,
+        phoneId: env.WHATSAPP_PHONE_ID,
+        webhookToken: env.WHATSAPP_WEBHOOK_TOKEN,
+        appSecret: env.META_APP_SECRET,
+      },
+      coexistence: {
+        appId: env.META_APP_ID,
+        appSecret: env.META_APP_SECRET,
+        credentials: createCredentialProvider(env),
+      },
+      authorizeAppRequest: ({ request }) => isAllowedAppRequest(request, env),
+      webhook: {
+        onMessage: async () => {},
+        onStatusUpdate: async () => {},
+      },
+    });
+
+    return zap.handler(request, env, ctx);
+  },
+};
+```
+
+`credentials` should exchange Embedded Signup codes and own access-token custody
+for the WABA or phone number. The self-hosted callback route does not return or
+store access tokens in the generic coexistence account record. For simpler
+deployments, you can provide `accessToken` directly, but production apps usually
+need a credential provider or application-specific vault that stores per-account
+tokens.
+
+## App Routes
+
+These are server application routes, not Meta webhook routes. Protect them with
+`authorizeAppRequest`.
+
+| Route | Purpose |
+| --- | --- |
+| `POST /api/whatsapp/coexistence/embedded-signup/callback` | Exchanges the Embedded Signup `code`, records the session, and stores the connected WABA and phone number when present. |
+| `GET /api/whatsapp/coexistence/phone-numbers/:phoneNumberId/status` | Reads `is_on_biz_app` and `platform_type` from Meta Graph. |
+| `POST /api/whatsapp/coexistence/phone-numbers/:phoneNumberId/sync/contacts` | Requests `smb_app_state_sync` through `smb_app_data`. |
+| `POST /api/whatsapp/coexistence/phone-numbers/:phoneNumberId/sync/history` | Requests historical message sync through `smb_app_data`. |
+
+After onboarding, request contact and history sync within 24 hours. Meta allows
+each sync type only once per onboarding, so store returned `request_id` values in
+`database.coexistence.createSyncJob` and process the matching webhook deliveries
+through your coexistence store.
+
+## Managed vs Self-Hosted
+
+The managed Better Zap service can own hosted callbacks, credential storage,
+operator UI, and account lifecycle automation. In the self-hosted path, those
+responsibilities stay in your application. You provide authorization, storage,
+token management, and operational controls while reusing the same
+`CoexistenceService` methods used by the Hono routes.

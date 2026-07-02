@@ -1,5 +1,9 @@
 import { Hono } from "hono";
-import { MessageLoggerService, WhatsAppService } from "better-zap";
+import {
+  CoexistenceService,
+  MessageLoggerService,
+  WhatsAppService,
+} from "better-zap";
 import type {
   BetterZapContext,
   BetterZapCoreContext,
@@ -24,13 +28,27 @@ import {
   serializeError,
   serializeTemplateFromRegistry,
 } from "better-zap";
-import type { BetterZap, BetterZapApi, BetterZapConfig } from "./better-zap.types";
+import type {
+  BetterZap,
+  BetterZapApi,
+  BetterZapConfig,
+} from "./better-zap.types";
 import {
   initializePlugins,
   runPluginMessageHooks,
   runPluginStatusHooks,
 } from "./plugins/runtime";
-import type { Conversation, SendInteractiveMediaCarouselData, UIMessage } from "better-zap";
+import type {
+  Conversation,
+  SendInteractiveMediaCarouselData,
+  UIMessage,
+} from "better-zap";
+import {
+  handleContactsSync,
+  handleEmbeddedSignupCallback,
+  handleHistorySync,
+  handlePhoneStatus,
+} from "./handler/coexistence";
 import {
   handleGetConversation,
   handleGetMessages,
@@ -88,6 +106,19 @@ export function betterZap<
     createConversationSyncNotifier(conversationSync),
   );
   const whatsapp = new WhatsAppService(config, logger, log);
+  const coexistence =
+    options.coexistence && options.coexistence.enabled !== false
+      ? options.coexistence.service ??
+        new CoexistenceService({
+          accessToken: options.coexistence.accessToken,
+          appId: options.coexistence.appId,
+          appSecret: options.coexistence.appSecret,
+          graphApiVersion: options.coexistence.graphApiVersion,
+          graphBaseUrl: options.coexistence.graphBaseUrl,
+          fetch: options.coexistence.fetch,
+          credentialProvider: options.coexistence.credentials,
+        })
+      : undefined;
 
   const coreContext: BetterZapCoreContext<TDatabase> = {
     db: database,
@@ -193,6 +224,8 @@ export function betterZap<
     c.set("whatsapp", whatsapp);
     c.set("store", database.whatsappLog);
     c.set("logger", log);
+    c.set("coexistence", coexistence);
+    c.set("coexistenceStore", database.coexistence);
     await next();
   });
 
@@ -225,6 +258,19 @@ export function betterZap<
   app.get("/conversations", handleListConversations);
   app.get("/conversations/:phone", handleGetConversation);
   app.get("/conversations/:phone/messages", handleGetMessages);
+  app.post(
+    "/coexistence/embedded-signup/callback",
+    handleEmbeddedSignupCallback,
+  );
+  app.get("/coexistence/phone-numbers/:phoneNumberId/status", handlePhoneStatus);
+  app.post(
+    "/coexistence/phone-numbers/:phoneNumberId/sync/contacts",
+    handleContactsSync,
+  );
+  app.post(
+    "/coexistence/phone-numbers/:phoneNumberId/sync/history",
+    handleHistorySync,
+  );
 
   const api: BetterZapApi<TTemplates> = {
     send: {
