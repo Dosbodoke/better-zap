@@ -131,8 +131,8 @@ function delay(ms) {
 }
 //#endregion
 //#region src/services/whatsapp.service.ts
-const META_API_VERSION = "v25.0";
-const META_BASE_URL = "https://graph.facebook.com";
+const META_API_VERSION$1 = "v25.0";
+const META_BASE_URL$1 = "https://graph.facebook.com";
 const CONTEXT_WINDOW_CLOSED_ERROR = "Free-form message window is closed.";
 var WhatsAppService = class {
 	baseUrl;
@@ -141,7 +141,7 @@ var WhatsAppService = class {
 	logger;
 	log;
 	constructor(config, logger, log) {
-		this.baseUrl = `${META_BASE_URL}/${META_API_VERSION}/${config.phoneId}/messages`;
+		this.baseUrl = `${META_BASE_URL$1}/${META_API_VERSION$1}/${config.phoneId}/messages`;
 		this.token = config.token;
 		this.isDev = config.environment === "development";
 		this.logger = logger;
@@ -456,6 +456,173 @@ var WhatsAppService = class {
 	}
 };
 //#endregion
+//#region src/services/coexistence.service.ts
+const META_API_VERSION = "v25.0";
+const META_BASE_URL = "https://graph.facebook.com";
+var CoexistenceService = class {
+	accessToken;
+	appId;
+	appSecret;
+	graphApiVersion;
+	graphBaseUrl;
+	fetchImpl;
+	tokenProvider;
+	credentialProvider;
+	constructor(config) {
+		this.accessToken = config.accessToken;
+		this.appId = config.appId;
+		this.appSecret = config.appSecret;
+		this.graphApiVersion = config.graphApiVersion ?? META_API_VERSION;
+		this.graphBaseUrl = config.graphBaseUrl ?? META_BASE_URL;
+		this.fetchImpl = config.fetch ?? fetch;
+		this.tokenProvider = config.tokenProvider ?? config.credentialProvider;
+		this.credentialProvider = config.credentialProvider;
+	}
+	async exchangeEmbeddedSignupCode(input) {
+		if (this.credentialProvider) try {
+			return {
+				success: true,
+				data: await this.credentialProvider.exchangeEmbeddedSignupCode(input)
+			};
+		} catch (error) {
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : "Token exchange failed"
+			};
+		}
+		if (!this.appId || !this.appSecret) return {
+			success: false,
+			error: "appId and appSecret are required when no credentialProvider is configured"
+		};
+		const params = new URLSearchParams({
+			client_id: this.appId,
+			client_secret: this.appSecret,
+			code: input.code
+		});
+		if (input.redirectUri) params.set("redirect_uri", input.redirectUri);
+		const result = await this.request({
+			path: "/oauth/access_token",
+			method: "GET",
+			query: params,
+			token: null
+		});
+		if (!result.success || !result.data) return {
+			success: false,
+			error: result.error,
+			errorCode: result.errorCode,
+			httpStatus: result.httpStatus,
+			details: result.details
+		};
+		return {
+			success: true,
+			data: {
+				accessToken: result.data.access_token,
+				tokenType: result.data.token_type,
+				expiresIn: result.data.expires_in,
+				raw: result.data
+			}
+		};
+	}
+	async subscribeWaba(input) {
+		return this.request({
+			path: `/${input.wabaId}/subscribed_apps`,
+			method: "POST",
+			token: input.accessToken ?? await this.resolveAccessToken({ wabaId: input.wabaId })
+		});
+	}
+	async getPhoneStatus(input) {
+		return this.request({
+			path: `/${input.phoneNumberId}`,
+			method: "GET",
+			query: new URLSearchParams({ fields: "is_on_biz_app,platform_type" }),
+			token: input.accessToken ?? await this.resolveAccessToken({ phoneNumberId: input.phoneNumberId })
+		});
+	}
+	async startContactsSync(input) {
+		return this.startSmbAppDataSync({
+			phoneNumberId: input.phoneNumberId,
+			accessToken: input.accessToken,
+			syncType: "smb_app_state_sync"
+		});
+	}
+	async startHistorySync(input) {
+		return this.startSmbAppDataSync({
+			phoneNumberId: input.phoneNumberId,
+			accessToken: input.accessToken,
+			syncType: "history"
+		});
+	}
+	async startSmbAppDataSync(input) {
+		return this.request({
+			path: `/${input.phoneNumberId}/smb_app_data`,
+			method: "POST",
+			body: { sync_type: input.syncType },
+			token: input.accessToken ?? await this.resolveAccessToken({ phoneNumberId: input.phoneNumberId })
+		});
+	}
+	async resolveAccessToken(input) {
+		if (this.tokenProvider) return this.tokenProvider.getAccessToken(input);
+		return this.accessToken;
+	}
+	async request(input) {
+		if (input.token === void 0) return {
+			success: false,
+			error: "Missing Meta access token"
+		};
+		const url = new URL(`${this.graphBaseUrl}/${this.graphApiVersion}${input.path}`);
+		if (input.query) input.query.forEach((value, key) => url.searchParams.set(key, value));
+		try {
+			const response = await this.fetchImpl(url.toString(), {
+				method: input.method,
+				headers: {
+					"Content-Type": "application/json",
+					...input.token ? { Authorization: `Bearer ${input.token}` } : {}
+				},
+				...input.body ? { body: JSON.stringify(input.body) } : {}
+			});
+			let data = null;
+			try {
+				data = await response.json();
+			} catch {
+				data = null;
+			}
+			if (!response.ok) {
+				const errorData = data;
+				return {
+					success: false,
+					error: errorData?.error?.message ?? `HTTP ${response.status}`,
+					errorCode: errorData?.error?.code,
+					httpStatus: response.status,
+					details: data
+				};
+			}
+			return {
+				success: true,
+				data
+			};
+		} catch (error) {
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : "Network error"
+			};
+		}
+	}
+};
+//#endregion
+//#region src/coexistence/index.ts
+function createCoexistenceEmbeddedSignupConfig(input) {
+	return {
+		config_id: input.configId,
+		response_type: "code",
+		override_default_response_type: true,
+		extras: {
+			...input.setup ? { setup: input.setup } : {},
+			featureType: "whatsapp_business_app_onboarding",
+			sessionInfoVersion: "3"
+		}
+	};
+}
+//#endregion
 //#region src/services/message-logger.service.ts
 const WHATSAPP_MESSAGE_TYPES = [
 	"queue_position",
@@ -586,6 +753,32 @@ var MessageLoggerService = class {
 		});
 		return true;
 	}
+	/**
+	* Log an imported WhatsApp message with an explicit direction and timestamp.
+	* Used by coexistence history imports and app echo webhooks where the message
+	* did not originate from the local send API call.
+	*/
+	async logImportedMessage(params) {
+		const { record: inserted, created } = await this.store.createWhatsAppLog({
+			phone: params.phone,
+			contactName: params.senderName,
+			waMessageId: params.waMessageId,
+			direction: params.direction,
+			messageType: params.messageType ?? (params.direction === "incoming" ? "incoming" : "bot_reply"),
+			content: params.content,
+			status: params.direction === "incoming" ? "delivered" : "sent",
+			metadata: params.metadata,
+			sentAt: params.sentAt
+		});
+		if (!created) return false;
+		const conversation = await this.getConversationById(inserted.conversationId);
+		if (conversation) await this.notify({
+			type: "NEW_MESSAGE",
+			message: inserted,
+			conversation
+		});
+		return true;
+	}
 };
 //#endregion
 //#region src/template-registry.ts
@@ -669,4 +862,4 @@ function serializeTemplateParameter(parameter, value) {
 	}
 }
 //#endregion
-export { BetterZapClientError, EMPTY_TEMPLATE_REGISTRY, FREEFORM_MESSAGE_WINDOW_MS, MessageLoggerService, WHATSAPP_MESSAGE_TYPES, WhatsAppService, createFreeformMessageWindow, createLogger, createZapClient, defineTemplates, delay, formatPhone, getLatestIncomingMessageAt, getTemplateNames, hasConfiguredTemplates, noopLogger, normalizeConversationRecord, normalizeConversationRecords, resolveConversationFreeformMessageWindow, serializeError, serializeTemplateFromRegistry };
+export { BetterZapClientError, CoexistenceService, EMPTY_TEMPLATE_REGISTRY, FREEFORM_MESSAGE_WINDOW_MS, MessageLoggerService, WHATSAPP_MESSAGE_TYPES, WhatsAppService, createCoexistenceEmbeddedSignupConfig, createFreeformMessageWindow, createLogger, createZapClient, defineTemplates, delay, formatPhone, getLatestIncomingMessageAt, getTemplateNames, hasConfiguredTemplates, noopLogger, normalizeConversationRecord, normalizeConversationRecords, resolveConversationFreeformMessageWindow, serializeError, serializeTemplateFromRegistry };
