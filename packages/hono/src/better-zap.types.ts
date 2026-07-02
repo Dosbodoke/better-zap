@@ -13,6 +13,10 @@ import type {
   TemplateRegistry,
 } from "better-zap";
 import type {
+  CoexistenceCredentialProvider,
+  CoexistenceService,
+} from "better-zap";
+import type {
   CoexistenceAccountUpdateContext,
   CoexistenceHistoryContext,
   CoexistenceUnsupportedMessageContext,
@@ -65,6 +69,17 @@ export interface BetterZapConfig<
       ctx: CoexistenceUnsupportedMessageContext &
         BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>,
     ) => Promise<void>;
+  };
+  coexistence?: {
+    enabled?: boolean;
+    service?: CoexistenceService;
+    credentials?: CoexistenceCredentialProvider;
+    accessToken?: string;
+    appId?: string;
+    appSecret?: string;
+    graphApiVersion?: string;
+    graphBaseUrl?: string;
+    fetch?: typeof fetch;
   };
   basePath?: string;
   authorizeAppRequest?: BetterZapAuthorizeAppRequest;
