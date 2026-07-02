@@ -48,7 +48,15 @@ jobs:
       - run: pnpm test
       - run: pnpm pack:check
       - run: pnpm version-packages:nightly
+      - name: Verify npm token
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::error::Missing NPM_TOKEN repository secret for nightly npm publishing."
+            exit 1
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - run: pnpm release:publish:nightly
         env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: true
