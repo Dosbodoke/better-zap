@@ -42,7 +42,7 @@ export function LandingAnimations({ children }: { children: ReactNode }) {
           );
           const allTargets = [...desktopIntro, ...revealTargets];
 
-          if (reduceMotion) {
+          if (!isDesktop || reduceMotion) {
             gsap.set(allTargets, {
               autoAlpha: 1,
               x: 0,

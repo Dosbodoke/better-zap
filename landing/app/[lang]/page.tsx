@@ -27,14 +27,14 @@ export default async function LandingPage({
         </div>
 
         {/* Right column — scrollable content */}
-        <div className="w-full lg:basis-1/2 lg:max-w-[50%] lg:h-screen lg:sticky lg:top-0 flex flex-col relative z-10 bg-[#f3f4f6] overflow-hidden">
+        <div className="w-full lg:basis-1/2 lg:max-w-[50%] lg:h-screen lg:sticky lg:top-0 flex flex-col relative z-10 bg-[#f3f4f6] lg:overflow-hidden">
           {/* Top fade */}
           <div className="absolute top-0 left-0 right-0 z-30 h-32 bg-gradient-to-b from-[#f3f4f6] via-[#f3f4f6]/95 to-transparent pointer-events-none backdrop-blur-[1px] hidden lg:block" />
           {/* Bottom fade */}
-          <div className="absolute bottom-0 left-0 right-0 z-30 h-32 bg-gradient-to-t from-[#f3f4f6] via-[#f3f4f6]/95 to-transparent pointer-events-none backdrop-blur-[1px]" />
+          <div className="absolute bottom-0 left-0 right-0 z-30 h-32 bg-gradient-to-t from-[#f3f4f6] via-[#f3f4f6]/95 to-transparent pointer-events-none backdrop-blur-[1px] hidden lg:block" />
           <main
             data-landing-scroll-container
-            className="relative flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+            className="relative lg:flex-1 lg:overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
           >
             <div className="px-6 lg:px-16 pt-12 pb-40 space-y-16 lg:space-y-20 max-w-3xl mx-auto">
               <CodeShowcase />
