@@ -1,0 +1,40 @@
+{
+  "name": "@better-zap/fixtures",
+  "version": "0.0.0",
+  "description": "Coexistence WhatsApp webhook fixtures for Better Zap.",
+  "license": "ISC",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@types/node": "^25.4.0",
+    "tsdown": "^0.21.2",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.0"
+  }
+}

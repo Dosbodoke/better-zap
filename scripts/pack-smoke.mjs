@@ -13,6 +13,7 @@ const packageDirs = [
   path.join(packagesRoot, "react"),
   path.join(packagesRoot, "hono"),
   path.join(packagesRoot, "cli"),
+  path.join(packagesRoot, "fixtures"),
 ];
 
 await rm(outputDir, { recursive: true, force: true });

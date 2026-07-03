@@ -3,6 +3,7 @@ packages:
   - packages/react
   - packages/hono
   - packages/cli
+  - packages/fixtures
   - demo/*
   - landing
 
