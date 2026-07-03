@@ -890,6 +890,276 @@ describe("betterZap plugins", () => {
     ).not.toContain("user-access-token");
   });
 
+  it("records session-only cancel callbacks without exchanging a code", async () => {
+    const coexistenceStore = makeCoexistenceStore();
+    const service = {
+      exchangeEmbeddedSignupCode: vi.fn(),
+    };
+    const session = {
+      event: "CANCEL",
+      data: {
+        current_step: "QR_CODE",
+      },
+    };
+
+    const zap = betterZap({
+      database: makeDatabase({ coexistence: coexistenceStore }),
+      config: {
+        token: "token",
+        phoneId: "phone-id",
+        webhookToken: "verify-token",
+        appSecret: TEST_META_APP_SECRET,
+      },
+      coexistence: {
+        service: service as any,
+      },
+      webhook: {
+        onMessage: vi.fn().mockResolvedValue(undefined),
+        onStatusUpdate: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+
+    const response = await sendRequest(
+      zap,
+      new Request(
+        "http://localhost/api/whatsapp/coexistence/embedded-signup/callback",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session }),
+        },
+      ),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toMatchObject({
+      success: true,
+      status: "recorded",
+      event: "CANCEL",
+      session,
+    });
+    expect(service.exchangeEmbeddedSignupCode).not.toHaveBeenCalled();
+    expect(coexistenceStore.recordOnboardingSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "CANCEL",
+        payload: session,
+      }),
+    );
+    expect(coexistenceStore.upsertConnectedAccount).not.toHaveBeenCalled();
+  });
+
+  it("records embedded signup error events without exchanging a code", async () => {
+    const coexistenceStore = makeCoexistenceStore();
+    const service = {
+      exchangeEmbeddedSignupCode: vi.fn(),
+    };
+    const session = {
+      event: "ERROR_WHATSAPP_BUSINESS_APP_ONBOARDING",
+      data: {
+        error_message: "Meta-side error",
+      },
+    };
+
+    const zap = betterZap({
+      database: makeDatabase({ coexistence: coexistenceStore }),
+      config: {
+        token: "token",
+        phoneId: "phone-id",
+        webhookToken: "verify-token",
+        appSecret: TEST_META_APP_SECRET,
+      },
+      coexistence: {
+        service: service as any,
+      },
+      webhook: {
+        onMessage: vi.fn().mockResolvedValue(undefined),
+        onStatusUpdate: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+
+    const response = await sendRequest(
+      zap,
+      new Request(
+        "http://localhost/api/whatsapp/coexistence/embedded-signup/callback",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session }),
+        },
+      ),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toMatchObject({
+      success: true,
+      status: "recorded",
+      event: "ERROR",
+      session,
+    });
+    expect(service.exchangeEmbeddedSignupCode).not.toHaveBeenCalled();
+    expect(coexistenceStore.recordOnboardingSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "ERROR_WHATSAPP_BUSINESS_APP_ONBOARDING",
+        payload: session,
+      }),
+    );
+  });
+
+  it("returns 400 for finish callbacks without a code", async () => {
+    const coexistenceStore = makeCoexistenceStore();
+    const service = {
+      exchangeEmbeddedSignupCode: vi.fn(),
+    };
+    const zap = betterZap({
+      database: makeDatabase({ coexistence: coexistenceStore }),
+      config: {
+        token: "token",
+        phoneId: "phone-id",
+        webhookToken: "verify-token",
+        appSecret: TEST_META_APP_SECRET,
+      },
+      coexistence: {
+        service: service as any,
+      },
+      webhook: {
+        onMessage: vi.fn().mockResolvedValue(undefined),
+        onStatusUpdate: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+
+    const response = await sendRequest(
+      zap,
+      new Request(
+        "http://localhost/api/whatsapp/coexistence/embedded-signup/callback",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session: { event: "FINISH" } }),
+        },
+      ),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(payload).toEqual({ error: "code is required" });
+    expect(service.exchangeEmbeddedSignupCode).not.toHaveBeenCalled();
+  });
+
+  it("returns duplicate for already processed finish idempotency keys", async () => {
+    const coexistenceStore = {
+      ...makeCoexistenceStore(),
+      getRawEventStatus: vi.fn().mockResolvedValue({
+        id: "idem_123",
+        status: "processed",
+        result: {
+          success: true,
+          status: "exchanged",
+          session: { event: "FINISH" },
+        },
+      }),
+      updateRawEventStatus: vi.fn().mockResolvedValue(undefined),
+    } satisfies CoexistenceStore;
+    const service = {
+      exchangeEmbeddedSignupCode: vi.fn(),
+    };
+    const zap = betterZap({
+      database: makeDatabase({ coexistence: coexistenceStore }),
+      config: {
+        token: "token",
+        phoneId: "phone-id",
+        webhookToken: "verify-token",
+        appSecret: TEST_META_APP_SECRET,
+      },
+      coexistence: {
+        service: service as any,
+      },
+      webhook: {
+        onMessage: vi.fn().mockResolvedValue(undefined),
+        onStatusUpdate: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+
+    const response = await sendRequest(
+      zap,
+      new Request(
+        "http://localhost/api/whatsapp/coexistence/embedded-signup/callback",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": "idem_123",
+          },
+          body: JSON.stringify({
+            code: "embedded-signup-code",
+            session: { event: "FINISH" },
+          }),
+        },
+      ),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toEqual({
+      success: true,
+      status: "duplicate",
+      idempotencyKey: "idem_123",
+      result: {
+        success: true,
+        status: "exchanged",
+        session: { event: "FINISH" },
+      },
+    });
+    expect(service.exchangeEmbeddedSignupCode).not.toHaveBeenCalled();
+    expect(coexistenceStore.recordOnboardingSession).not.toHaveBeenCalled();
+  });
+
+  it("rejects nonce and state mismatches before recording", async () => {
+    const coexistenceStore = makeCoexistenceStore();
+    const service = {
+      exchangeEmbeddedSignupCode: vi.fn(),
+    };
+    const zap = betterZap({
+      database: makeDatabase({ coexistence: coexistenceStore }),
+      config: {
+        token: "token",
+        phoneId: "phone-id",
+        webhookToken: "verify-token",
+        appSecret: TEST_META_APP_SECRET,
+      },
+      coexistence: {
+        service: service as any,
+      },
+      webhook: {
+        onMessage: vi.fn().mockResolvedValue(undefined),
+        onStatusUpdate: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+
+    const response = await sendRequest(
+      zap,
+      new Request(
+        "http://localhost/api/whatsapp/coexistence/embedded-signup/callback",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            state: "actual-state",
+            expectedState: "expected-state",
+            session: { event: "CANCEL" },
+          }),
+        },
+      ),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(payload).toEqual({ error: "state mismatch" });
+    expect(service.exchangeEmbeddedSignupCode).not.toHaveBeenCalled();
+    expect(coexistenceStore.recordOnboardingSession).not.toHaveBeenCalled();
+  });
+
   it("returns 501 for embedded signup callbacks when coexistence storage is missing", async () => {
     const service = {
       exchangeEmbeddedSignupCode: vi.fn(),

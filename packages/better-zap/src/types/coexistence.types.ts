@@ -3,6 +3,15 @@ import type { IncomingMessage, MessageStatus, WebhookError } from "./whatsapp.ty
 
 export type CoexistenceFeatureType = "whatsapp_business_app_onboarding";
 export type CoexistenceSessionInfoVersion = "3";
+export type CoexistenceGenericSessionEvent =
+  | "FINISH"
+  | "CANCEL"
+  | "ERROR"
+  | "PROGRESS";
+export type CoexistenceLegacySessionEvent =
+  | "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING"
+  | "CANCEL_WHATSAPP_BUSINESS_APP_ONBOARDING"
+  | "ERROR_WHATSAPP_BUSINESS_APP_ONBOARDING";
 
 export interface CoexistenceEmbeddedSignupConfigInput {
   configId: string;
@@ -34,9 +43,8 @@ export interface CoexistenceEmbeddedSignupConfig {
 
 export interface CoexistenceSessionEventPayload {
   event:
-    | "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING"
-    | "CANCEL_WHATSAPP_BUSINESS_APP_ONBOARDING"
-    | "ERROR_WHATSAPP_BUSINESS_APP_ONBOARDING"
+    | CoexistenceGenericSessionEvent
+    | CoexistenceLegacySessionEvent
     | (string & {});
   data?: {
     waba_id?: string;
@@ -44,6 +52,7 @@ export interface CoexistenceSessionEventPayload {
     phone_number_id?: string;
     display_phone_number?: string;
     code?: string;
+    current_step?: string;
     error_message?: string;
     [key: string]: unknown;
   };
@@ -300,6 +309,7 @@ export interface CoexistenceRawEventStatusRecord {
   status: "pending" | "processed" | "failed" | (string & {});
   error?: string;
   updatedAt?: Date | string;
+  result?: unknown;
 }
 
 export interface CoexistenceStore {
@@ -329,4 +339,7 @@ export interface CoexistenceStore {
   updateRawEventStatus?(
     status: CoexistenceRawEventStatusRecord,
   ): Awaitable<void>;
+  getRawEventStatus?(
+    id: string,
+  ): Awaitable<CoexistenceRawEventStatusRecord | null>;
 }

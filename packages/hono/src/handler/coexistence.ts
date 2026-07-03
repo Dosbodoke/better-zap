@@ -1,5 +1,5 @@
 import type { Context } from "hono";
-import { serializeError } from "better-zap";
+import { normalizeCoexistenceSessionEvent, serializeError } from "better-zap";
 import type {
   CoexistenceGraphResult,
   CoexistenceSessionEventPayload,
@@ -13,6 +13,11 @@ type EmbeddedSignupCallbackBody = {
   session?: unknown;
   sessionInfo?: unknown;
   data?: unknown;
+  state?: unknown;
+  expectedState?: unknown;
+  nonce?: unknown;
+  expectedNonce?: unknown;
+  idempotencyKey?: unknown;
 };
 
 const ROUTES_NOT_CONFIGURED = "Coexistence routes are not configured";
@@ -83,14 +88,9 @@ function resolveSessionPayload(
 
 function resolveCode(
   body: EmbeddedSignupCallbackBody,
-  session: CoexistenceSessionEventPayload | null,
 ) {
   if (typeof body.code === "string" && body.code.length > 0) {
     return body.code;
-  }
-
-  if (typeof session?.data?.code === "string" && session.data.code.length > 0) {
-    return session.data.code;
   }
 
   return null;
@@ -98,6 +98,70 @@ function resolveCode(
 
 function createRecordId(prefix: string) {
   return `${prefix}_${crypto.randomUUID()}`;
+}
+
+function optionalString(value: unknown) {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function resolveIdempotencyKey(
+  c: Context<BetterZapEnv>,
+  body: EmbeddedSignupCallbackBody,
+) {
+  return (
+    optionalString(body.idempotencyKey) ??
+    optionalString(c.req.header("Idempotency-Key")) ??
+    optionalString(c.req.header("X-Idempotency-Key"))
+  );
+}
+
+function validateStateAndNonce(
+  body: EmbeddedSignupCallbackBody,
+  session: CoexistenceSessionEventPayload,
+) {
+  const state = optionalString(body.state);
+  const expectedState =
+    optionalString(body.expectedState) ?? optionalString(session.data?.state);
+  if (expectedState && state !== expectedState) {
+    return "state mismatch";
+  }
+
+  const nonce = optionalString(body.nonce);
+  const expectedNonce =
+    optionalString(body.expectedNonce) ?? optionalString(session.data?.nonce);
+  if (expectedNonce && nonce !== expectedNonce) {
+    return "nonce mismatch";
+  }
+
+  return null;
+}
+
+async function recordOnboardingSession(
+  c: Context<BetterZapEnv>,
+  input: {
+    session: CoexistenceSessionEventPayload;
+    idempotencyKey?: string;
+    state?: string;
+    nonce?: string;
+  },
+) {
+  const coexistenceStore = getCoexistenceStore(c);
+  await coexistenceStore?.recordOnboardingSession({
+    id: input.idempotencyKey ?? createRecordId("coexistence_session"),
+    event: input.session.event,
+    accountId: input.session.data?.business_id,
+    wabaId: input.session.data?.waba_id,
+    phoneNumberId: input.session.data?.phone_number_id,
+    payload: {
+      ...input.session,
+      data: {
+        ...input.session.data,
+        ...(input.state ? { state: input.state } : {}),
+        ...(input.nonce ? { nonce: input.nonce } : {}),
+        ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
+      },
+    },
+  });
 }
 
 export async function handleEmbeddedSignupCallback(c: Context<BetterZapEnv>) {
@@ -114,14 +178,52 @@ export async function handleEmbeddedSignupCallback(c: Context<BetterZapEnv>) {
   try {
     const body = (await c.req.json()) as EmbeddedSignupCallbackBody;
     const session = resolveSessionPayload(body);
-    const code = resolveCode(body, session);
+
+    if (!session) {
+      return c.json({ error: "session is required" }, 400);
+    }
+
+    const stateError = validateStateAndNonce(body, session);
+    if (stateError) {
+      return c.json({ error: stateError }, 400);
+    }
+
+    const normalizedEvent = normalizeCoexistenceSessionEvent(session.event);
+    const code = resolveCode(body);
+    const idempotencyKey = resolveIdempotencyKey(c, body);
+    const state = optionalString(body.state);
+    const nonce = optionalString(body.nonce);
+
+    if (normalizedEvent !== "FINISH") {
+      await recordOnboardingSession(c, {
+        session,
+        idempotencyKey,
+        state,
+        nonce,
+      });
+
+      return c.json({
+        success: true,
+        status: "recorded",
+        event: normalizedEvent,
+        session,
+      });
+    }
 
     if (!code) {
       return c.json({ error: "code is required" }, 400);
     }
 
-    if (!session) {
-      return c.json({ error: "session is required" }, 400);
+    if (idempotencyKey && coexistenceStore.getRawEventStatus) {
+      const existing = await coexistenceStore.getRawEventStatus(idempotencyKey);
+      if (existing?.status === "processed") {
+        return c.json({
+          success: true,
+          status: "duplicate",
+          idempotencyKey,
+          result: existing.result ?? null,
+        });
+      }
     }
 
     const tokenExchange = await coexistence.exchangeEmbeddedSignupCode({
@@ -131,16 +233,22 @@ export async function handleEmbeddedSignupCallback(c: Context<BetterZapEnv>) {
     });
 
     if (!tokenExchange.success) {
+      if (idempotencyKey) {
+        await coexistenceStore.updateRawEventStatus?.({
+          id: idempotencyKey,
+          status: "failed",
+          error: tokenExchange.error ?? "Meta Graph request failed",
+        });
+      }
+
       return graphResultResponse(c, tokenExchange);
     }
 
-    await coexistenceStore.recordOnboardingSession({
-      id: createRecordId("coexistence_session"),
-      event: session.event,
-      accountId: session.data?.business_id,
-      wabaId: session.data?.waba_id,
-      phoneNumberId: session.data?.phone_number_id,
-      payload: session,
+    await recordOnboardingSession(c, {
+      session,
+      idempotencyKey,
+      state,
+      nonce,
     });
 
     if (session.data?.waba_id && session.data.phone_number_id) {
@@ -156,10 +264,21 @@ export async function handleEmbeddedSignupCallback(c: Context<BetterZapEnv>) {
       });
     }
 
-    return c.json({
+    const responseBody = {
       success: true,
+      status: "exchanged",
       session,
-    });
+    };
+
+    if (idempotencyKey) {
+      await coexistenceStore.updateRawEventStatus?.({
+        id: idempotencyKey,
+        status: "processed",
+        result: responseBody,
+      });
+    }
+
+    return c.json(responseBody);
   } catch (error) {
     c.get("logger").error("coexistence.callback_error", serializeError(error));
     return c.json(

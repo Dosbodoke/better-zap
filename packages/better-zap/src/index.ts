@@ -46,9 +46,11 @@ export type {
   CoexistenceErrorValue,
   CoexistenceErrorWebhook,
   CoexistenceFeatureType,
+  CoexistenceGenericSessionEvent,
   CoexistenceGraphResult,
   CoexistenceHistoryValue,
   CoexistenceHistoryWebhook,
+  CoexistenceLegacySessionEvent,
   CoexistenceLifecycleEventRecord,
   CoexistenceMessageEditValue,
   CoexistenceMessageEditWebhook,
@@ -116,7 +118,23 @@ export {
   CoexistenceService,
   type CoexistenceServiceConfig,
 } from "./services/coexistence.service";
-export { createCoexistenceEmbeddedSignupConfig } from "./coexistence";
+export {
+  createCoexistenceEmbeddedSignupConfig,
+  launchCoexistenceEmbeddedSignup,
+  normalizeCoexistenceSessionEvent,
+  normalizeCoexistenceSessionPayload,
+  toLegacyCoexistenceSessionEvent,
+  type CoexistenceEmbeddedSignupCallbacks,
+  type CoexistenceEmbeddedSignupController,
+  type CoexistenceEmbeddedSignupMessageEvent,
+  type CoexistenceEmbeddedSignupResult,
+  type CoexistenceEmbeddedSignupWindow,
+  type CoexistenceFacebookInitOptions,
+  type CoexistenceFacebookLoginResponse,
+  type CoexistenceFacebookSdk,
+  type LaunchCoexistenceEmbeddedSignupInput,
+  type NormalizedCoexistenceSessionEvent,
+} from "./coexistence";
 export {
   MessageLoggerService,
   WHATSAPP_MESSAGE_TYPES,
