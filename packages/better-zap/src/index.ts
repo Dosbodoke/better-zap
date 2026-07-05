@@ -107,9 +107,12 @@ export {
 } from "./logger";
 
 export {
+  apiKeyTransport,
   BetterZapClientError,
   createZapClient,
+  sessionTransport,
   type ZapClient,
+  type ZapTransport,
 } from "./client";
 export { WhatsAppService, type OutgoingLoggingMetadata } from "./services/whatsapp.service";
 export {
