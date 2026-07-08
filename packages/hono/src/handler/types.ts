@@ -13,5 +13,6 @@ export type BetterZapEnv = {
     logger: Logger;
     coexistence?: CoexistenceService;
     coexistenceStore?: CoexistenceStore;
+    subscribeWabaAfterCodeExchange?: boolean;
   };
 };

@@ -609,7 +609,7 @@ var CoexistenceService = class {
 	}
 };
 //#endregion
-//#region src/coexistence/index.ts
+//#region src/coexistence/config.ts
 function createCoexistenceEmbeddedSignupConfig(input) {
 	return {
 		config_id: input.configId,
@@ -619,6 +619,108 @@ function createCoexistenceEmbeddedSignupConfig(input) {
 			...input.setup ? { setup: input.setup } : {},
 			featureType: "whatsapp_business_app_onboarding",
 			sessionInfoVersion: "3"
+		}
+	};
+}
+//#endregion
+//#region src/coexistence/events.ts
+const LEGACY_EVENT_BY_GENERIC = {
+	FINISH: "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING",
+	CANCEL: "CANCEL_WHATSAPP_BUSINESS_APP_ONBOARDING",
+	ERROR: "ERROR_WHATSAPP_BUSINESS_APP_ONBOARDING"
+};
+const GENERIC_EVENT_BY_LEGACY = {
+	FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING: "FINISH",
+	CANCEL_WHATSAPP_BUSINESS_APP_ONBOARDING: "CANCEL",
+	ERROR_WHATSAPP_BUSINESS_APP_ONBOARDING: "ERROR"
+};
+function isKnownGenericEvent(event) {
+	return event === "FINISH" || event === "CANCEL" || event === "ERROR";
+}
+function normalizeCoexistenceSessionEvent(event) {
+	if (isKnownGenericEvent(event)) return event;
+	if (event in GENERIC_EVENT_BY_LEGACY) return GENERIC_EVENT_BY_LEGACY[event];
+	return "PROGRESS";
+}
+function toLegacyCoexistenceSessionEvent(event) {
+	return isKnownGenericEvent(event) ? LEGACY_EVENT_BY_GENERIC[event] : event;
+}
+function normalizeCoexistenceSessionPayload(payload) {
+	return {
+		...payload,
+		normalizedEvent: normalizeCoexistenceSessionEvent(payload.event)
+	};
+}
+//#endregion
+//#region src/coexistence/embedded-signup.ts
+const DEFAULT_ALLOWED_ORIGINS = ["https://www.facebook.com", "https://web.facebook.com"];
+function parseEmbeddedSignupMessage(data) {
+	const payload = typeof data === "string" ? parseJson(data) : data;
+	if (typeof payload !== "object" || payload === null) return null;
+	const candidate = payload;
+	if (candidate.type !== "WA_EMBEDDED_SIGNUP" || candidate.version !== 3 || typeof candidate.event !== "string") return null;
+	return {
+		event: candidate.event,
+		data: typeof candidate.data === "object" && candidate.data !== null ? candidate.data : void 0
+	};
+}
+function parseJson(value) {
+	try {
+		return JSON.parse(value);
+	} catch {
+		return null;
+	}
+}
+function launchCoexistenceEmbeddedSignup(input) {
+	const allowedOrigins = new Set([
+		...DEFAULT_ALLOWED_ORIGINS,
+		...input.origin ? [input.origin] : [],
+		...input.allowedOrigins ?? []
+	]);
+	let latestSession = null;
+	let latestCode = null;
+	const listener = (event) => {
+		if (!allowedOrigins.has(event.origin)) return;
+		const session = parseEmbeddedSignupMessage(event.data);
+		if (!session) return;
+		latestSession = session;
+		const normalizedEvent = normalizeCoexistenceSessionEvent(session.event);
+		if (normalizedEvent === "FINISH") {
+			input.onFinish?.({
+				code: latestCode,
+				session
+			});
+			return;
+		}
+		if (normalizedEvent === "CANCEL") {
+			input.onCancel?.({ session });
+			return;
+		}
+		if (normalizedEvent === "ERROR") {
+			input.onError?.({ session });
+			return;
+		}
+		input.onProgress?.({ session });
+	};
+	input.target.addEventListener("message", listener);
+	input.fb.init?.(input.fbInit ?? {});
+	return {
+		result: new Promise((resolve) => {
+			input.fb.login((response) => {
+				latestCode = typeof response.authResponse?.code === "string" ? response.authResponse.code : null;
+				if (latestSession && normalizeCoexistenceSessionEvent(latestSession.event) === "FINISH") input.onFinish?.({
+					code: latestCode,
+					session: latestSession
+				});
+				resolve({
+					code: latestCode,
+					session: latestSession,
+					loginResponse: response
+				});
+			}, createCoexistenceEmbeddedSignupConfig(input));
+		}),
+		teardown() {
+			input.target.removeEventListener("message", listener);
 		}
 	};
 }
@@ -862,4 +964,4 @@ function serializeTemplateParameter(parameter, value) {
 	}
 }
 //#endregion
-export { BetterZapClientError, CoexistenceService, EMPTY_TEMPLATE_REGISTRY, FREEFORM_MESSAGE_WINDOW_MS, MessageLoggerService, WHATSAPP_MESSAGE_TYPES, WhatsAppService, createCoexistenceEmbeddedSignupConfig, createFreeformMessageWindow, createLogger, createZapClient, defineTemplates, delay, formatPhone, getLatestIncomingMessageAt, getTemplateNames, hasConfiguredTemplates, noopLogger, normalizeConversationRecord, normalizeConversationRecords, resolveConversationFreeformMessageWindow, serializeError, serializeTemplateFromRegistry };
+export { BetterZapClientError, CoexistenceService, EMPTY_TEMPLATE_REGISTRY, FREEFORM_MESSAGE_WINDOW_MS, MessageLoggerService, WHATSAPP_MESSAGE_TYPES, WhatsAppService, createCoexistenceEmbeddedSignupConfig, createFreeformMessageWindow, createLogger, createZapClient, defineTemplates, delay, formatPhone, getLatestIncomingMessageAt, getTemplateNames, hasConfiguredTemplates, launchCoexistenceEmbeddedSignup, noopLogger, normalizeCoexistenceSessionEvent, normalizeCoexistenceSessionPayload, normalizeConversationRecord, normalizeConversationRecords, resolveConversationFreeformMessageWindow, serializeError, serializeTemplateFromRegistry, toLegacyCoexistenceSessionEvent };

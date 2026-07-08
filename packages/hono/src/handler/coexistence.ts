@@ -31,6 +31,10 @@ function getCoexistenceStore(c: Context<BetterZapEnv>) {
   return c.get("coexistenceStore");
 }
 
+function shouldSubscribeWabaAfterCodeExchange(c: Context<BetterZapEnv>) {
+  return c.get("subscribeWabaAfterCodeExchange") !== false;
+}
+
 function graphResultResponse<TData>(
   c: Context<BetterZapEnv>,
   result: CoexistenceGraphResult<TData>,
@@ -102,6 +106,10 @@ function createRecordId(prefix: string) {
 
 function optionalString(value: unknown) {
   return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function optionalNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 function resolveIdempotencyKey(
@@ -244,12 +252,50 @@ export async function handleEmbeddedSignupCallback(c: Context<BetterZapEnv>) {
       return graphResultResponse(c, tokenExchange);
     }
 
+    if (!tokenExchange.data) {
+      if (idempotencyKey) {
+        await coexistenceStore.updateRawEventStatus?.({
+          id: idempotencyKey,
+          status: "failed",
+          error: "Token exchange returned no credential data",
+        });
+      }
+
+      return c.json(
+        { success: false, error: "Token exchange returned no credential data" },
+        502,
+      );
+    }
+
     await recordOnboardingSession(c, {
       session,
       idempotencyKey,
       state,
       nonce,
     });
+
+    let subscriptionStatus:
+      | "subscribed"
+      | "failed"
+      | "skipped"
+      | "not_requested" = "not_requested";
+    let subscriptionResult:
+      | CoexistenceGraphResult<{ success?: boolean }>
+      | undefined;
+
+    if (session.data?.waba_id) {
+      if (shouldSubscribeWabaAfterCodeExchange(c)) {
+        subscriptionResult = await coexistence.subscribeWaba({
+          wabaId: session.data.waba_id,
+          accessToken: tokenExchange.data.accessToken,
+        });
+        subscriptionStatus = subscriptionResult.success
+          ? "subscribed"
+          : "failed";
+      } else {
+        subscriptionStatus = "skipped";
+      }
+    }
 
     if (session.data?.waba_id && session.data.phone_number_id) {
       await coexistenceStore.upsertConnectedAccount({
@@ -258,16 +304,88 @@ export async function handleEmbeddedSignupCallback(c: Context<BetterZapEnv>) {
         accountId: session.data.business_id,
         phoneNumberId: session.data.phone_number_id,
         displayPhoneNumber: session.data.display_phone_number,
+        credentialRef: tokenExchange.data.credentialRef,
+        credentialProvider: tokenExchange.data.credentialProvider,
+        credentialMetadata: tokenExchange.data.credentialMetadata,
         metadata: {
           onboardingEvent: session.event,
+          tokenType: tokenExchange.data.tokenType,
+          tokenExpiresIn: optionalNumber(tokenExchange.data.expiresIn),
+          subscriptionStatus,
+          ...(subscriptionResult
+            ? {
+                subscription: {
+                  success: subscriptionResult.success,
+                  error: subscriptionResult.error,
+                  errorCode: subscriptionResult.errorCode,
+                  httpStatus: subscriptionResult.httpStatus,
+                  details: subscriptionResult.details,
+                },
+              }
+            : {}),
         },
       });
+    }
+
+    if (subscriptionResult && !subscriptionResult.success) {
+      await coexistenceStore.recordLifecycleEvent({
+        accountId: session.data?.business_id,
+        wabaId: session.data?.waba_id,
+        phoneNumberId: session.data?.phone_number_id,
+        event: "WABA_SUBSCRIPTION_FAILED",
+        payload: {
+          session,
+          error: subscriptionResult.error,
+          errorCode: subscriptionResult.errorCode,
+          httpStatus: subscriptionResult.httpStatus,
+          details: subscriptionResult.details,
+        },
+      });
+
+      if (idempotencyKey) {
+        await coexistenceStore.updateRawEventStatus?.({
+          id: idempotencyKey,
+          status: "failed",
+          error: subscriptionResult.error ?? "Meta Graph request failed",
+          result: {
+            phase: "subscribe_waba",
+            wabaId: session.data?.waba_id,
+            error: subscriptionResult.error,
+            errorCode: subscriptionResult.errorCode,
+            details: subscriptionResult.details,
+          },
+        });
+      }
+
+      return c.json(
+        {
+          success: false,
+          phase: "subscribe_waba",
+          error: subscriptionResult.error ?? "Meta Graph request failed",
+          ...(subscriptionResult.errorCode
+            ? { errorCode: subscriptionResult.errorCode }
+            : {}),
+          ...(subscriptionResult.details
+            ? { details: subscriptionResult.details }
+            : {}),
+        },
+        (subscriptionResult.httpStatus ?? 502) as
+          | 400
+          | 401
+          | 403
+          | 404
+          | 409
+          | 422
+          | 500
+          | 502,
+      );
     }
 
     const responseBody = {
       success: true,
       status: "exchanged",
       session,
+      subscriptionStatus,
     };
 
     if (idempotencyKey) {

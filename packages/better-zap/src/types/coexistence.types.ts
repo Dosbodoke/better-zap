@@ -123,6 +123,13 @@ export interface CoexistenceTokenExchangeResult {
   accessToken: string;
   tokenType?: string;
   expiresIn?: number;
+  /**
+   * Deployment-owned credential reference returned by your credential provider.
+   * This is a vault/key identifier only; do not put a raw Meta access token here.
+   */
+  credentialRef?: string;
+  credentialProvider?: string;
+  credentialMetadata?: Record<string, unknown>;
   raw?: unknown;
 }
 
@@ -259,6 +266,18 @@ export interface CoexistenceConnectedAccountRecord
   accountId?: string;
   isOnBizApp?: boolean;
   platformType?: CoexistencePhoneStatusResponse["platform_type"];
+  /**
+   * Reference to deployment-owned token custody for this WABA/phone number.
+   * The generic account record must never store raw Meta access tokens.
+   */
+  credentialRef?: string;
+  credentialProvider?: string;
+  /**
+   * Provider metadata that helps resolve credential custody later.
+   * Store only non-secret values such as vault key versions, tenant IDs, token
+   * expiry timestamps, or provider account labels. Do not store raw tokens.
+   */
+  credentialMetadata?: Record<string, unknown>;
   createdAt?: Date | string;
   updatedAt?: Date | string;
   metadata?: Record<string, unknown>;

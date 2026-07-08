@@ -80,6 +80,12 @@ export interface BetterZapConfig<
     graphApiVersion?: string;
     graphBaseUrl?: string;
     fetch?: typeof fetch;
+    /**
+     * Subscribe the connected WABA to this app after a successful Embedded
+     * Signup code exchange. Defaults to true. Failures are returned and recorded
+     * instead of being silently ignored.
+     */
+    subscribeWabaAfterCodeExchange?: boolean;
   };
   basePath?: string;
   authorizeAppRequest?: BetterZapAuthorizeAppRequest;
