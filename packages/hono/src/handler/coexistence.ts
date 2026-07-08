@@ -109,9 +109,14 @@ function resolveSessionPayload(
 
 function resolveCode(
   body: EmbeddedSignupCallbackBody,
+  session: CoexistenceSessionEventPayload | null,
 ) {
   if (typeof body.code === "string" && body.code.length > 0) {
     return body.code;
+  }
+
+  if (typeof session?.data?.code === "string" && session.data.code.length > 0) {
+    return session.data.code;
   }
 
   return null;
@@ -328,7 +333,7 @@ export async function handleEmbeddedSignupCallback(c: Context<BetterZapEnv>) {
     }
 
     const normalizedEvent = normalizeCoexistenceSessionEvent(session.event);
-    const code = resolveCode(body);
+    const code = resolveCode(body, session);
     const idempotencyKey = resolveIdempotencyKey(c, body);
     const state = optionalString(body.state);
     const nonce = optionalString(body.nonce);

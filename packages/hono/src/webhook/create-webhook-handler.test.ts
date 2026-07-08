@@ -691,7 +691,7 @@ describe("createWebhookHandler", () => {
 
       expect(res.status).toBe(200);
       expect(mockLog.debug).toHaveBeenCalledWith("webhook.unknown_field_ignored", {
-        field: "future_unknown_field",
+        field: "coexistence_fixture_unknown_field",
       });
       expect(mockOnMessage).not.toHaveBeenCalled();
       expect(mockLogger.logIncoming).not.toHaveBeenCalled();

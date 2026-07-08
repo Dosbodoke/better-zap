@@ -139,6 +139,9 @@ importers:
 
   packages/fixtures:
     devDependencies:
+      '@types/node':
+        specifier: ^25.4.0
+        version: 25.4.0
       tsdown:
         specifier: ^0.21.2
         version: 0.21.2(typescript@6.0.2)

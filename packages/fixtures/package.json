@@ -1,7 +1,7 @@
 {
   "name": "@better-zap/fixtures",
-  "version": "0.1.0",
-  "description": "Shared Better Zap webhook fixtures for tests and sandbox mode.",
+  "version": "0.0.0",
+  "description": "Coexistence WhatsApp webhook fixtures for Better Zap.",
   "license": "ISC",
   "repository": {
     "type": "git",
@@ -31,14 +31,15 @@
   "scripts": {
     "build": "tsdown",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests"
-  },
-  "devDependencies": {
-    "tsdown": "^0.21.2",
-    "typescript": "^6.0.2",
-    "vitest": "^4.1.0"
+    "test": "vitest run"
   },
   "publishConfig": {
     "access": "public"
+  },
+  "devDependencies": {
+    "@types/node": "^25.4.0",
+    "tsdown": "^0.21.2",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.0"
   }
 }
