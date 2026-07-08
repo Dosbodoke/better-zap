@@ -3,6 +3,15 @@ import type { IncomingMessage, MessageStatus, WebhookError } from "./whatsapp.ty
 
 export type CoexistenceFeatureType = "whatsapp_business_app_onboarding";
 export type CoexistenceSessionInfoVersion = "3";
+export type CoexistenceGenericSessionEvent =
+  | "FINISH"
+  | "CANCEL"
+  | "ERROR"
+  | "PROGRESS";
+export type CoexistenceLegacySessionEvent =
+  | "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING"
+  | "CANCEL_WHATSAPP_BUSINESS_APP_ONBOARDING"
+  | "ERROR_WHATSAPP_BUSINESS_APP_ONBOARDING";
 
 export interface CoexistenceEmbeddedSignupConfigInput {
   configId: string;
@@ -34,9 +43,8 @@ export interface CoexistenceEmbeddedSignupConfig {
 
 export interface CoexistenceSessionEventPayload {
   event:
-    | "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING"
-    | "CANCEL_WHATSAPP_BUSINESS_APP_ONBOARDING"
-    | "ERROR_WHATSAPP_BUSINESS_APP_ONBOARDING"
+    | CoexistenceGenericSessionEvent
+    | CoexistenceLegacySessionEvent
     | (string & {});
   data?: {
     waba_id?: string;
@@ -44,6 +52,7 @@ export interface CoexistenceSessionEventPayload {
     phone_number_id?: string;
     display_phone_number?: string;
     code?: string;
+    current_step?: string;
     error_message?: string;
     [key: string]: unknown;
   };
@@ -114,6 +123,13 @@ export interface CoexistenceTokenExchangeResult {
   accessToken: string;
   tokenType?: string;
   expiresIn?: number;
+  /**
+   * Deployment-owned credential reference returned by your credential provider.
+   * This is a vault/key identifier only; do not put a raw Meta access token here.
+   */
+  credentialRef?: string;
+  credentialProvider?: string;
+  credentialMetadata?: Record<string, unknown>;
   raw?: unknown;
 }
 
@@ -250,6 +266,18 @@ export interface CoexistenceConnectedAccountRecord
   accountId?: string;
   isOnBizApp?: boolean;
   platformType?: CoexistencePhoneStatusResponse["platform_type"];
+  /**
+   * Reference to deployment-owned token custody for this WABA/phone number.
+   * The generic account record must never store raw Meta access tokens.
+   */
+  credentialRef?: string;
+  credentialProvider?: string;
+  /**
+   * Provider metadata that helps resolve credential custody later.
+   * Store only non-secret values such as vault key versions, tenant IDs, token
+   * expiry timestamps, or provider account labels. Do not store raw tokens.
+   */
+  credentialMetadata?: Record<string, unknown>;
   createdAt?: Date | string;
   updatedAt?: Date | string;
   metadata?: Record<string, unknown>;
@@ -300,6 +328,7 @@ export interface CoexistenceRawEventStatusRecord {
   status: "pending" | "processed" | "failed" | (string & {});
   error?: string;
   updatedAt?: Date | string;
+  result?: unknown;
 }
 
 export interface CoexistenceStore {
@@ -329,4 +358,7 @@ export interface CoexistenceStore {
   updateRawEventStatus?(
     status: CoexistenceRawEventStatusRecord,
   ): Awaitable<void>;
+  getRawEventStatus?(
+    id: string,
+  ): Awaitable<CoexistenceRawEventStatusRecord | null>;
 }

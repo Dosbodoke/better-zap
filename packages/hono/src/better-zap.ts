@@ -226,6 +226,10 @@ export function betterZap<
     c.set("logger", log);
     c.set("coexistence", coexistence);
     c.set("coexistenceStore", database.coexistence);
+    c.set(
+      "subscribeWabaAfterCodeExchange",
+      options.coexistence?.subscribeWabaAfterCodeExchange ?? true,
+    );
     await next();
   });
 

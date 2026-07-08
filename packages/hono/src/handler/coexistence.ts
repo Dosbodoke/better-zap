@@ -1,5 +1,5 @@
 import type { Context } from "hono";
-import { serializeError } from "better-zap";
+import { normalizeCoexistenceSessionEvent, serializeError } from "better-zap";
 import type {
   CoexistenceGraphResult,
   CoexistenceSessionEventPayload,
@@ -13,6 +13,11 @@ type EmbeddedSignupCallbackBody = {
   session?: unknown;
   sessionInfo?: unknown;
   data?: unknown;
+  state?: unknown;
+  expectedState?: unknown;
+  nonce?: unknown;
+  expectedNonce?: unknown;
+  idempotencyKey?: unknown;
 };
 
 const ROUTES_NOT_CONFIGURED = "Coexistence routes are not configured";
@@ -24,6 +29,10 @@ function getCoexistence(c: Context<BetterZapEnv>) {
 
 function getCoexistenceStore(c: Context<BetterZapEnv>) {
   return c.get("coexistenceStore");
+}
+
+function shouldSubscribeWabaAfterCodeExchange(c: Context<BetterZapEnv>) {
+  return c.get("subscribeWabaAfterCodeExchange") !== false;
 }
 
 function graphResultResponse<TData>(
@@ -83,14 +92,9 @@ function resolveSessionPayload(
 
 function resolveCode(
   body: EmbeddedSignupCallbackBody,
-  session: CoexistenceSessionEventPayload | null,
 ) {
   if (typeof body.code === "string" && body.code.length > 0) {
     return body.code;
-  }
-
-  if (typeof session?.data?.code === "string" && session.data.code.length > 0) {
-    return session.data.code;
   }
 
   return null;
@@ -98,6 +102,74 @@ function resolveCode(
 
 function createRecordId(prefix: string) {
   return `${prefix}_${crypto.randomUUID()}`;
+}
+
+function optionalString(value: unknown) {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function optionalNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function resolveIdempotencyKey(
+  c: Context<BetterZapEnv>,
+  body: EmbeddedSignupCallbackBody,
+) {
+  return (
+    optionalString(body.idempotencyKey) ??
+    optionalString(c.req.header("Idempotency-Key")) ??
+    optionalString(c.req.header("X-Idempotency-Key"))
+  );
+}
+
+function validateStateAndNonce(
+  body: EmbeddedSignupCallbackBody,
+  session: CoexistenceSessionEventPayload,
+) {
+  const state = optionalString(body.state);
+  const expectedState =
+    optionalString(body.expectedState) ?? optionalString(session.data?.state);
+  if (expectedState && state !== expectedState) {
+    return "state mismatch";
+  }
+
+  const nonce = optionalString(body.nonce);
+  const expectedNonce =
+    optionalString(body.expectedNonce) ?? optionalString(session.data?.nonce);
+  if (expectedNonce && nonce !== expectedNonce) {
+    return "nonce mismatch";
+  }
+
+  return null;
+}
+
+async function recordOnboardingSession(
+  c: Context<BetterZapEnv>,
+  input: {
+    session: CoexistenceSessionEventPayload;
+    idempotencyKey?: string;
+    state?: string;
+    nonce?: string;
+  },
+) {
+  const coexistenceStore = getCoexistenceStore(c);
+  await coexistenceStore?.recordOnboardingSession({
+    id: input.idempotencyKey ?? createRecordId("coexistence_session"),
+    event: input.session.event,
+    accountId: input.session.data?.business_id,
+    wabaId: input.session.data?.waba_id,
+    phoneNumberId: input.session.data?.phone_number_id,
+    payload: {
+      ...input.session,
+      data: {
+        ...input.session.data,
+        ...(input.state ? { state: input.state } : {}),
+        ...(input.nonce ? { nonce: input.nonce } : {}),
+        ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
+      },
+    },
+  });
 }
 
 export async function handleEmbeddedSignupCallback(c: Context<BetterZapEnv>) {
@@ -114,14 +186,52 @@ export async function handleEmbeddedSignupCallback(c: Context<BetterZapEnv>) {
   try {
     const body = (await c.req.json()) as EmbeddedSignupCallbackBody;
     const session = resolveSessionPayload(body);
-    const code = resolveCode(body, session);
+
+    if (!session) {
+      return c.json({ error: "session is required" }, 400);
+    }
+
+    const stateError = validateStateAndNonce(body, session);
+    if (stateError) {
+      return c.json({ error: stateError }, 400);
+    }
+
+    const normalizedEvent = normalizeCoexistenceSessionEvent(session.event);
+    const code = resolveCode(body);
+    const idempotencyKey = resolveIdempotencyKey(c, body);
+    const state = optionalString(body.state);
+    const nonce = optionalString(body.nonce);
+
+    if (normalizedEvent !== "FINISH") {
+      await recordOnboardingSession(c, {
+        session,
+        idempotencyKey,
+        state,
+        nonce,
+      });
+
+      return c.json({
+        success: true,
+        status: "recorded",
+        event: normalizedEvent,
+        session,
+      });
+    }
 
     if (!code) {
       return c.json({ error: "code is required" }, 400);
     }
 
-    if (!session) {
-      return c.json({ error: "session is required" }, 400);
+    if (idempotencyKey && coexistenceStore.getRawEventStatus) {
+      const existing = await coexistenceStore.getRawEventStatus(idempotencyKey);
+      if (existing?.status === "processed") {
+        return c.json({
+          success: true,
+          status: "duplicate",
+          idempotencyKey,
+          result: existing.result ?? null,
+        });
+      }
     }
 
     const tokenExchange = await coexistence.exchangeEmbeddedSignupCode({
@@ -131,17 +241,61 @@ export async function handleEmbeddedSignupCallback(c: Context<BetterZapEnv>) {
     });
 
     if (!tokenExchange.success) {
+      if (idempotencyKey) {
+        await coexistenceStore.updateRawEventStatus?.({
+          id: idempotencyKey,
+          status: "failed",
+          error: tokenExchange.error ?? "Meta Graph request failed",
+        });
+      }
+
       return graphResultResponse(c, tokenExchange);
     }
 
-    await coexistenceStore.recordOnboardingSession({
-      id: createRecordId("coexistence_session"),
-      event: session.event,
-      accountId: session.data?.business_id,
-      wabaId: session.data?.waba_id,
-      phoneNumberId: session.data?.phone_number_id,
-      payload: session,
+    if (!tokenExchange.data) {
+      if (idempotencyKey) {
+        await coexistenceStore.updateRawEventStatus?.({
+          id: idempotencyKey,
+          status: "failed",
+          error: "Token exchange returned no credential data",
+        });
+      }
+
+      return c.json(
+        { success: false, error: "Token exchange returned no credential data" },
+        502,
+      );
+    }
+
+    await recordOnboardingSession(c, {
+      session,
+      idempotencyKey,
+      state,
+      nonce,
     });
+
+    let subscriptionStatus:
+      | "subscribed"
+      | "failed"
+      | "skipped"
+      | "not_requested" = "not_requested";
+    let subscriptionResult:
+      | CoexistenceGraphResult<{ success?: boolean }>
+      | undefined;
+
+    if (session.data?.waba_id) {
+      if (shouldSubscribeWabaAfterCodeExchange(c)) {
+        subscriptionResult = await coexistence.subscribeWaba({
+          wabaId: session.data.waba_id,
+          accessToken: tokenExchange.data.accessToken,
+        });
+        subscriptionStatus = subscriptionResult.success
+          ? "subscribed"
+          : "failed";
+      } else {
+        subscriptionStatus = "skipped";
+      }
+    }
 
     if (session.data?.waba_id && session.data.phone_number_id) {
       await coexistenceStore.upsertConnectedAccount({
@@ -150,16 +304,99 @@ export async function handleEmbeddedSignupCallback(c: Context<BetterZapEnv>) {
         accountId: session.data.business_id,
         phoneNumberId: session.data.phone_number_id,
         displayPhoneNumber: session.data.display_phone_number,
+        credentialRef: tokenExchange.data.credentialRef,
+        credentialProvider: tokenExchange.data.credentialProvider,
+        credentialMetadata: tokenExchange.data.credentialMetadata,
         metadata: {
           onboardingEvent: session.event,
+          tokenType: tokenExchange.data.tokenType,
+          tokenExpiresIn: optionalNumber(tokenExchange.data.expiresIn),
+          subscriptionStatus,
+          ...(subscriptionResult
+            ? {
+                subscription: {
+                  success: subscriptionResult.success,
+                  error: subscriptionResult.error,
+                  errorCode: subscriptionResult.errorCode,
+                  httpStatus: subscriptionResult.httpStatus,
+                  details: subscriptionResult.details,
+                },
+              }
+            : {}),
         },
       });
     }
 
-    return c.json({
+    if (subscriptionResult && !subscriptionResult.success) {
+      await coexistenceStore.recordLifecycleEvent({
+        accountId: session.data?.business_id,
+        wabaId: session.data?.waba_id,
+        phoneNumberId: session.data?.phone_number_id,
+        event: "WABA_SUBSCRIPTION_FAILED",
+        payload: {
+          session,
+          error: subscriptionResult.error,
+          errorCode: subscriptionResult.errorCode,
+          httpStatus: subscriptionResult.httpStatus,
+          details: subscriptionResult.details,
+        },
+      });
+
+      if (idempotencyKey) {
+        await coexistenceStore.updateRawEventStatus?.({
+          id: idempotencyKey,
+          status: "failed",
+          error: subscriptionResult.error ?? "Meta Graph request failed",
+          result: {
+            phase: "subscribe_waba",
+            wabaId: session.data?.waba_id,
+            error: subscriptionResult.error,
+            errorCode: subscriptionResult.errorCode,
+            details: subscriptionResult.details,
+          },
+        });
+      }
+
+      return c.json(
+        {
+          success: false,
+          phase: "subscribe_waba",
+          error: subscriptionResult.error ?? "Meta Graph request failed",
+          ...(subscriptionResult.errorCode
+            ? { errorCode: subscriptionResult.errorCode }
+            : {}),
+          ...(subscriptionResult.details
+            ? { details: subscriptionResult.details }
+            : {}),
+        },
+        (subscriptionResult.httpStatus ?? 502) as
+          | 400
+          | 401
+          | 403
+          | 404
+          | 409
+          | 422
+          | 500
+          | 502,
+      );
+    }
+
+    const responseBody = {
       success: true,
+      status: "exchanged",
       session,
-    });
+      subscriptionStatus,
+    };
+
+    if (idempotencyKey) {
+      await coexistenceStore.updateRawEventStatus?.({
+        id: idempotencyKey,
+        status: "processed",
+        result: responseBody,
+      });
+    }
+
+    return c.json(responseBody);
   } catch (error) {
     c.get("logger").error("coexistence.callback_error", serializeError(error));
     return c.json(
