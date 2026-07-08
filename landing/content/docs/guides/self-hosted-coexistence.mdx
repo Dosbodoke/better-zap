@@ -14,6 +14,21 @@ Coexistence is partner-gated by Meta. Your Meta app must have the capabilities
 and permissions required for WhatsApp Business App coexistence before these
 routes can complete onboarding or sync data.
 
+Before launching Embedded Signup, run a product-level preflight. Meta's
+coexistence onboarding requirements put these checks around the signup flow;
+Better Zap can help with Graph operations after authorization, but your
+application owns the customer-facing eligibility decision.
+
+| Check | Application responsibility |
+| --- | --- |
+| Customer payment method | Tell the customer that Meta requires them to attach a payment method to their own WABA during Embedded Signup. The Tech Provider should not assume message-cost liability for customer traffic. |
+| Tech Provider access | Confirm your Meta app has Tech Provider or Solution Partner access, direct Cloud API readiness, and webhook callback capability before offering coexistence onboarding. |
+| Country or region eligibility | Confirm the customer's country or region is supported for coexistence. If availability is uncertain in your Meta dashboard or onboarding UI, treat it as unconfirmed instead of eligible. |
+| WhatsApp Business App version | Require WhatsApp Business App version `2.24.17` or higher on the customer's device. |
+| Number activity | Require sufficient WhatsApp Business App activity before onboarding. A fresh number should be installed in the WhatsApp Business App and active for at least 7 days before you present it as coexistence-ready. |
+| Fresh-number setup | For first tests, use a number that starts in the WhatsApp Business App, builds activity there, and has not already been registered to Cloud API. |
+| Existing Cloud API registration | If the number is already registered to Cloud API, it must be deregistered first. If it was used through another provider's WABA, that provider WABA may need to be deleted and the number may need 1-2 months of WhatsApp Business App credibility rebuild before coexistence eligibility returns. |
+
 Use Embedded Signup v4. The signup config must request the coexistence feature:
 
 ```ts
@@ -92,6 +107,21 @@ each sync type only once per onboarding, so store returned `request_id` values i
 `database.coexistence.createSyncJob` and process the matching webhook deliveries
 through your coexistence store.
 
+## Onboarding States
+
+Model preflight and Embedded Signup failures explicitly in your application.
+These states are outside the SDK's storage contract unless you add them to your
+own coexistence store.
+
+| State | When to use it | Customer action |
+| --- | --- | --- |
+| `payment_required` | The customer skipped, could not attach, or has not confirmed the WABA payment method required by Meta. | Reopen Embedded Signup or Meta billing setup and attach the customer's own WABA payment method. |
+| `tech_provider_access_required` | Your Meta app does not have Tech Provider or Solution Partner capability for coexistence, or required Cloud API/webhook readiness is missing. | Wait for provider access, App Review, and webhook setup before retrying. |
+| `country_unconfirmed` | The customer's country or region is unsupported, unavailable, or not confirmed in the current Meta eligibility UI. | Confirm availability in Meta before offering onboarding. |
+| `app_version_unsupported` | The customer's WhatsApp Business App version is below `2.24.17`. | Update the WhatsApp Business App and retry. |
+| `number_activity_pending` | The number is fresh or has not built enough WhatsApp Business App activity. | Keep the number active in the WhatsApp Business App for at least 7 days, then retry. |
+| `cloud_api_registration_conflict` | The number is already registered to Cloud API or was previously used through another provider's WABA. | Deregister the number from Cloud API first. For prior-provider WABAs, complete provider cleanup and allow the credibility rebuild period before retrying. |
+
 ## Managed vs Self-Hosted
 
 The managed Better Zap service can own hosted callbacks, credential storage,
@@ -99,3 +129,20 @@ operator UI, and account lifecycle automation. In the self-hosted path, those
 responsibilities stay in your application. You provide authorization, storage,
 token management, and operational controls while reusing the same
 `CoexistenceService` methods used by the Hono routes.
+
+## Integration Boundaries
+
+Better Zap owns the SDK primitives: Embedded Signup configuration helpers, Hono
+application routes, OAuth code exchange hooks, Graph helpers, sync request
+methods, and coexistence webhook normalization. Your application owns the
+onboarding policy around those primitives: customer billing disclosure, WABA
+payment-method status, Tech Provider access readiness, country or region
+eligibility, app-version checks, number-activity checks, prior Cloud API
+registration cleanup, and the UI state machine that tells the customer what to
+do next.
+
+The SDK does not own business billing. Do not store a customer payment method in
+Better Zap, do not treat the generic coexistence account record as a billing
+source of truth, and do not imply that the Tech Provider is responsible for the
+customer's WhatsApp message costs unless your product has made that separate
+commercial commitment.
