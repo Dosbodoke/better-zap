@@ -623,6 +623,97 @@ function createCoexistenceEmbeddedSignupConfig(input) {
 	};
 }
 //#endregion
+//#region src/coexistence/memory-store.ts
+const IN_FLIGHT_SYNC_STATUSES = new Set(["requested", "processing"]);
+function timeValue(value) {
+	if (!value) return;
+	return value instanceof Date ? value.getTime() : new Date(value).getTime();
+}
+function cloneRecord(record) {
+	return structuredClone(record);
+}
+function isInFlight(job, now) {
+	if (!IN_FLIGHT_SYNC_STATUSES.has(job.status)) return false;
+	const deadline = timeValue(job.deadlineAt);
+	if (deadline !== void 0 && deadline <= now.getTime()) return false;
+	return true;
+}
+var InMemoryCoexistenceStore = class {
+	connectedAccounts = /* @__PURE__ */ new Map();
+	onboardingSessions = /* @__PURE__ */ new Map();
+	syncJobs = /* @__PURE__ */ new Map();
+	contacts = /* @__PURE__ */ new Map();
+	lifecycleEvents = [];
+	rawEventStatuses = /* @__PURE__ */ new Map();
+	preflightStates = /* @__PURE__ */ new Map();
+	async upsertConnectedAccount(account) {
+		const record = cloneRecord(account);
+		this.connectedAccounts.set(account.wabaId, record);
+		this.connectedAccounts.set(account.phoneNumberId, record);
+		if (account.preflight) await this.upsertPreflightState(account.preflight);
+	}
+	async getConnectedAccountByWabaId(wabaId) {
+		return cloneRecord(this.connectedAccounts.get(wabaId) ?? null);
+	}
+	async getConnectedAccountByPhoneNumberId(phoneNumberId) {
+		return cloneRecord(this.connectedAccounts.get(phoneNumberId) ?? null);
+	}
+	async recordOnboardingSession(session) {
+		this.onboardingSessions.set(session.id, cloneRecord(session));
+		if (session.preflight) await this.upsertPreflightState(session.preflight);
+	}
+	async upsertPreflightState(state) {
+		const record = cloneRecord(state);
+		if (state.phoneNumberId) this.preflightStates.set(state.phoneNumberId, record);
+		if (state.wabaId) this.preflightStates.set(state.wabaId, record);
+	}
+	async getPreflightStateByPhoneNumberId(phoneNumberId) {
+		return cloneRecord(this.preflightStates.get(phoneNumberId) ?? null);
+	}
+	async createSyncJob(job) {
+		if (await this.getInFlightSyncJob({
+			phoneNumberId: job.phoneNumberId,
+			syncType: job.syncType,
+			now: job.requestedAt ?? job.createdAt
+		})) throw new Error(`Coexistence sync already in flight for ${job.phoneNumberId}:${job.syncType}`);
+		this.syncJobs.set(job.requestId, cloneRecord(job));
+	}
+	async getInFlightSyncJob(input) {
+		const now = input.now instanceof Date ? input.now : new Date(input.now ?? Date.now());
+		for (const job of this.syncJobs.values()) {
+			if (job.phoneNumberId !== input.phoneNumberId || job.syncType !== input.syncType) continue;
+			if (isInFlight(job, now)) return cloneRecord(job);
+			if (IN_FLIGHT_SYNC_STATUSES.has(job.status) && job.deadlineAt) await this.updateSyncJobByRequestId(job.requestId, {
+				status: "deadline_exceeded",
+				failedAt: now,
+				failureReason: "sync_deadline_exceeded"
+			});
+		}
+		return null;
+	}
+	async updateSyncJobByRequestId(requestId, patch) {
+		const current = this.syncJobs.get(requestId);
+		if (!current) return;
+		this.syncJobs.set(requestId, cloneRecord({
+			...current,
+			...patch
+		}));
+	}
+	async upsertContact(contact) {
+		const key = `${contact.phoneNumberId ?? ""}:${contact.waId}`;
+		this.contacts.set(key, cloneRecord(contact));
+	}
+	async removeContact(input) {
+		this.contacts.delete(`${input.phoneNumberId ?? ""}:${input.waId}`);
+	}
+	async recordLifecycleEvent(event) {
+		this.lifecycleEvents.push(cloneRecord(event));
+	}
+	async updateRawEventStatus(status) {
+		this.rawEventStatuses.set(status.id, cloneRecord(status));
+	}
+};
+//#endregion
 //#region src/services/message-logger.service.ts
 const WHATSAPP_MESSAGE_TYPES = [
 	"queue_position",
@@ -862,4 +953,4 @@ function serializeTemplateParameter(parameter, value) {
 	}
 }
 //#endregion
-export { BetterZapClientError, CoexistenceService, EMPTY_TEMPLATE_REGISTRY, FREEFORM_MESSAGE_WINDOW_MS, MessageLoggerService, WHATSAPP_MESSAGE_TYPES, WhatsAppService, createCoexistenceEmbeddedSignupConfig, createFreeformMessageWindow, createLogger, createZapClient, defineTemplates, delay, formatPhone, getLatestIncomingMessageAt, getTemplateNames, hasConfiguredTemplates, noopLogger, normalizeConversationRecord, normalizeConversationRecords, resolveConversationFreeformMessageWindow, serializeError, serializeTemplateFromRegistry };
+export { BetterZapClientError, CoexistenceService, EMPTY_TEMPLATE_REGISTRY, FREEFORM_MESSAGE_WINDOW_MS, InMemoryCoexistenceStore, MessageLoggerService, WHATSAPP_MESSAGE_TYPES, WhatsAppService, createCoexistenceEmbeddedSignupConfig, createFreeformMessageWindow, createLogger, createZapClient, defineTemplates, delay, formatPhone, getLatestIncomingMessageAt, getTemplateNames, hasConfiguredTemplates, noopLogger, normalizeConversationRecord, normalizeConversationRecords, resolveConversationFreeformMessageWindow, serializeError, serializeTemplateFromRegistry };

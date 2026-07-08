@@ -348,8 +348,13 @@ async function processHistoryChange(
   }
 
   if (requestId && config.database?.coexistence) {
+    const updatedAt = new Date();
     await config.database.coexistence.updateSyncJobByRequestId(requestId, {
       status: hasHistoryErrors ? "failed" : "completed",
+      ...(hasHistoryErrors
+        ? { failedAt: updatedAt }
+        : { completedAt: updatedAt }),
+      updatedAt,
       metadata: {
         field: "history",
         importedMessages,
@@ -411,8 +416,11 @@ async function processSmbAppStateSyncChange(
   }
 
   if (value.request_id && config.database?.coexistence) {
+    const updatedAt = new Date();
     await config.database.coexistence.updateSyncJobByRequestId(value.request_id, {
       status: "completed",
+      completedAt: updatedAt,
+      updatedAt,
       metadata: {
         field: "smb_app_state_sync",
         upsertedContacts,

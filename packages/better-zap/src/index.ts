@@ -57,6 +57,10 @@ export type {
   CoexistenceOnboardingSessionRecord,
   CoexistencePhoneStatusResponse,
   CoexistenceRawEventStatusRecord,
+  CoexistenceBillingStatus,
+  CoexistenceEligibilityStatus,
+  CoexistencePreflightFailureCode,
+  CoexistencePreflightStateRecord,
   CoexistenceSessionEventPayload,
   CoexistenceSessionInfoVersion,
   CoexistenceSmbAppStateSyncValue,
@@ -65,6 +69,7 @@ export type {
   CoexistenceSmbMessageEchoesWebhook,
   CoexistenceStore,
   CoexistenceSyncJobRecord,
+  CoexistenceSyncJobStatus,
   CoexistenceSyncRequest,
   CoexistenceSyncResponse,
   CoexistenceSyncType,
@@ -117,6 +122,7 @@ export {
   type CoexistenceServiceConfig,
 } from "./services/coexistence.service";
 export { createCoexistenceEmbeddedSignupConfig } from "./coexistence";
+export { InMemoryCoexistenceStore } from "./coexistence/memory-store";
 export {
   MessageLoggerService,
   WHATSAPP_MESSAGE_TYPES,

@@ -146,6 +146,24 @@ interface CoexistenceSessionEventPayload {
     [key: string]: unknown;
   };
 }
+type CoexistencePreflightFailureCode = "unsupported_country" | "unsupported_app_version" | "low_activity_number" | "prior_provider_waba_registration" | "missing_payment_setup";
+type CoexistenceEligibilityStatus = "eligible" | "ineligible" | "unknown";
+type CoexistenceBillingStatus = "ready" | "missing_payment_setup" | "unknown";
+interface CoexistencePreflightStateRecord {
+  phoneNumberId?: string;
+  wabaId?: string;
+  displayPhoneNumber?: string;
+  eligibilityStatus?: CoexistenceEligibilityStatus;
+  billingStatus?: CoexistenceBillingStatus;
+  unsupportedCountry?: boolean;
+  unsupportedAppVersion?: boolean;
+  lowActivityNumber?: boolean;
+  priorProviderWabaRegistration?: boolean;
+  missingPaymentSetup?: boolean;
+  failureCodes?: CoexistencePreflightFailureCode[];
+  checkedAt?: Date | string;
+  metadata?: Record<string, unknown>;
+}
 interface CoexistenceConnectedAccountIdentifiers {
   wabaId: string;
   businessId?: string;
@@ -293,6 +311,7 @@ interface CoexistenceConnectedAccountRecord extends CoexistenceConnectedAccountI
   accountId?: string;
   isOnBizApp?: boolean;
   platformType?: CoexistencePhoneStatusResponse["platform_type"];
+  preflight?: CoexistencePreflightStateRecord;
   createdAt?: Date | string;
   updatedAt?: Date | string;
   metadata?: Record<string, unknown>;
@@ -304,14 +323,22 @@ interface CoexistenceOnboardingSessionRecord {
   wabaId?: string;
   phoneNumberId?: string;
   payload: CoexistenceSessionEventPayload;
+  preflight?: CoexistencePreflightStateRecord;
   createdAt?: Date | string;
 }
+type CoexistenceSyncJobStatus = "requested" | "processing" | "completed" | "failed" | "deadline_exceeded" | (string & {});
 interface CoexistenceSyncJobRecord {
   requestId: string;
   syncType: CoexistenceSyncType;
+  onboardingSessionId?: string;
   wabaId?: string;
   phoneNumberId: string;
-  status: "requested" | "processing" | "completed" | "failed" | (string & {});
+  status: CoexistenceSyncJobStatus;
+  requestedAt?: Date | string;
+  deadlineAt?: Date | string;
+  completedAt?: Date | string;
+  failedAt?: Date | string;
+  failureReason?: string;
   createdAt?: Date | string;
   updatedAt?: Date | string;
   metadata?: Record<string, unknown>;
@@ -344,7 +371,14 @@ interface CoexistenceStore {
   getConnectedAccountByWabaId(wabaId: string): Awaitable<CoexistenceConnectedAccountRecord | null>;
   getConnectedAccountByPhoneNumberId(phoneNumberId: string): Awaitable<CoexistenceConnectedAccountRecord | null>;
   recordOnboardingSession(session: CoexistenceOnboardingSessionRecord): Awaitable<void>;
+  upsertPreflightState?(state: CoexistencePreflightStateRecord): Awaitable<void>;
+  getPreflightStateByPhoneNumberId?(phoneNumberId: string): Awaitable<CoexistencePreflightStateRecord | null>;
   createSyncJob(job: CoexistenceSyncJobRecord): Awaitable<void>;
+  getInFlightSyncJob?(input: {
+    phoneNumberId: string;
+    syncType: CoexistenceSyncType;
+    now?: Date | string;
+  }): Awaitable<CoexistenceSyncJobRecord | null>;
   updateSyncJobByRequestId(requestId: string, patch: Partial<CoexistenceSyncJobRecord>): Awaitable<void>;
   upsertContact(contact: CoexistenceContactRecord): Awaitable<void>;
   removeContact(input: {
@@ -414,6 +448,37 @@ declare class CoexistenceService {
 //#region src/coexistence/index.d.ts
 declare function createCoexistenceEmbeddedSignupConfig(input: CoexistenceEmbeddedSignupConfigInput): CoexistenceEmbeddedSignupConfig;
 //#endregion
+//#region src/coexistence/memory-store.d.ts
+declare class InMemoryCoexistenceStore implements CoexistenceStore {
+  readonly connectedAccounts: Map<string, CoexistenceConnectedAccountRecord>;
+  readonly onboardingSessions: Map<string, CoexistenceOnboardingSessionRecord>;
+  readonly syncJobs: Map<string, CoexistenceSyncJobRecord>;
+  readonly contacts: Map<string, CoexistenceContactRecord>;
+  readonly lifecycleEvents: CoexistenceLifecycleEventRecord[];
+  readonly rawEventStatuses: Map<string, CoexistenceRawEventStatusRecord>;
+  readonly preflightStates: Map<string, CoexistencePreflightStateRecord>;
+  upsertConnectedAccount(account: CoexistenceConnectedAccountRecord): Promise<void>;
+  getConnectedAccountByWabaId(wabaId: string): Promise<CoexistenceConnectedAccountRecord | null>;
+  getConnectedAccountByPhoneNumberId(phoneNumberId: string): Promise<CoexistenceConnectedAccountRecord | null>;
+  recordOnboardingSession(session: CoexistenceOnboardingSessionRecord): Promise<void>;
+  upsertPreflightState(state: CoexistencePreflightStateRecord): Promise<void>;
+  getPreflightStateByPhoneNumberId(phoneNumberId: string): Promise<CoexistencePreflightStateRecord | null>;
+  createSyncJob(job: CoexistenceSyncJobRecord): Promise<void>;
+  getInFlightSyncJob(input: {
+    phoneNumberId: string;
+    syncType: CoexistenceSyncType;
+    now?: Date | string;
+  }): Promise<CoexistenceSyncJobRecord | null>;
+  updateSyncJobByRequestId(requestId: string, patch: Partial<CoexistenceSyncJobRecord>): Promise<void>;
+  upsertContact(contact: CoexistenceContactRecord): Promise<void>;
+  removeContact(input: {
+    waId: string;
+    phoneNumberId?: string;
+  }): Promise<void>;
+  recordLifecycleEvent(event: CoexistenceLifecycleEventRecord): Promise<void>;
+  updateRawEventStatus(status: CoexistenceRawEventStatusRecord): Promise<void>;
+}
+//#endregion
 //#region src/utils/phone.d.ts
 /**
  * Formats a phone number to the international format required by Meta Cloud API.
@@ -429,4 +494,4 @@ declare function formatPhone(phone: string): string;
  */
 declare function delay(ms: number): Promise<void>;
 //#endregion
-export { type Awaitable, type BetterZapApi, BetterZapClientError, type BetterZapContext, type BetterZapCoreConfig, type BetterZapCoreContext, type BetterZapCoreServices, type BetterZapDatabase, type BetterZapPlugin, type BetterZapPluginInitContext, type BetterZapPluginInitResult, type BetterZapServices, type CoexistenceAccountUpdateValue, type CoexistenceAccountUpdateWebhook, type CoexistenceConnectedAccountIdentifiers, type CoexistenceConnectedAccountRecord, type CoexistenceContactRecord, type CoexistenceCredentialProvider, type CoexistenceEmbeddedSignupConfig, type CoexistenceEmbeddedSignupConfigInput, type CoexistenceEmbeddedSignupSetup, type CoexistenceErrorValue, type CoexistenceErrorWebhook, type CoexistenceFeatureType, type CoexistenceGraphResult, type CoexistenceHistoryValue, type CoexistenceHistoryWebhook, type CoexistenceLifecycleEventRecord, type CoexistenceMessageEditValue, type CoexistenceMessageEditWebhook, type CoexistenceMessageRevokeValue, type CoexistenceMessageRevokeWebhook, type CoexistenceOnboardingSessionRecord, type CoexistencePhoneStatusResponse, type CoexistenceRawEventStatusRecord, CoexistenceService, type CoexistenceServiceConfig, type CoexistenceSessionEventPayload, type CoexistenceSessionInfoVersion, type CoexistenceSmbAppStateSyncValue, type CoexistenceSmbAppStateSyncWebhook, type CoexistenceSmbMessageEchoesValue, type CoexistenceSmbMessageEchoesWebhook, type CoexistenceStore, type CoexistenceSyncJobRecord, type CoexistenceSyncRequest, type CoexistenceSyncResponse, type CoexistenceSyncType, type CoexistenceTokenExchangeResult, type CoexistenceUnsupportedValue, type CoexistenceUnsupportedWebhook, type CoexistenceWebhookBase, type CoexistenceWebhookPayload, type CoexistenceWebhookValueBase, type Conversation, type ConversationRecord, type ConversationSummary, type ConversationUpdateEvent, EMPTY_TEMPLATE_REGISTRY, FREEFORM_MESSAGE_WINDOW_MS, type FreeformMessageWindow, type IncomingMessage, type InferBetterZapPluginContext, type InferBetterZapPluginServices, type InteractiveMediaCarouselCardInput, type LogLevel, type Logger, type LoggerConfig, type MediaMessage, type MessageContext, type MessageError, type MessageLoggerNotifier, MessageLoggerService, type MessageStatus, type MetaAccessTokenProvider, type MetaGraphApiErrorBody, type NewMessageEvent, type OutgoingLoggingMetadata, type SendInteractiveMediaCarouselData, type SendMessageError, type SendMessageResponse, type SendResult, type StatusContext, type StatusUpdateEvent, type SupportedTemplateParameterType, type SyncEvent, type TemplateComponent, type TemplateComponentDefinition, type TemplateDefinition, type TemplateName, type TemplateParameter, type TemplateParameterDefinition, type TemplateParameterInputMap, type TemplateParams, type TemplateRegistry, type UIMessage, type UIMessageStatus, WHATSAPP_MESSAGE_TYPES, type WebhookChange, type WebhookContact, type WebhookEntry, type WebhookError, type WebhookPayload, type WebhookValue, type WhatsAppCarouselCard, type WhatsAppConfig, type WhatsAppDirection, type WhatsAppInteractiveButtonsMessage, type WhatsAppInteractiveListMessage, type WhatsAppInteractiveMediaCarouselMessage, type WhatsAppLocationMessage, type WhatsAppLogRecord, type WhatsAppLogStore, type WhatsAppMessageType, WhatsAppService, type WhatsAppStatus, type WhatsAppTemplateMessage, type WhatsAppTextMessage, type WhatsAppWebhookField, type ZapClient, createCoexistenceEmbeddedSignupConfig, createFreeformMessageWindow, createLogger, createZapClient, defineTemplates, delay, formatPhone, getLatestIncomingMessageAt, getTemplateNames, hasConfiguredTemplates, noopLogger, normalizeConversationRecord, normalizeConversationRecords, resolveConversationFreeformMessageWindow, serializeError, serializeTemplateFromRegistry };
+export { type Awaitable, type BetterZapApi, BetterZapClientError, type BetterZapContext, type BetterZapCoreConfig, type BetterZapCoreContext, type BetterZapCoreServices, type BetterZapDatabase, type BetterZapPlugin, type BetterZapPluginInitContext, type BetterZapPluginInitResult, type BetterZapServices, type CoexistenceAccountUpdateValue, type CoexistenceAccountUpdateWebhook, type CoexistenceBillingStatus, type CoexistenceConnectedAccountIdentifiers, type CoexistenceConnectedAccountRecord, type CoexistenceContactRecord, type CoexistenceCredentialProvider, type CoexistenceEligibilityStatus, type CoexistenceEmbeddedSignupConfig, type CoexistenceEmbeddedSignupConfigInput, type CoexistenceEmbeddedSignupSetup, type CoexistenceErrorValue, type CoexistenceErrorWebhook, type CoexistenceFeatureType, type CoexistenceGraphResult, type CoexistenceHistoryValue, type CoexistenceHistoryWebhook, type CoexistenceLifecycleEventRecord, type CoexistenceMessageEditValue, type CoexistenceMessageEditWebhook, type CoexistenceMessageRevokeValue, type CoexistenceMessageRevokeWebhook, type CoexistenceOnboardingSessionRecord, type CoexistencePhoneStatusResponse, type CoexistencePreflightFailureCode, type CoexistencePreflightStateRecord, type CoexistenceRawEventStatusRecord, CoexistenceService, type CoexistenceServiceConfig, type CoexistenceSessionEventPayload, type CoexistenceSessionInfoVersion, type CoexistenceSmbAppStateSyncValue, type CoexistenceSmbAppStateSyncWebhook, type CoexistenceSmbMessageEchoesValue, type CoexistenceSmbMessageEchoesWebhook, type CoexistenceStore, type CoexistenceSyncJobRecord, type CoexistenceSyncJobStatus, type CoexistenceSyncRequest, type CoexistenceSyncResponse, type CoexistenceSyncType, type CoexistenceTokenExchangeResult, type CoexistenceUnsupportedValue, type CoexistenceUnsupportedWebhook, type CoexistenceWebhookBase, type CoexistenceWebhookPayload, type CoexistenceWebhookValueBase, type Conversation, type ConversationRecord, type ConversationSummary, type ConversationUpdateEvent, EMPTY_TEMPLATE_REGISTRY, FREEFORM_MESSAGE_WINDOW_MS, type FreeformMessageWindow, InMemoryCoexistenceStore, type IncomingMessage, type InferBetterZapPluginContext, type InferBetterZapPluginServices, type InteractiveMediaCarouselCardInput, type LogLevel, type Logger, type LoggerConfig, type MediaMessage, type MessageContext, type MessageError, type MessageLoggerNotifier, MessageLoggerService, type MessageStatus, type MetaAccessTokenProvider, type MetaGraphApiErrorBody, type NewMessageEvent, type OutgoingLoggingMetadata, type SendInteractiveMediaCarouselData, type SendMessageError, type SendMessageResponse, type SendResult, type StatusContext, type StatusUpdateEvent, type SupportedTemplateParameterType, type SyncEvent, type TemplateComponent, type TemplateComponentDefinition, type TemplateDefinition, type TemplateName, type TemplateParameter, type TemplateParameterDefinition, type TemplateParameterInputMap, type TemplateParams, type TemplateRegistry, type UIMessage, type UIMessageStatus, WHATSAPP_MESSAGE_TYPES, type WebhookChange, type WebhookContact, type WebhookEntry, type WebhookError, type WebhookPayload, type WebhookValue, type WhatsAppCarouselCard, type WhatsAppConfig, type WhatsAppDirection, type WhatsAppInteractiveButtonsMessage, type WhatsAppInteractiveListMessage, type WhatsAppInteractiveMediaCarouselMessage, type WhatsAppLocationMessage, type WhatsAppLogRecord, type WhatsAppLogStore, type WhatsAppMessageType, WhatsAppService, type WhatsAppStatus, type WhatsAppTemplateMessage, type WhatsAppTextMessage, type WhatsAppWebhookField, type ZapClient, createCoexistenceEmbeddedSignupConfig, createFreeformMessageWindow, createLogger, createZapClient, defineTemplates, delay, formatPhone, getLatestIncomingMessageAt, getTemplateNames, hasConfiguredTemplates, noopLogger, normalizeConversationRecord, normalizeConversationRecords, resolveConversationFreeformMessageWindow, serializeError, serializeTemplateFromRegistry };
