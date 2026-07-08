@@ -207,6 +207,18 @@ async function handleSyncRequest(
       return c.json({ error: "phoneNumberId is required" }, 400);
     }
 
+    const blocked = await getBlockedConnectedAccount(c, phoneNumberId);
+    if (blocked) {
+      return c.json(
+        {
+          error: "Coexistence account is not usable",
+          status: blocked.status,
+          phoneNumberId,
+        },
+        409,
+      );
+    }
+
     const result =
       syncType === "smb_app_state_sync"
         ? await coexistence.startContactsSync({ phoneNumberId })
@@ -227,6 +239,26 @@ async function handleSyncRequest(
     c.get("logger").error("coexistence.sync_error", serializeError(error));
     return c.json({ error: "Internal error requesting coexistence sync" }, 500);
   }
+}
+
+async function getBlockedConnectedAccount(
+  c: Context<BetterZapEnv>,
+  phoneNumberId: string,
+) {
+  const coexistenceStore = getCoexistenceStore(c);
+  if (!coexistenceStore) {
+    return null;
+  }
+
+  const account =
+    await coexistenceStore.getConnectedAccountByPhoneNumberId(phoneNumberId);
+  if (!account) {
+    return null;
+  }
+
+  return account.usable === false || account.status === "offboarded"
+    ? account
+    : null;
 }
 
 async function recordSyncJob(

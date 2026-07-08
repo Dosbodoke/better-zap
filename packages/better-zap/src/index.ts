@@ -36,6 +36,10 @@ export type {
 export type {
   CoexistenceAccountUpdateValue,
   CoexistenceAccountUpdateWebhook,
+  CoexistenceAccountOffboardedValue,
+  CoexistenceAccountOffboardedWebhook,
+  CoexistenceAccountReconnectedValue,
+  CoexistenceAccountReconnectedWebhook,
   CoexistenceConnectedAccountIdentifiers,
   CoexistenceConnectedAccountRecord,
   CoexistenceContactRecord,

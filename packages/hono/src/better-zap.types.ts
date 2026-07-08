@@ -17,8 +17,12 @@ import type {
   CoexistenceService,
 } from "better-zap";
 import type {
+  CoexistenceAccountOffboardedContext,
+  CoexistenceAccountReconnectedContext,
   CoexistenceAccountUpdateContext,
   CoexistenceHistoryContext,
+  CoexistenceMessageEditContext,
+  CoexistenceMessageRevokeContext,
   CoexistenceUnsupportedMessageContext,
   SmbAppStateSyncContext,
   SmbMessageEchoContext,
@@ -63,6 +67,22 @@ export interface BetterZapConfig<
     ) => Promise<void>;
     onCoexistenceAccountUpdate?: (
       ctx: CoexistenceAccountUpdateContext &
+        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>,
+    ) => Promise<void>;
+    onCoexistenceAccountOffboarded?: (
+      ctx: CoexistenceAccountOffboardedContext &
+        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>,
+    ) => Promise<void>;
+    onCoexistenceAccountReconnected?: (
+      ctx: CoexistenceAccountReconnectedContext &
+        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>,
+    ) => Promise<void>;
+    onCoexistenceMessageEdit?: (
+      ctx: CoexistenceMessageEditContext &
+        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>,
+    ) => Promise<void>;
+    onCoexistenceMessageRevoke?: (
+      ctx: CoexistenceMessageRevokeContext &
         BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>,
     ) => Promise<void>;
     onCoexistenceUnsupportedMessage?: (

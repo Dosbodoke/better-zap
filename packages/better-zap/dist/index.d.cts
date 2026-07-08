@@ -1,4 +1,4 @@
-import { $ as UIMessage, A as createLogger, B as ConversationRecord, C as WhatsAppLogRecord, D as LogLevel, E as WhatsAppStatus, F as NewMessageEvent, G as MessageError, H as IncomingMessage, I as StatusUpdateEvent, J as SendMessageError, K as MessageStatus, L as SyncEvent, M as serializeError, N as ConversationSummary, O as Logger, P as ConversationUpdateEvent, Q as TemplateParameter, R as WhatsAppConfig, S as WhatsAppDirection, T as WhatsAppMessageType, U as InteractiveMediaCarouselCardInput, V as FreeformMessageWindow, W as MediaMessage, X as SendResult, Y as SendMessageResponse, Z as TemplateComponent, _ as OutgoingLoggingMetadata, a as SupportedTemplateParameterType, at as WebhookPayload, b as MessageLoggerService, c as TemplateName, ct as WhatsAppInteractiveButtonsMessage, d as TemplateParams, dt as WhatsAppLocationMessage, et as UIMessageStatus, f as TemplateRegistry, ft as WhatsAppTemplateMessage, g as serializeTemplateFromRegistry, h as hasConfiguredTemplates, i as EMPTY_TEMPLATE_REGISTRY, it as WebhookError, j as noopLogger, k as LoggerConfig, l as TemplateParameterDefinition, lt as WhatsAppInteractiveListMessage, m as getTemplateNames, mt as WhatsAppWebhookField, n as ZapClient, nt as WebhookContact, o as TemplateComponentDefinition, ot as WebhookValue, p as defineTemplates, pt as WhatsAppTextMessage, q as SendInteractiveMediaCarouselData, r as createZapClient, rt as WebhookEntry, s as TemplateDefinition, st as WhatsAppCarouselCard, t as BetterZapClientError, tt as WebhookChange, u as TemplateParameterInputMap, ut as WhatsAppInteractiveMediaCarouselMessage, v as WhatsAppService, w as WhatsAppLogStore, x as WHATSAPP_MESSAGE_TYPES, y as MessageLoggerNotifier, z as Conversation } from "./client-XMsOzllF.cjs";
+import { $ as UIMessage, A as createLogger, B as ConversationRecord, C as WhatsAppLogRecord, D as LogLevel, E as WhatsAppStatus, F as NewMessageEvent, G as MessageError, H as IncomingMessage, I as StatusUpdateEvent, J as SendMessageError, K as MessageStatus, L as SyncEvent, M as serializeError, N as ConversationSummary, O as Logger, P as ConversationUpdateEvent, Q as TemplateParameter, R as WhatsAppConfig, S as WhatsAppDirection, T as WhatsAppMessageType, U as InteractiveMediaCarouselCardInput, V as FreeformMessageWindow, W as MediaMessage, X as SendResult, Y as SendMessageResponse, Z as TemplateComponent, _ as OutgoingLoggingMetadata, a as SupportedTemplateParameterType, at as WebhookPayload, b as MessageLoggerService, c as TemplateName, ct as WhatsAppInteractiveButtonsMessage, d as TemplateParams, dt as WhatsAppLocationMessage, et as UIMessageStatus, f as TemplateRegistry, ft as WhatsAppTemplateMessage, g as serializeTemplateFromRegistry, h as hasConfiguredTemplates, i as EMPTY_TEMPLATE_REGISTRY, it as WebhookError, j as noopLogger, k as LoggerConfig, l as TemplateParameterDefinition, lt as WhatsAppInteractiveListMessage, m as getTemplateNames, mt as WhatsAppWebhookField, n as ZapClient, nt as WebhookContact, o as TemplateComponentDefinition, ot as WebhookValue, p as defineTemplates, pt as WhatsAppTextMessage, q as SendInteractiveMediaCarouselData, r as createZapClient, rt as WebhookEntry, s as TemplateDefinition, st as WhatsAppCarouselCard, t as BetterZapClientError, tt as WebhookChange, u as TemplateParameterInputMap, ut as WhatsAppInteractiveMediaCarouselMessage, v as WhatsAppService, w as WhatsAppLogStore, x as WHATSAPP_MESSAGE_TYPES, y as MessageLoggerNotifier, z as Conversation } from "./client-By0mftjF.cjs";
 
 //#region src/events.d.ts
 type MessageContext = {
@@ -204,7 +204,7 @@ interface CoexistenceTokenExchangeResult {
   expiresIn?: number;
   raw?: unknown;
 }
-type CoexistenceWebhookPayload = CoexistenceHistoryWebhook | CoexistenceSmbAppStateSyncWebhook | CoexistenceSmbMessageEchoesWebhook | CoexistenceAccountUpdateWebhook | CoexistenceMessageEditWebhook | CoexistenceMessageRevokeWebhook | CoexistenceUnsupportedWebhook | CoexistenceErrorWebhook;
+type CoexistenceWebhookPayload = CoexistenceHistoryWebhook | CoexistenceSmbAppStateSyncWebhook | CoexistenceSmbMessageEchoesWebhook | CoexistenceAccountUpdateWebhook | CoexistenceAccountOffboardedWebhook | CoexistenceAccountReconnectedWebhook | CoexistenceMessageEditWebhook | CoexistenceMessageRevokeWebhook | CoexistenceUnsupportedWebhook | CoexistenceErrorWebhook;
 interface CoexistenceWebhookBase<TField extends string, TValue> {
   object: "whatsapp_business_account";
   entry: Array<{
@@ -267,6 +267,36 @@ interface CoexistenceAccountUpdateValue extends CoexistenceWebhookValueBase {
   phone_number_id?: string;
 }
 type CoexistenceAccountUpdateWebhook = CoexistenceWebhookBase<"account_update", CoexistenceAccountUpdateValue>;
+interface CoexistenceAccountOffboardedValue extends CoexistenceWebhookValueBase {
+  event?: "ACCOUNT_OFFBOARDED" | (string & {});
+  reason?: string;
+  phone_number_id?: string;
+  waba_info?: {
+    waba_id?: string;
+    owner_business_id?: string;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
+type CoexistenceAccountOffboardedWebhook = CoexistenceWebhookBase<"account_offboarded", CoexistenceAccountOffboardedValue>;
+interface CoexistenceAccountReconnectedValue extends CoexistenceWebhookValueBase {
+  event?: "ACCOUNT_RECONNECTED" | (string & {});
+  phone_number_id?: string;
+  reconnect_reason?: "APP_REINSTALL" | "DEVICE_SWITCH" | "REREGISTRATION" | (string & {});
+  cloud_api_products?: Array<{
+    product_id?: string;
+    product_name?: string;
+    reconnected?: boolean;
+    [key: string]: unknown;
+  }>;
+  waba_info?: {
+    waba_id?: string;
+    owner_business_id?: string;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
+type CoexistenceAccountReconnectedWebhook = CoexistenceWebhookBase<"account_reconnected", CoexistenceAccountReconnectedValue>;
 interface CoexistenceMessageEditValue extends CoexistenceWebhookValueBase {
   messages: Array<IncomingMessage & {
     edited?: boolean;
@@ -291,6 +321,10 @@ interface CoexistenceErrorValue extends CoexistenceWebhookValueBase {
 type CoexistenceErrorWebhook = CoexistenceWebhookBase<string, CoexistenceErrorValue>;
 interface CoexistenceConnectedAccountRecord extends CoexistenceConnectedAccountIdentifiers {
   accountId?: string;
+  status?: "connected" | "offboarded" | "reconnected" | "unusable" | (string & {});
+  usable?: boolean;
+  offboardedAt?: Date | string;
+  reconnectedAt?: Date | string;
   isOnBizApp?: boolean;
   platformType?: CoexistencePhoneStatusResponse["platform_type"];
   createdAt?: Date | string;
@@ -312,6 +346,8 @@ interface CoexistenceSyncJobRecord {
   wabaId?: string;
   phoneNumberId: string;
   status: "requested" | "processing" | "completed" | "failed" | (string & {});
+  error?: string | null;
+  completedAt?: Date | string | null;
   createdAt?: Date | string;
   updatedAt?: Date | string;
   metadata?: Record<string, unknown>;
@@ -429,4 +465,4 @@ declare function formatPhone(phone: string): string;
  */
 declare function delay(ms: number): Promise<void>;
 //#endregion
-export { type Awaitable, type BetterZapApi, BetterZapClientError, type BetterZapContext, type BetterZapCoreConfig, type BetterZapCoreContext, type BetterZapCoreServices, type BetterZapDatabase, type BetterZapPlugin, type BetterZapPluginInitContext, type BetterZapPluginInitResult, type BetterZapServices, type CoexistenceAccountUpdateValue, type CoexistenceAccountUpdateWebhook, type CoexistenceConnectedAccountIdentifiers, type CoexistenceConnectedAccountRecord, type CoexistenceContactRecord, type CoexistenceCredentialProvider, type CoexistenceEmbeddedSignupConfig, type CoexistenceEmbeddedSignupConfigInput, type CoexistenceEmbeddedSignupSetup, type CoexistenceErrorValue, type CoexistenceErrorWebhook, type CoexistenceFeatureType, type CoexistenceGraphResult, type CoexistenceHistoryValue, type CoexistenceHistoryWebhook, type CoexistenceLifecycleEventRecord, type CoexistenceMessageEditValue, type CoexistenceMessageEditWebhook, type CoexistenceMessageRevokeValue, type CoexistenceMessageRevokeWebhook, type CoexistenceOnboardingSessionRecord, type CoexistencePhoneStatusResponse, type CoexistenceRawEventStatusRecord, CoexistenceService, type CoexistenceServiceConfig, type CoexistenceSessionEventPayload, type CoexistenceSessionInfoVersion, type CoexistenceSmbAppStateSyncValue, type CoexistenceSmbAppStateSyncWebhook, type CoexistenceSmbMessageEchoesValue, type CoexistenceSmbMessageEchoesWebhook, type CoexistenceStore, type CoexistenceSyncJobRecord, type CoexistenceSyncRequest, type CoexistenceSyncResponse, type CoexistenceSyncType, type CoexistenceTokenExchangeResult, type CoexistenceUnsupportedValue, type CoexistenceUnsupportedWebhook, type CoexistenceWebhookBase, type CoexistenceWebhookPayload, type CoexistenceWebhookValueBase, type Conversation, type ConversationRecord, type ConversationSummary, type ConversationUpdateEvent, EMPTY_TEMPLATE_REGISTRY, FREEFORM_MESSAGE_WINDOW_MS, type FreeformMessageWindow, type IncomingMessage, type InferBetterZapPluginContext, type InferBetterZapPluginServices, type InteractiveMediaCarouselCardInput, type LogLevel, type Logger, type LoggerConfig, type MediaMessage, type MessageContext, type MessageError, type MessageLoggerNotifier, MessageLoggerService, type MessageStatus, type MetaAccessTokenProvider, type MetaGraphApiErrorBody, type NewMessageEvent, type OutgoingLoggingMetadata, type SendInteractiveMediaCarouselData, type SendMessageError, type SendMessageResponse, type SendResult, type StatusContext, type StatusUpdateEvent, type SupportedTemplateParameterType, type SyncEvent, type TemplateComponent, type TemplateComponentDefinition, type TemplateDefinition, type TemplateName, type TemplateParameter, type TemplateParameterDefinition, type TemplateParameterInputMap, type TemplateParams, type TemplateRegistry, type UIMessage, type UIMessageStatus, WHATSAPP_MESSAGE_TYPES, type WebhookChange, type WebhookContact, type WebhookEntry, type WebhookError, type WebhookPayload, type WebhookValue, type WhatsAppCarouselCard, type WhatsAppConfig, type WhatsAppDirection, type WhatsAppInteractiveButtonsMessage, type WhatsAppInteractiveListMessage, type WhatsAppInteractiveMediaCarouselMessage, type WhatsAppLocationMessage, type WhatsAppLogRecord, type WhatsAppLogStore, type WhatsAppMessageType, WhatsAppService, type WhatsAppStatus, type WhatsAppTemplateMessage, type WhatsAppTextMessage, type WhatsAppWebhookField, type ZapClient, createCoexistenceEmbeddedSignupConfig, createFreeformMessageWindow, createLogger, createZapClient, defineTemplates, delay, formatPhone, getLatestIncomingMessageAt, getTemplateNames, hasConfiguredTemplates, noopLogger, normalizeConversationRecord, normalizeConversationRecords, resolveConversationFreeformMessageWindow, serializeError, serializeTemplateFromRegistry };
+export { type Awaitable, type BetterZapApi, BetterZapClientError, type BetterZapContext, type BetterZapCoreConfig, type BetterZapCoreContext, type BetterZapCoreServices, type BetterZapDatabase, type BetterZapPlugin, type BetterZapPluginInitContext, type BetterZapPluginInitResult, type BetterZapServices, type CoexistenceAccountOffboardedValue, type CoexistenceAccountOffboardedWebhook, type CoexistenceAccountReconnectedValue, type CoexistenceAccountReconnectedWebhook, type CoexistenceAccountUpdateValue, type CoexistenceAccountUpdateWebhook, type CoexistenceConnectedAccountIdentifiers, type CoexistenceConnectedAccountRecord, type CoexistenceContactRecord, type CoexistenceCredentialProvider, type CoexistenceEmbeddedSignupConfig, type CoexistenceEmbeddedSignupConfigInput, type CoexistenceEmbeddedSignupSetup, type CoexistenceErrorValue, type CoexistenceErrorWebhook, type CoexistenceFeatureType, type CoexistenceGraphResult, type CoexistenceHistoryValue, type CoexistenceHistoryWebhook, type CoexistenceLifecycleEventRecord, type CoexistenceMessageEditValue, type CoexistenceMessageEditWebhook, type CoexistenceMessageRevokeValue, type CoexistenceMessageRevokeWebhook, type CoexistenceOnboardingSessionRecord, type CoexistencePhoneStatusResponse, type CoexistenceRawEventStatusRecord, CoexistenceService, type CoexistenceServiceConfig, type CoexistenceSessionEventPayload, type CoexistenceSessionInfoVersion, type CoexistenceSmbAppStateSyncValue, type CoexistenceSmbAppStateSyncWebhook, type CoexistenceSmbMessageEchoesValue, type CoexistenceSmbMessageEchoesWebhook, type CoexistenceStore, type CoexistenceSyncJobRecord, type CoexistenceSyncRequest, type CoexistenceSyncResponse, type CoexistenceSyncType, type CoexistenceTokenExchangeResult, type CoexistenceUnsupportedValue, type CoexistenceUnsupportedWebhook, type CoexistenceWebhookBase, type CoexistenceWebhookPayload, type CoexistenceWebhookValueBase, type Conversation, type ConversationRecord, type ConversationSummary, type ConversationUpdateEvent, EMPTY_TEMPLATE_REGISTRY, FREEFORM_MESSAGE_WINDOW_MS, type FreeformMessageWindow, type IncomingMessage, type InferBetterZapPluginContext, type InferBetterZapPluginServices, type InteractiveMediaCarouselCardInput, type LogLevel, type Logger, type LoggerConfig, type MediaMessage, type MessageContext, type MessageError, type MessageLoggerNotifier, MessageLoggerService, type MessageStatus, type MetaAccessTokenProvider, type MetaGraphApiErrorBody, type NewMessageEvent, type OutgoingLoggingMetadata, type SendInteractiveMediaCarouselData, type SendMessageError, type SendMessageResponse, type SendResult, type StatusContext, type StatusUpdateEvent, type SupportedTemplateParameterType, type SyncEvent, type TemplateComponent, type TemplateComponentDefinition, type TemplateDefinition, type TemplateName, type TemplateParameter, type TemplateParameterDefinition, type TemplateParameterInputMap, type TemplateParams, type TemplateRegistry, type UIMessage, type UIMessageStatus, WHATSAPP_MESSAGE_TYPES, type WebhookChange, type WebhookContact, type WebhookEntry, type WebhookError, type WebhookPayload, type WebhookValue, type WhatsAppCarouselCard, type WhatsAppConfig, type WhatsAppDirection, type WhatsAppInteractiveButtonsMessage, type WhatsAppInteractiveListMessage, type WhatsAppInteractiveMediaCarouselMessage, type WhatsAppLocationMessage, type WhatsAppLogRecord, type WhatsAppLogStore, type WhatsAppMessageType, WhatsAppService, type WhatsAppStatus, type WhatsAppTemplateMessage, type WhatsAppTextMessage, type WhatsAppWebhookField, type ZapClient, createCoexistenceEmbeddedSignupConfig, createFreeformMessageWindow, createLogger, createZapClient, defineTemplates, delay, formatPhone, getLatestIncomingMessageAt, getTemplateNames, hasConfiguredTemplates, noopLogger, normalizeConversationRecord, normalizeConversationRecords, resolveConversationFreeformMessageWindow, serializeError, serializeTemplateFromRegistry };
