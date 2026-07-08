@@ -209,6 +209,34 @@ export function betterZap<
       } as typeof ctx &
         BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>);
     },
+    onCoexistenceAccountOffboarded: async (ctx) => {
+      await webhookHooks.onCoexistenceAccountOffboarded?.({
+        ...ctx,
+        ...pluginRuntime.context,
+      } as typeof ctx &
+        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>);
+    },
+    onCoexistenceAccountReconnected: async (ctx) => {
+      await webhookHooks.onCoexistenceAccountReconnected?.({
+        ...ctx,
+        ...pluginRuntime.context,
+      } as typeof ctx &
+        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>);
+    },
+    onCoexistenceMessageEdit: async (ctx) => {
+      await webhookHooks.onCoexistenceMessageEdit?.({
+        ...ctx,
+        ...pluginRuntime.context,
+      } as typeof ctx &
+        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>);
+    },
+    onCoexistenceMessageRevoke: async (ctx) => {
+      await webhookHooks.onCoexistenceMessageRevoke?.({
+        ...ctx,
+        ...pluginRuntime.context,
+      } as typeof ctx &
+        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>);
+    },
     onCoexistenceUnsupportedMessage: async (ctx) => {
       await webhookHooks.onCoexistenceUnsupportedMessage?.({
         ...ctx,
@@ -226,6 +254,10 @@ export function betterZap<
     c.set("logger", log);
     c.set("coexistence", coexistence);
     c.set("coexistenceStore", database.coexistence);
+    c.set(
+      "subscribeWabaAfterCodeExchange",
+      options.coexistence?.subscribeWabaAfterCodeExchange ?? true,
+    );
     await next();
   });
 

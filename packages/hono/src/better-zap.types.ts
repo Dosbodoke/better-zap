@@ -17,8 +17,12 @@ import type {
   CoexistenceService,
 } from "better-zap";
 import type {
+  CoexistenceAccountOffboardedContext,
+  CoexistenceAccountReconnectedContext,
   CoexistenceAccountUpdateContext,
   CoexistenceHistoryContext,
+  CoexistenceMessageEditContext,
+  CoexistenceMessageRevokeContext,
   CoexistenceUnsupportedMessageContext,
   SmbAppStateSyncContext,
   SmbMessageEchoContext,
@@ -65,6 +69,22 @@ export interface BetterZapConfig<
       ctx: CoexistenceAccountUpdateContext &
         BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>,
     ) => Promise<void>;
+    onCoexistenceAccountOffboarded?: (
+      ctx: CoexistenceAccountOffboardedContext &
+        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>,
+    ) => Promise<void>;
+    onCoexistenceAccountReconnected?: (
+      ctx: CoexistenceAccountReconnectedContext &
+        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>,
+    ) => Promise<void>;
+    onCoexistenceMessageEdit?: (
+      ctx: CoexistenceMessageEditContext &
+        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>,
+    ) => Promise<void>;
+    onCoexistenceMessageRevoke?: (
+      ctx: CoexistenceMessageRevokeContext &
+        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>,
+    ) => Promise<void>;
     onCoexistenceUnsupportedMessage?: (
       ctx: CoexistenceUnsupportedMessageContext &
         BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>,
@@ -80,6 +100,12 @@ export interface BetterZapConfig<
     graphApiVersion?: string;
     graphBaseUrl?: string;
     fetch?: typeof fetch;
+    /**
+     * Subscribe the connected WABA to this app after a successful Embedded
+     * Signup code exchange. Defaults to true. Failures are returned and recorded
+     * instead of being silently ignored.
+     */
+    subscribeWabaAfterCodeExchange?: boolean;
   };
   basePath?: string;
   authorizeAppRequest?: BetterZapAuthorizeAppRequest;

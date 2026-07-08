@@ -610,7 +610,7 @@ var CoexistenceService = class {
 	}
 };
 //#endregion
-//#region src/coexistence/index.ts
+//#region src/coexistence/config.ts
 function createCoexistenceEmbeddedSignupConfig(input) {
 	return {
 		config_id: input.configId,
@@ -623,6 +623,199 @@ function createCoexistenceEmbeddedSignupConfig(input) {
 		}
 	};
 }
+//#endregion
+//#region src/coexistence/events.ts
+const LEGACY_EVENT_BY_GENERIC = {
+	FINISH: "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING",
+	CANCEL: "CANCEL_WHATSAPP_BUSINESS_APP_ONBOARDING",
+	ERROR: "ERROR_WHATSAPP_BUSINESS_APP_ONBOARDING"
+};
+const GENERIC_EVENT_BY_LEGACY = {
+	FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING: "FINISH",
+	CANCEL_WHATSAPP_BUSINESS_APP_ONBOARDING: "CANCEL",
+	ERROR_WHATSAPP_BUSINESS_APP_ONBOARDING: "ERROR"
+};
+function isKnownGenericEvent(event) {
+	return event === "FINISH" || event === "CANCEL" || event === "ERROR";
+}
+function normalizeCoexistenceSessionEvent(event) {
+	if (isKnownGenericEvent(event)) return event;
+	if (event in GENERIC_EVENT_BY_LEGACY) return GENERIC_EVENT_BY_LEGACY[event];
+	return "PROGRESS";
+}
+function toLegacyCoexistenceSessionEvent(event) {
+	return isKnownGenericEvent(event) ? LEGACY_EVENT_BY_GENERIC[event] : event;
+}
+function normalizeCoexistenceSessionPayload(payload) {
+	return {
+		...payload,
+		normalizedEvent: normalizeCoexistenceSessionEvent(payload.event)
+	};
+}
+//#endregion
+//#region src/coexistence/embedded-signup.ts
+const DEFAULT_ALLOWED_ORIGINS = ["https://www.facebook.com", "https://web.facebook.com"];
+function parseEmbeddedSignupMessage(data) {
+	const payload = typeof data === "string" ? parseJson(data) : data;
+	if (typeof payload !== "object" || payload === null) return null;
+	const candidate = payload;
+	if (candidate.type !== "WA_EMBEDDED_SIGNUP" || candidate.version !== 3 || typeof candidate.event !== "string") return null;
+	return {
+		event: candidate.event,
+		data: typeof candidate.data === "object" && candidate.data !== null ? candidate.data : void 0
+	};
+}
+function parseJson(value) {
+	try {
+		return JSON.parse(value);
+	} catch {
+		return null;
+	}
+}
+function launchCoexistenceEmbeddedSignup(input) {
+	const allowedOrigins = new Set([
+		...DEFAULT_ALLOWED_ORIGINS,
+		...input.origin ? [input.origin] : [],
+		...input.allowedOrigins ?? []
+	]);
+	let latestSession = null;
+	let latestCode = null;
+	const listener = (event) => {
+		if (!allowedOrigins.has(event.origin)) return;
+		const session = parseEmbeddedSignupMessage(event.data);
+		if (!session) return;
+		latestSession = session;
+		const normalizedEvent = normalizeCoexistenceSessionEvent(session.event);
+		if (normalizedEvent === "FINISH") {
+			input.onFinish?.({
+				code: latestCode,
+				session
+			});
+			return;
+		}
+		if (normalizedEvent === "CANCEL") {
+			input.onCancel?.({ session });
+			return;
+		}
+		if (normalizedEvent === "ERROR") {
+			input.onError?.({ session });
+			return;
+		}
+		input.onProgress?.({ session });
+	};
+	input.target.addEventListener("message", listener);
+	input.fb.init?.(input.fbInit ?? {});
+	return {
+		result: new Promise((resolve) => {
+			input.fb.login((response) => {
+				latestCode = typeof response.authResponse?.code === "string" ? response.authResponse.code : null;
+				if (latestSession && normalizeCoexistenceSessionEvent(latestSession.event) === "FINISH") input.onFinish?.({
+					code: latestCode,
+					session: latestSession
+				});
+				resolve({
+					code: latestCode,
+					session: latestSession,
+					loginResponse: response
+				});
+			}, createCoexistenceEmbeddedSignupConfig(input));
+		}),
+		teardown() {
+			input.target.removeEventListener("message", listener);
+		}
+	};
+}
+//#endregion
+//#region src/coexistence/memory-store.ts
+const IN_FLIGHT_SYNC_STATUSES = new Set(["requested", "processing"]);
+function timeValue(value) {
+	if (!value) return;
+	return value instanceof Date ? value.getTime() : new Date(value).getTime();
+}
+function cloneRecord(record) {
+	return structuredClone(record);
+}
+function isInFlight(job, now) {
+	if (!IN_FLIGHT_SYNC_STATUSES.has(job.status)) return false;
+	const deadline = timeValue(job.deadlineAt);
+	if (deadline !== void 0 && deadline <= now.getTime()) return false;
+	return true;
+}
+var InMemoryCoexistenceStore = class {
+	connectedAccounts = /* @__PURE__ */ new Map();
+	onboardingSessions = /* @__PURE__ */ new Map();
+	syncJobs = /* @__PURE__ */ new Map();
+	contacts = /* @__PURE__ */ new Map();
+	lifecycleEvents = [];
+	rawEventStatuses = /* @__PURE__ */ new Map();
+	preflightStates = /* @__PURE__ */ new Map();
+	async upsertConnectedAccount(account) {
+		const record = cloneRecord(account);
+		this.connectedAccounts.set(account.wabaId, record);
+		this.connectedAccounts.set(account.phoneNumberId, record);
+		if (account.preflight) await this.upsertPreflightState(account.preflight);
+	}
+	async getConnectedAccountByWabaId(wabaId) {
+		return cloneRecord(this.connectedAccounts.get(wabaId) ?? null);
+	}
+	async getConnectedAccountByPhoneNumberId(phoneNumberId) {
+		return cloneRecord(this.connectedAccounts.get(phoneNumberId) ?? null);
+	}
+	async recordOnboardingSession(session) {
+		this.onboardingSessions.set(session.id, cloneRecord(session));
+		if (session.preflight) await this.upsertPreflightState(session.preflight);
+	}
+	async upsertPreflightState(state) {
+		const record = cloneRecord(state);
+		if (state.phoneNumberId) this.preflightStates.set(state.phoneNumberId, record);
+		if (state.wabaId) this.preflightStates.set(state.wabaId, record);
+	}
+	async getPreflightStateByPhoneNumberId(phoneNumberId) {
+		return cloneRecord(this.preflightStates.get(phoneNumberId) ?? null);
+	}
+	async createSyncJob(job) {
+		if (await this.getInFlightSyncJob({
+			phoneNumberId: job.phoneNumberId,
+			syncType: job.syncType,
+			now: job.requestedAt ?? job.createdAt
+		})) throw new Error(`Coexistence sync already in flight for ${job.phoneNumberId}:${job.syncType}`);
+		this.syncJobs.set(job.requestId, cloneRecord(job));
+	}
+	async getInFlightSyncJob(input) {
+		const now = input.now instanceof Date ? input.now : new Date(input.now ?? Date.now());
+		for (const job of this.syncJobs.values()) {
+			if (job.phoneNumberId !== input.phoneNumberId || job.syncType !== input.syncType) continue;
+			if (isInFlight(job, now)) return cloneRecord(job);
+			if (IN_FLIGHT_SYNC_STATUSES.has(job.status) && job.deadlineAt) await this.updateSyncJobByRequestId(job.requestId, {
+				status: "deadline_exceeded",
+				failedAt: now,
+				failureReason: "sync_deadline_exceeded"
+			});
+		}
+		return null;
+	}
+	async updateSyncJobByRequestId(requestId, patch) {
+		const current = this.syncJobs.get(requestId);
+		if (!current) return;
+		this.syncJobs.set(requestId, cloneRecord({
+			...current,
+			...patch
+		}));
+	}
+	async upsertContact(contact) {
+		const key = `${contact.phoneNumberId ?? ""}:${contact.waId}`;
+		this.contacts.set(key, cloneRecord(contact));
+	}
+	async removeContact(input) {
+		this.contacts.delete(`${input.phoneNumberId ?? ""}:${input.waId}`);
+	}
+	async recordLifecycleEvent(event) {
+		this.lifecycleEvents.push(cloneRecord(event));
+	}
+	async updateRawEventStatus(status) {
+		this.rawEventStatuses.set(status.id, cloneRecord(status));
+	}
+};
 //#endregion
 //#region src/services/message-logger.service.ts
 const WHATSAPP_MESSAGE_TYPES = [
@@ -867,6 +1060,7 @@ exports.BetterZapClientError = require_client.BetterZapClientError;
 exports.CoexistenceService = CoexistenceService;
 exports.EMPTY_TEMPLATE_REGISTRY = EMPTY_TEMPLATE_REGISTRY;
 exports.FREEFORM_MESSAGE_WINDOW_MS = FREEFORM_MESSAGE_WINDOW_MS;
+exports.InMemoryCoexistenceStore = InMemoryCoexistenceStore;
 exports.MessageLoggerService = MessageLoggerService;
 exports.WHATSAPP_MESSAGE_TYPES = WHATSAPP_MESSAGE_TYPES;
 exports.WhatsAppService = WhatsAppService;
@@ -880,9 +1074,13 @@ exports.formatPhone = formatPhone;
 exports.getLatestIncomingMessageAt = getLatestIncomingMessageAt;
 exports.getTemplateNames = getTemplateNames;
 exports.hasConfiguredTemplates = hasConfiguredTemplates;
+exports.launchCoexistenceEmbeddedSignup = launchCoexistenceEmbeddedSignup;
 exports.noopLogger = noopLogger;
+exports.normalizeCoexistenceSessionEvent = normalizeCoexistenceSessionEvent;
+exports.normalizeCoexistenceSessionPayload = normalizeCoexistenceSessionPayload;
 exports.normalizeConversationRecord = normalizeConversationRecord;
 exports.normalizeConversationRecords = normalizeConversationRecords;
 exports.resolveConversationFreeformMessageWindow = resolveConversationFreeformMessageWindow;
 exports.serializeError = serializeError;
 exports.serializeTemplateFromRegistry = serializeTemplateFromRegistry;
+exports.toLegacyCoexistenceSessionEvent = toLegacyCoexistenceSessionEvent;

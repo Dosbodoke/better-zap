@@ -3,6 +3,15 @@ import type { IncomingMessage, MessageStatus, WebhookError } from "./whatsapp.ty
 
 export type CoexistenceFeatureType = "whatsapp_business_app_onboarding";
 export type CoexistenceSessionInfoVersion = "3";
+export type CoexistenceGenericSessionEvent =
+  | "FINISH"
+  | "CANCEL"
+  | "ERROR"
+  | "PROGRESS";
+export type CoexistenceLegacySessionEvent =
+  | "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING"
+  | "CANCEL_WHATSAPP_BUSINESS_APP_ONBOARDING"
+  | "ERROR_WHATSAPP_BUSINESS_APP_ONBOARDING";
 
 export interface CoexistenceEmbeddedSignupConfigInput {
   configId: string;
@@ -34,9 +43,8 @@ export interface CoexistenceEmbeddedSignupConfig {
 
 export interface CoexistenceSessionEventPayload {
   event:
-    | "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING"
-    | "CANCEL_WHATSAPP_BUSINESS_APP_ONBOARDING"
-    | "ERROR_WHATSAPP_BUSINESS_APP_ONBOARDING"
+    | CoexistenceGenericSessionEvent
+    | CoexistenceLegacySessionEvent
     | (string & {});
   data?: {
     waba_id?: string;
@@ -44,9 +52,43 @@ export interface CoexistenceSessionEventPayload {
     phone_number_id?: string;
     display_phone_number?: string;
     code?: string;
+    current_step?: string;
     error_message?: string;
     [key: string]: unknown;
   };
+}
+
+export type CoexistencePreflightFailureCode =
+  | "unsupported_country"
+  | "unsupported_app_version"
+  | "low_activity_number"
+  | "prior_provider_waba_registration"
+  | "missing_payment_setup";
+
+export type CoexistenceEligibilityStatus =
+  | "eligible"
+  | "ineligible"
+  | "unknown";
+
+export type CoexistenceBillingStatus =
+  | "ready"
+  | "missing_payment_setup"
+  | "unknown";
+
+export interface CoexistencePreflightStateRecord {
+  phoneNumberId?: string;
+  wabaId?: string;
+  displayPhoneNumber?: string;
+  eligibilityStatus?: CoexistenceEligibilityStatus;
+  billingStatus?: CoexistenceBillingStatus;
+  unsupportedCountry?: boolean;
+  unsupportedAppVersion?: boolean;
+  lowActivityNumber?: boolean;
+  priorProviderWabaRegistration?: boolean;
+  missingPaymentSetup?: boolean;
+  failureCodes?: CoexistencePreflightFailureCode[];
+  checkedAt?: Date | string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface CoexistenceConnectedAccountIdentifiers {
@@ -114,6 +156,13 @@ export interface CoexistenceTokenExchangeResult {
   accessToken: string;
   tokenType?: string;
   expiresIn?: number;
+  /**
+   * Deployment-owned credential reference returned by your credential provider.
+   * This is a vault/key identifier only; do not put a raw Meta access token here.
+   */
+  credentialRef?: string;
+  credentialProvider?: string;
+  credentialMetadata?: Record<string, unknown>;
   raw?: unknown;
 }
 
@@ -122,6 +171,8 @@ export type CoexistenceWebhookPayload =
   | CoexistenceSmbAppStateSyncWebhook
   | CoexistenceSmbMessageEchoesWebhook
   | CoexistenceAccountUpdateWebhook
+  | CoexistenceAccountOffboardedWebhook
+  | CoexistenceAccountReconnectedWebhook
   | CoexistenceMessageEditWebhook
   | CoexistenceMessageRevokeWebhook
   | CoexistenceUnsupportedWebhook
@@ -207,6 +258,48 @@ export type CoexistenceAccountUpdateWebhook = CoexistenceWebhookBase<
   CoexistenceAccountUpdateValue
 >;
 
+export interface CoexistenceAccountOffboardedValue
+  extends CoexistenceWebhookValueBase {
+  event?: "ACCOUNT_OFFBOARDED" | (string & {});
+  reason?: string;
+  phone_number_id?: string;
+  waba_info?: {
+    waba_id?: string;
+    owner_business_id?: string;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
+
+export type CoexistenceAccountOffboardedWebhook = CoexistenceWebhookBase<
+  "account_offboarded",
+  CoexistenceAccountOffboardedValue
+>;
+
+export interface CoexistenceAccountReconnectedValue
+  extends CoexistenceWebhookValueBase {
+  event?: "ACCOUNT_RECONNECTED" | (string & {});
+  phone_number_id?: string;
+  reconnect_reason?: "APP_REINSTALL" | "DEVICE_SWITCH" | "REREGISTRATION" | (string & {});
+  cloud_api_products?: Array<{
+    product_id?: string;
+    product_name?: string;
+    reconnected?: boolean;
+    [key: string]: unknown;
+  }>;
+  waba_info?: {
+    waba_id?: string;
+    owner_business_id?: string;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
+
+export type CoexistenceAccountReconnectedWebhook = CoexistenceWebhookBase<
+  "account_reconnected",
+  CoexistenceAccountReconnectedValue
+>;
+
 export interface CoexistenceMessageEditValue extends CoexistenceWebhookValueBase {
   messages: Array<IncomingMessage & { edited?: boolean }>;
 }
@@ -248,8 +341,25 @@ export type CoexistenceErrorWebhook = CoexistenceWebhookBase<
 export interface CoexistenceConnectedAccountRecord
   extends CoexistenceConnectedAccountIdentifiers {
   accountId?: string;
+  status?: "connected" | "offboarded" | "reconnected" | "unusable" | (string & {});
+  usable?: boolean;
+  offboardedAt?: Date | string;
+  reconnectedAt?: Date | string;
   isOnBizApp?: boolean;
   platformType?: CoexistencePhoneStatusResponse["platform_type"];
+  /**
+   * Reference to deployment-owned token custody for this WABA/phone number.
+   * The generic account record must never store raw Meta access tokens.
+   */
+  credentialRef?: string;
+  credentialProvider?: string;
+  /**
+   * Provider metadata that helps resolve credential custody later.
+   * Store only non-secret values such as vault key versions, tenant IDs, token
+   * expiry timestamps, or provider account labels. Do not store raw tokens.
+   */
+  credentialMetadata?: Record<string, unknown>;
+  preflight?: CoexistencePreflightStateRecord;
   createdAt?: Date | string;
   updatedAt?: Date | string;
   metadata?: Record<string, unknown>;
@@ -262,15 +372,31 @@ export interface CoexistenceOnboardingSessionRecord {
   wabaId?: string;
   phoneNumberId?: string;
   payload: CoexistenceSessionEventPayload;
+  preflight?: CoexistencePreflightStateRecord;
   createdAt?: Date | string;
 }
+
+export type CoexistenceSyncJobStatus =
+  | "requested"
+  | "processing"
+  | "completed"
+  | "failed"
+  | "deadline_exceeded"
+  | (string & {});
 
 export interface CoexistenceSyncJobRecord {
   requestId: string;
   syncType: CoexistenceSyncType;
+  onboardingSessionId?: string;
   wabaId?: string;
   phoneNumberId: string;
-  status: "requested" | "processing" | "completed" | "failed" | (string & {});
+  status: CoexistenceSyncJobStatus;
+  error?: string | null;
+  requestedAt?: Date | string;
+  deadlineAt?: Date | string;
+  completedAt?: Date | string | null;
+  failedAt?: Date | string;
+  failureReason?: string;
   createdAt?: Date | string;
   updatedAt?: Date | string;
   metadata?: Record<string, unknown>;
@@ -300,6 +426,7 @@ export interface CoexistenceRawEventStatusRecord {
   status: "pending" | "processed" | "failed" | (string & {});
   error?: string;
   updatedAt?: Date | string;
+  result?: unknown;
 }
 
 export interface CoexistenceStore {
@@ -315,7 +442,18 @@ export interface CoexistenceStore {
   recordOnboardingSession(
     session: CoexistenceOnboardingSessionRecord,
   ): Awaitable<void>;
+  upsertPreflightState?(
+    state: CoexistencePreflightStateRecord,
+  ): Awaitable<void>;
+  getPreflightStateByPhoneNumberId?(
+    phoneNumberId: string,
+  ): Awaitable<CoexistencePreflightStateRecord | null>;
   createSyncJob(job: CoexistenceSyncJobRecord): Awaitable<void>;
+  getInFlightSyncJob?(input: {
+    phoneNumberId: string;
+    syncType: CoexistenceSyncType;
+    now?: Date | string;
+  }): Awaitable<CoexistenceSyncJobRecord | null>;
   updateSyncJobByRequestId(
     requestId: string,
     patch: Partial<CoexistenceSyncJobRecord>,
@@ -329,4 +467,7 @@ export interface CoexistenceStore {
   updateRawEventStatus?(
     status: CoexistenceRawEventStatusRecord,
   ): Awaitable<void>;
+  getRawEventStatus?(
+    id: string,
+  ): Awaitable<CoexistenceRawEventStatusRecord | null>;
 }

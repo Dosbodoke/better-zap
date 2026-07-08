@@ -3,8 +3,12 @@ export type { BetterZap, BetterZapConfig } from "./better-zap.types";
 
 export {
   createWebhookHandler,
+  type CoexistenceAccountOffboardedContext,
+  type CoexistenceAccountReconnectedContext,
   type CoexistenceAccountUpdateContext,
   type CoexistenceHistoryContext,
+  type CoexistenceMessageEditContext,
+  type CoexistenceMessageRevokeContext,
   type CoexistenceUnsupportedMessageContext,
   type SmbAppStateSyncContext,
   type SmbMessageEchoContext,
