@@ -1,5 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Hono } from "hono";
+import {
+  accountOffboardedFixture,
+  accountReconnectedFixture,
+  malformedPayloadUnknownFieldFixture,
+  messageEditFixture,
+  messageRevokeFixture,
+  smbAppStateSyncErrorFixture,
+  unsupportedMessageTypeFixture,
+} from "../../../fixtures/src";
 import { createWebhookHandler } from "./create-webhook-handler";
 
 const TEST_META_APP_SECRET = "test-meta-app-secret";
@@ -11,6 +20,10 @@ const mockOnCoexistenceHistory = vi.fn();
 const mockOnSmbAppStateSync = vi.fn();
 const mockOnSmbMessageEcho = vi.fn();
 const mockOnCoexistenceAccountUpdate = vi.fn();
+const mockOnCoexistenceAccountOffboarded = vi.fn();
+const mockOnCoexistenceAccountReconnected = vi.fn();
+const mockOnCoexistenceMessageEdit = vi.fn();
+const mockOnCoexistenceMessageRevoke = vi.fn();
 const mockOnCoexistenceUnsupportedMessage = vi.fn();
 const mockLogger = {
   logIncoming: vi.fn().mockResolvedValue(true),
@@ -51,6 +64,10 @@ function createTestApp(overrides: Record<string, any> = {}) {
       onSmbAppStateSync: mockOnSmbAppStateSync,
       onSmbMessageEcho: mockOnSmbMessageEcho,
       onCoexistenceAccountUpdate: mockOnCoexistenceAccountUpdate,
+      onCoexistenceAccountOffboarded: mockOnCoexistenceAccountOffboarded,
+      onCoexistenceAccountReconnected: mockOnCoexistenceAccountReconnected,
+      onCoexistenceMessageEdit: mockOnCoexistenceMessageEdit,
+      onCoexistenceMessageRevoke: mockOnCoexistenceMessageRevoke,
       onCoexistenceUnsupportedMessage: mockOnCoexistenceUnsupportedMessage,
       ...overrides,
     }),
@@ -180,6 +197,9 @@ describe("createWebhookHandler", () => {
     mockCoexistenceStore.upsertContact.mockResolvedValue(undefined);
     mockCoexistenceStore.removeContact.mockResolvedValue(undefined);
     mockCoexistenceStore.recordLifecycleEvent.mockResolvedValue(undefined);
+    mockCoexistenceStore.upsertConnectedAccount.mockResolvedValue(undefined);
+    mockCoexistenceStore.getConnectedAccountByWabaId.mockResolvedValue(null);
+    mockCoexistenceStore.getConnectedAccountByPhoneNumberId.mockResolvedValue(null);
     app = createTestApp();
   });
 
@@ -508,6 +528,34 @@ describe("createWebhookHandler", () => {
       );
     });
 
+    it("stores SMB app state sync errors as sync job failure state", async () => {
+      app = createTestApp({
+        database: {
+          whatsappLog: {},
+          coexistence: mockCoexistenceStore,
+        },
+      });
+
+      const res = await postWebhook(app, smbAppStateSyncErrorFixture);
+
+      expect(res.status).toBe(200);
+      expect(mockCoexistenceStore.updateSyncJobByRequestId).toHaveBeenCalledWith(
+        "req_contacts_error",
+        expect.objectContaining({
+          status: "failed",
+          metadata: expect.objectContaining({
+            field: "smb_app_state_sync",
+            errors: [expect.objectContaining({ code: 131051 })],
+          }),
+        }),
+      );
+      expect(mockOnCoexistenceUnsupportedMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          errors: [expect.objectContaining({ code: 131051 })],
+        }),
+      );
+    });
+
     it("records account update lifecycle events", async () => {
       app = createTestApp({
         database: {
@@ -543,16 +591,110 @@ describe("createWebhookHandler", () => {
       expect(mockOnCoexistenceAccountUpdate).toHaveBeenCalledOnce();
     });
 
-    it("acknowledges unknown fields without failing", async () => {
-      const res = await postWebhook(
-        app,
-        makeWebhookPayload({ unsupported: true }, "new_unknown_field"),
+    it("records account offboarding and marks the connected account unusable", async () => {
+      app = createTestApp({
+        database: {
+          whatsappLog: {},
+          coexistence: mockCoexistenceStore,
+        },
+      });
+
+      const res = await postWebhook(app, accountOffboardedFixture);
+
+      expect(res.status).toBe(200);
+      expect(mockCoexistenceStore.recordLifecycleEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          wabaId: "waba_fixture_1",
+          phoneNumberId: "phone_known",
+          event: "ACCOUNT_OFFBOARDED",
+        }),
       );
+      expect(mockCoexistenceStore.upsertConnectedAccount).toHaveBeenCalledWith(
+        expect.objectContaining({
+          wabaId: "waba_fixture_1",
+          phoneNumberId: "phone_known",
+          status: "offboarded",
+          usable: false,
+          metadata: expect.objectContaining({
+            lifecycleEvent: "account_offboarded",
+          }),
+        }),
+      );
+      expect(mockOnCoexistenceAccountOffboarded).toHaveBeenCalledOnce();
+    });
+
+    it("records account reconnection and exposes Cloud API product metadata", async () => {
+      app = createTestApp({
+        database: {
+          whatsappLog: {},
+          coexistence: mockCoexistenceStore,
+        },
+      });
+
+      const res = await postWebhook(app, accountReconnectedFixture);
+
+      expect(res.status).toBe(200);
+      expect(mockCoexistenceStore.recordLifecycleEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          wabaId: "waba_fixture_1",
+          phoneNumberId: "phone_known",
+          event: "ACCOUNT_RECONNECTED",
+        }),
+      );
+      expect(mockCoexistenceStore.upsertConnectedAccount).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: "reconnected",
+          usable: true,
+          metadata: expect.objectContaining({
+            lifecycleEvent: "account_reconnected",
+            cloudApiProducts: [
+              expect.objectContaining({
+                product_name: "WhatsApp Cloud API",
+                reconnected: true,
+              }),
+            ],
+          }),
+        }),
+      );
+      expect(mockOnCoexistenceAccountReconnected).toHaveBeenCalledOnce();
+    });
+
+    it("dispatches message edits and revokes as first-class coexistence cases", async () => {
+      expect((await postWebhook(app, messageEditFixture)).status).toBe(200);
+      expect((await postWebhook(app, messageRevokeFixture)).status).toBe(200);
+
+      expect(mockOnCoexistenceMessageEdit).toHaveBeenCalledWith(
+        expect.objectContaining({ editedMessages: 1 }),
+      );
+      expect(mockOnCoexistenceMessageRevoke).toHaveBeenCalledWith(
+        expect.objectContaining({ revokedMessages: 1 }),
+      );
+      expect(mockOnMessage).not.toHaveBeenCalled();
+      expect(mockLogger.logIncoming).not.toHaveBeenCalled();
+    });
+
+    it("routes unsupported message types to the coexistence unsupported hook", async () => {
+      const res = await postWebhook(app, unsupportedMessageTypeFixture);
+
+      expect(res.status).toBe(200);
+      expect(mockOnCoexistenceUnsupportedMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          errors: [expect.objectContaining({ code: 131051 })],
+        }),
+      );
+      expect(mockOnMessage).not.toHaveBeenCalled();
+      expect(mockLogger.logIncoming).not.toHaveBeenCalled();
+    });
+
+    it("acknowledges unknown fields without failing", async () => {
+      const res = await postWebhook(app, malformedPayloadUnknownFieldFixture);
 
       expect(res.status).toBe(200);
       expect(mockLog.debug).toHaveBeenCalledWith("webhook.unknown_field_ignored", {
-        field: "new_unknown_field",
+        field: "future_unknown_field",
       });
+      expect(mockOnMessage).not.toHaveBeenCalled();
+      expect(mockLogger.logIncoming).not.toHaveBeenCalled();
     });
   });
 });

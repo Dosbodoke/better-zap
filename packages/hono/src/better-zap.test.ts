@@ -1783,6 +1783,56 @@ describe("betterZap plugins", () => {
     expect(coexistenceStore.createSyncJob).not.toHaveBeenCalled();
   });
 
+  it("blocks sync requests when the coexistence account is offboarded", async () => {
+    const coexistenceStore = makeCoexistenceStore();
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    vi.mocked(coexistenceStore.getConnectedAccountByPhoneNumberId).mockResolvedValue({
+      wabaId: "waba_123",
+      phoneNumberId: "phone_123",
+      status: "offboarded",
+      usable: false,
+    });
+
+    const zap = betterZap({
+      database: makeDatabase({ coexistence: coexistenceStore }),
+      config: {
+        token: "token",
+        phoneId: "phone-id",
+        webhookToken: "verify-token",
+        appSecret: TEST_META_APP_SECRET,
+      },
+      coexistence: {
+        accessToken: "coexistence-access-token",
+        graphBaseUrl: "https://graph.example.test",
+      },
+      webhook: {
+        onMessage: vi.fn().mockResolvedValue(undefined),
+        onStatusUpdate: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+
+    const response = await sendRequest(
+      zap,
+      new Request(
+        "http://localhost/api/whatsapp/coexistence/phone-numbers/phone_123/sync/history",
+        { method: "POST" },
+      ),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(payload).toEqual({
+      success: false,
+      error: "Coexistence account is not usable",
+      code: "coexistence_account_not_usable",
+      status: "offboarded",
+      phoneNumberId: "phone_123",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(coexistenceStore.createSyncJob).not.toHaveBeenCalled();
+  });
+
   it("rejects unauthorized coexistence app route requests", async () => {
     const service = {
       getPhoneStatus: vi.fn(),

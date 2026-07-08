@@ -586,6 +586,20 @@ async function handleSyncRequest(
       return c.json({ error: "phoneNumberId is required" }, 400);
     }
 
+    const blocked = await getBlockedConnectedAccount(c, phoneNumberId);
+    if (blocked) {
+      return c.json(
+        {
+          success: false,
+          error: "Coexistence account is not usable",
+          code: "coexistence_account_not_usable",
+          status: blocked.status,
+          phoneNumberId,
+        },
+        409,
+      );
+    }
+
     const body = await resolveOptionalJsonBody(c);
     const coexistenceStore = getCoexistenceStore(c);
     const inFlight = await coexistenceStore?.getInFlightSyncJob?.({
@@ -646,6 +660,26 @@ async function handleSyncRequest(
       500,
     );
   }
+}
+
+async function getBlockedConnectedAccount(
+  c: Context<BetterZapEnv>,
+  phoneNumberId: string,
+) {
+  const coexistenceStore = getCoexistenceStore(c);
+  if (!coexistenceStore) {
+    return null;
+  }
+
+  const account =
+    await coexistenceStore.getConnectedAccountByPhoneNumberId(phoneNumberId);
+  if (!account) {
+    return null;
+  }
+
+  return account.usable === false || account.status === "offboarded"
+    ? account
+    : null;
 }
 
 async function recordSyncJob(

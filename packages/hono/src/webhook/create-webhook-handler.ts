@@ -2,8 +2,12 @@ import { Hono } from "hono";
 import { formatPhone, serializeError } from "better-zap";
 import type {
   BetterZapDatabase,
+  CoexistenceAccountOffboardedValue,
+  CoexistenceAccountReconnectedValue,
   CoexistenceAccountUpdateValue,
   CoexistenceHistoryValue,
+  CoexistenceMessageEditValue,
+  CoexistenceMessageRevokeValue,
   CoexistenceSmbAppStateSyncValue,
   CoexistenceSmbMessageEchoesValue,
   CoexistenceUnsupportedValue,
@@ -53,6 +57,20 @@ export type WebhookConfig = {
   onCoexistenceAccountUpdate?: (
     ctx: CoexistenceAccountUpdateContext,
   ) => Promise<void>;
+  /** Called once per coexistence offboarding lifecycle webhook. */
+  onCoexistenceAccountOffboarded?: (
+    ctx: CoexistenceAccountOffboardedContext,
+  ) => Promise<void>;
+  /** Called once per coexistence background reconnection lifecycle webhook. */
+  onCoexistenceAccountReconnected?: (
+    ctx: CoexistenceAccountReconnectedContext,
+  ) => Promise<void>;
+  /** Called for coexistence message edit webhooks. */
+  onCoexistenceMessageEdit?: (ctx: CoexistenceMessageEditContext) => Promise<void>;
+  /** Called for coexistence message revoke webhooks. */
+  onCoexistenceMessageRevoke?: (
+    ctx: CoexistenceMessageRevokeContext,
+  ) => Promise<void>;
   /** Called when a coexistence webhook contains unsupported/error content. */
   onCoexistenceUnsupportedMessage?: (
     ctx: CoexistenceUnsupportedMessageContext,
@@ -90,8 +108,33 @@ export interface CoexistenceAccountUpdateContext {
   change: WebhookChange;
 }
 
+export interface CoexistenceAccountOffboardedContext {
+  value: CoexistenceAccountOffboardedValue;
+  change: WebhookChange;
+}
+
+export interface CoexistenceAccountReconnectedContext {
+  value: CoexistenceAccountReconnectedValue;
+  change: WebhookChange;
+}
+
+export interface CoexistenceMessageEditContext {
+  value: CoexistenceMessageEditValue;
+  change: WebhookChange;
+  editedMessages: number;
+}
+
+export interface CoexistenceMessageRevokeContext {
+  value: CoexistenceMessageRevokeValue;
+  change: WebhookChange;
+  revokedMessages: number;
+}
+
 export interface CoexistenceUnsupportedMessageContext {
-  value: CoexistenceHistoryValue | CoexistenceUnsupportedValue;
+  value:
+    | CoexistenceHistoryValue
+    | CoexistenceSmbAppStateSyncValue
+    | CoexistenceUnsupportedValue;
   change: WebhookChange;
   errors: WebhookError[];
 }
@@ -244,8 +287,13 @@ async function processChange<Env extends Record<string, any>>(
     case "account_update":
       await processAccountUpdateChange(change, config, log);
       return;
+    case "account_offboarded":
+      await processAccountOffboardedChange(change, config, log);
+      return;
+    case "account_reconnected":
+      await processAccountReconnectedChange(change, config, log);
+      return;
     default:
-      await processMessagesChange(change, env, config, log);
       log.debug("webhook.unknown_field_ignored", { field: change.field });
       return;
   }
@@ -259,6 +307,20 @@ async function processMessagesChange<Env extends Record<string, any>>(
   log: Logger,
 ): Promise<void> {
   const value = change.value;
+
+  const messageClassification = classifyCoexistenceMessages(value.messages);
+  if (messageClassification === "edit") {
+    await processMessageEditChange(change, config, log);
+    return;
+  }
+  if (messageClassification === "revoke") {
+    await processMessageRevokeChange(change, config, log);
+    return;
+  }
+  if (messageClassification === "unsupported") {
+    await processUnsupportedMessagesChange(change, config, log);
+    return;
+  }
 
   if (value.messages && value.messages.length > 0) {
     for (const message of value.messages) {
@@ -326,6 +388,52 @@ async function processHistoryChange(
     }
 
     for (const message of chunk.messages ?? []) {
+      if (message.revoked || message.type === "revoked") {
+        await runOptionalHook(
+          () =>
+            config.onCoexistenceMessageRevoke?.({
+              value: { ...value, messages: [message] },
+              change,
+              revokedMessages: 1,
+            }),
+          "webhook.on_coexistence_message_revoke_hook_failed",
+          log,
+        );
+        continue;
+      }
+
+      if (message.edited || message.type === "message_edit") {
+        await runOptionalHook(
+          () =>
+            config.onCoexistenceMessageEdit?.({
+              value: { ...value, messages: [message] },
+              change,
+              editedMessages: 1,
+            }),
+          "webhook.on_coexistence_message_edit_hook_failed",
+          log,
+        );
+        continue;
+      }
+
+      if (
+        message.unsupported ||
+        message.type === "unsupported" ||
+        (message.errors?.length ?? 0) > 0
+      ) {
+        await processCoexistenceErrors(
+          change,
+          {
+            ...value,
+            unsupported: true,
+            errors: (message.errors ?? []).map(toWebhookError),
+          },
+          config,
+          log,
+        );
+        continue;
+      }
+
       const result = await importCoexistenceMessage({
         message,
         contacts: value.contacts,
@@ -384,6 +492,7 @@ async function processSmbAppStateSyncChange(
   const value = change.value as CoexistenceSmbAppStateSyncValue;
   let upsertedContacts = 0;
   let removedContacts = 0;
+  const hasSyncErrors = (value.errors?.length ?? 0) > 0;
 
   if (value.request_id && config.database?.coexistence) {
     await config.database.coexistence.updateSyncJobByRequestId(value.request_id, {
@@ -392,7 +501,11 @@ async function processSmbAppStateSyncChange(
     });
   }
 
-  if (config.database?.coexistence) {
+  if (hasSyncErrors) {
+    await processCoexistenceErrors(change, value, config, log);
+  }
+
+  if (!hasSyncErrors && config.database?.coexistence) {
     for (const contact of value.contacts ?? []) {
       if (contact.removed) {
         await config.database.coexistence.removeContact({
@@ -418,13 +531,14 @@ async function processSmbAppStateSyncChange(
   if (value.request_id && config.database?.coexistence) {
     const updatedAt = new Date();
     await config.database.coexistence.updateSyncJobByRequestId(value.request_id, {
-      status: "completed",
-      completedAt: updatedAt,
+      status: hasSyncErrors ? "failed" : "completed",
+      ...(hasSyncErrors ? { failedAt: updatedAt } : { completedAt: updatedAt }),
       updatedAt,
       metadata: {
         field: "smb_app_state_sync",
         upsertedContacts,
         removedContacts,
+        errors: value.errors,
       },
     });
   }
@@ -438,6 +552,61 @@ async function processSmbAppStateSyncChange(
         removedContacts,
       }),
     "webhook.on_smb_app_state_sync_hook_failed",
+    log,
+  );
+}
+
+async function processMessageEditChange(
+  change: WebhookChange,
+  config: WebhookConfig,
+  log: Logger,
+): Promise<void> {
+  const value = change.value as CoexistenceMessageEditValue;
+  const editedMessages = value.messages.length;
+
+  await runOptionalHook(
+    () => config.onCoexistenceMessageEdit?.({ value, change, editedMessages }),
+    "webhook.on_coexistence_message_edit_hook_failed",
+    log,
+  );
+}
+
+async function processMessageRevokeChange(
+  change: WebhookChange,
+  config: WebhookConfig,
+  log: Logger,
+): Promise<void> {
+  const value = change.value as CoexistenceMessageRevokeValue;
+  const revokedMessages = value.messages.length;
+
+  await runOptionalHook(
+    () => config.onCoexistenceMessageRevoke?.({ value, change, revokedMessages }),
+    "webhook.on_coexistence_message_revoke_hook_failed",
+    log,
+  );
+}
+
+async function processUnsupportedMessagesChange(
+  change: WebhookChange,
+  config: WebhookConfig,
+  log: Logger,
+): Promise<void> {
+  const value = change.value as CoexistenceUnsupportedValue;
+  const errors = [
+    ...(value.errors ?? []),
+    ...((value.messages ?? []) as IncomingMessage[]).flatMap(
+      (message) => (message.errors ?? []).map(toWebhookError),
+    ),
+  ];
+
+  await runOptionalHook(
+    () =>
+      config.onCoexistenceUnsupportedMessage?.({
+        value,
+        change,
+        errors,
+      }),
+    "webhook.on_coexistence_unsupported_hook_failed",
     log,
   );
 }
@@ -506,9 +675,87 @@ async function processAccountUpdateChange(
   );
 }
 
+async function processAccountOffboardedChange(
+  change: WebhookChange,
+  config: WebhookConfig,
+  log: Logger,
+): Promise<void> {
+  const value = change.value as CoexistenceAccountOffboardedValue;
+  const now = new Date().toISOString();
+
+  if (config.database?.coexistence) {
+    await config.database.coexistence.recordLifecycleEvent({
+      wabaId: value.waba_info?.waba_id,
+      phoneNumberId: value.phone_number_id ?? value.metadata?.phone_number_id,
+      accountId: value.waba_info?.owner_business_id,
+      event: value.event ?? "ACCOUNT_OFFBOARDED",
+      payload: value,
+      createdAt: now,
+    });
+    await upsertLifecycleAccountState(value, config, {
+      status: "offboarded",
+      usable: false,
+      offboardedAt: now,
+      updatedAt: now,
+      metadata: {
+        lifecycleEvent: "account_offboarded",
+        reason: value.reason,
+        raw: value,
+      },
+    });
+  }
+
+  await runOptionalHook(
+    () => config.onCoexistenceAccountOffboarded?.({ value, change }),
+    "webhook.on_coexistence_account_offboarded_hook_failed",
+    log,
+  );
+}
+
+async function processAccountReconnectedChange(
+  change: WebhookChange,
+  config: WebhookConfig,
+  log: Logger,
+): Promise<void> {
+  const value = change.value as CoexistenceAccountReconnectedValue;
+  const now = new Date().toISOString();
+
+  if (config.database?.coexistence) {
+    await config.database.coexistence.recordLifecycleEvent({
+      wabaId: value.waba_info?.waba_id,
+      phoneNumberId: value.phone_number_id ?? value.metadata?.phone_number_id,
+      accountId: value.waba_info?.owner_business_id,
+      event: value.event ?? "ACCOUNT_RECONNECTED",
+      payload: value,
+      createdAt: now,
+    });
+    await upsertLifecycleAccountState(value, config, {
+      status: "reconnected",
+      usable: true,
+      reconnectedAt: now,
+      updatedAt: now,
+      metadata: {
+        lifecycleEvent: "account_reconnected",
+        reconnectReason: value.reconnect_reason,
+        cloudApiProducts: value.cloud_api_products,
+        raw: value,
+      },
+    });
+  }
+
+  await runOptionalHook(
+    () => config.onCoexistenceAccountReconnected?.({ value, change }),
+    "webhook.on_coexistence_account_reconnected_hook_failed",
+    log,
+  );
+}
+
 async function processCoexistenceErrors(
   change: WebhookChange,
-  value: CoexistenceHistoryValue | CoexistenceUnsupportedValue,
+  value:
+    | CoexistenceHistoryValue
+    | CoexistenceSmbAppStateSyncValue
+    | CoexistenceUnsupportedValue,
   config: WebhookConfig,
   log: Logger,
 ): Promise<void> {
@@ -539,6 +786,46 @@ async function processCoexistenceErrors(
     "webhook.on_coexistence_unsupported_hook_failed",
     log,
   );
+}
+
+async function upsertLifecycleAccountState(
+  value: CoexistenceAccountOffboardedValue | CoexistenceAccountReconnectedValue,
+  config: WebhookConfig,
+  patch: {
+    status: "offboarded" | "reconnected";
+    usable: boolean;
+    offboardedAt?: string;
+    reconnectedAt?: string;
+    updatedAt: string;
+    metadata: Record<string, unknown>;
+  },
+) {
+  const store = config.database?.coexistence;
+  const phoneNumberId = value.phone_number_id ?? value.metadata?.phone_number_id;
+  const wabaId = value.waba_info?.waba_id;
+
+  if (!store || !phoneNumberId || !wabaId) {
+    return;
+  }
+
+  const existing =
+    (await store.getConnectedAccountByPhoneNumberId(phoneNumberId)) ??
+    (await store.getConnectedAccountByWabaId(wabaId));
+
+  await store.upsertConnectedAccount({
+    wabaId,
+    phoneNumberId,
+    accountId: value.waba_info?.owner_business_id ?? existing?.accountId,
+    businessId: existing?.businessId,
+    displayPhoneNumber:
+      value.metadata?.display_phone_number ?? existing?.displayPhoneNumber,
+    ...existing,
+    ...patch,
+    metadata: {
+      ...existing?.metadata,
+      ...patch.metadata,
+    },
+  });
 }
 
 async function importCoexistenceMessage(input: {
@@ -761,4 +1048,41 @@ function resolveCoexistenceContact(
     return undefined;
   }
   return contacts.find((c) => c.wa_id === message.from) ?? contacts[0];
+}
+
+function classifyCoexistenceMessages(
+  messages: IncomingMessage[] | undefined,
+): "edit" | "revoke" | "unsupported" | "ordinary" {
+  if (!messages || messages.length === 0) {
+    return "ordinary";
+  }
+  if (messages.some((message) => message.revoked || message.type === "revoked")) {
+    return "revoke";
+  }
+  if (messages.some((message) => message.edited || message.type === "message_edit")) {
+    return "edit";
+  }
+  if (
+    messages.some(
+      (message) =>
+        message.unsupported ||
+        message.type === "unsupported" ||
+        (message.errors?.length ?? 0) > 0,
+    )
+  ) {
+    return "unsupported";
+  }
+  return "ordinary";
+}
+
+function toWebhookError(error: {
+  code: number;
+  title: string;
+  message: string;
+  error_data?: { details: string };
+}): WebhookError {
+  return {
+    ...error,
+    error_data: error.error_data ?? { details: error.message },
+  };
 }

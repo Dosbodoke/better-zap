@@ -1,5 +1,6 @@
 packages:
   - packages/better-zap
+  - packages/fixtures
   - packages/react
   - packages/hono
   - packages/cli

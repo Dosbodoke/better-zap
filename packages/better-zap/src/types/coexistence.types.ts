@@ -171,6 +171,8 @@ export type CoexistenceWebhookPayload =
   | CoexistenceSmbAppStateSyncWebhook
   | CoexistenceSmbMessageEchoesWebhook
   | CoexistenceAccountUpdateWebhook
+  | CoexistenceAccountOffboardedWebhook
+  | CoexistenceAccountReconnectedWebhook
   | CoexistenceMessageEditWebhook
   | CoexistenceMessageRevokeWebhook
   | CoexistenceUnsupportedWebhook
@@ -256,6 +258,48 @@ export type CoexistenceAccountUpdateWebhook = CoexistenceWebhookBase<
   CoexistenceAccountUpdateValue
 >;
 
+export interface CoexistenceAccountOffboardedValue
+  extends CoexistenceWebhookValueBase {
+  event?: "ACCOUNT_OFFBOARDED" | (string & {});
+  reason?: string;
+  phone_number_id?: string;
+  waba_info?: {
+    waba_id?: string;
+    owner_business_id?: string;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
+
+export type CoexistenceAccountOffboardedWebhook = CoexistenceWebhookBase<
+  "account_offboarded",
+  CoexistenceAccountOffboardedValue
+>;
+
+export interface CoexistenceAccountReconnectedValue
+  extends CoexistenceWebhookValueBase {
+  event?: "ACCOUNT_RECONNECTED" | (string & {});
+  phone_number_id?: string;
+  reconnect_reason?: "APP_REINSTALL" | "DEVICE_SWITCH" | "REREGISTRATION" | (string & {});
+  cloud_api_products?: Array<{
+    product_id?: string;
+    product_name?: string;
+    reconnected?: boolean;
+    [key: string]: unknown;
+  }>;
+  waba_info?: {
+    waba_id?: string;
+    owner_business_id?: string;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
+
+export type CoexistenceAccountReconnectedWebhook = CoexistenceWebhookBase<
+  "account_reconnected",
+  CoexistenceAccountReconnectedValue
+>;
+
 export interface CoexistenceMessageEditValue extends CoexistenceWebhookValueBase {
   messages: Array<IncomingMessage & { edited?: boolean }>;
 }
@@ -297,6 +341,10 @@ export type CoexistenceErrorWebhook = CoexistenceWebhookBase<
 export interface CoexistenceConnectedAccountRecord
   extends CoexistenceConnectedAccountIdentifiers {
   accountId?: string;
+  status?: "connected" | "offboarded" | "reconnected" | "unusable" | (string & {});
+  usable?: boolean;
+  offboardedAt?: Date | string;
+  reconnectedAt?: Date | string;
   isOnBizApp?: boolean;
   platformType?: CoexistencePhoneStatusResponse["platform_type"];
   /**
@@ -343,9 +391,10 @@ export interface CoexistenceSyncJobRecord {
   wabaId?: string;
   phoneNumberId: string;
   status: CoexistenceSyncJobStatus;
+  error?: string | null;
   requestedAt?: Date | string;
   deadlineAt?: Date | string;
-  completedAt?: Date | string;
+  completedAt?: Date | string | null;
   failedAt?: Date | string;
   failureReason?: string;
   createdAt?: Date | string;

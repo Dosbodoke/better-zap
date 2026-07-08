@@ -250,6 +250,8 @@ export type WhatsAppWebhookField =
   | "history"
   | "smb_app_state_sync"
   | "smb_message_echoes"
+  | "account_offboarded"
+  | "account_reconnected"
   | (string & {});
 
 export interface WebhookValue {
@@ -286,7 +288,9 @@ export interface IncomingMessage {
     | "interactive"
     | "button"
     | "reaction"
-    | "sticker";
+    | "sticker"
+    | "unsupported"
+    | (string & {});
   text?: {
     body: string;
   };
@@ -328,6 +332,11 @@ export interface IncomingMessage {
     body: string;
     ctwa_clid?: string;
   };
+  errors?: MessageError[];
+  edited?: boolean;
+  revoked?: boolean;
+  unsupported?: true;
+  [key: string]: unknown;
 }
 
 export interface MediaMessage {

@@ -1,0 +1,44 @@
+{
+  "name": "@better-zap/fixtures",
+  "version": "0.1.0",
+  "description": "Shared Better Zap webhook fixtures for tests and sandbox mode.",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Dosbodoke/better-zap",
+    "directory": "packages/fixtures"
+  },
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "devDependencies": {
+    "tsdown": "^0.21.2",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
