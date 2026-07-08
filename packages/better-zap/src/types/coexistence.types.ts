@@ -58,6 +58,39 @@ export interface CoexistenceSessionEventPayload {
   };
 }
 
+export type CoexistencePreflightFailureCode =
+  | "unsupported_country"
+  | "unsupported_app_version"
+  | "low_activity_number"
+  | "prior_provider_waba_registration"
+  | "missing_payment_setup";
+
+export type CoexistenceEligibilityStatus =
+  | "eligible"
+  | "ineligible"
+  | "unknown";
+
+export type CoexistenceBillingStatus =
+  | "ready"
+  | "missing_payment_setup"
+  | "unknown";
+
+export interface CoexistencePreflightStateRecord {
+  phoneNumberId?: string;
+  wabaId?: string;
+  displayPhoneNumber?: string;
+  eligibilityStatus?: CoexistenceEligibilityStatus;
+  billingStatus?: CoexistenceBillingStatus;
+  unsupportedCountry?: boolean;
+  unsupportedAppVersion?: boolean;
+  lowActivityNumber?: boolean;
+  priorProviderWabaRegistration?: boolean;
+  missingPaymentSetup?: boolean;
+  failureCodes?: CoexistencePreflightFailureCode[];
+  checkedAt?: Date | string;
+  metadata?: Record<string, unknown>;
+}
+
 export interface CoexistenceConnectedAccountIdentifiers {
   wabaId: string;
   businessId?: string;
@@ -278,6 +311,7 @@ export interface CoexistenceConnectedAccountRecord
    * expiry timestamps, or provider account labels. Do not store raw tokens.
    */
   credentialMetadata?: Record<string, unknown>;
+  preflight?: CoexistencePreflightStateRecord;
   createdAt?: Date | string;
   updatedAt?: Date | string;
   metadata?: Record<string, unknown>;
@@ -290,15 +324,30 @@ export interface CoexistenceOnboardingSessionRecord {
   wabaId?: string;
   phoneNumberId?: string;
   payload: CoexistenceSessionEventPayload;
+  preflight?: CoexistencePreflightStateRecord;
   createdAt?: Date | string;
 }
+
+export type CoexistenceSyncJobStatus =
+  | "requested"
+  | "processing"
+  | "completed"
+  | "failed"
+  | "deadline_exceeded"
+  | (string & {});
 
 export interface CoexistenceSyncJobRecord {
   requestId: string;
   syncType: CoexistenceSyncType;
+  onboardingSessionId?: string;
   wabaId?: string;
   phoneNumberId: string;
-  status: "requested" | "processing" | "completed" | "failed" | (string & {});
+  status: CoexistenceSyncJobStatus;
+  requestedAt?: Date | string;
+  deadlineAt?: Date | string;
+  completedAt?: Date | string;
+  failedAt?: Date | string;
+  failureReason?: string;
   createdAt?: Date | string;
   updatedAt?: Date | string;
   metadata?: Record<string, unknown>;
@@ -344,7 +393,18 @@ export interface CoexistenceStore {
   recordOnboardingSession(
     session: CoexistenceOnboardingSessionRecord,
   ): Awaitable<void>;
+  upsertPreflightState?(
+    state: CoexistencePreflightStateRecord,
+  ): Awaitable<void>;
+  getPreflightStateByPhoneNumberId?(
+    phoneNumberId: string,
+  ): Awaitable<CoexistencePreflightStateRecord | null>;
   createSyncJob(job: CoexistenceSyncJobRecord): Awaitable<void>;
+  getInFlightSyncJob?(input: {
+    phoneNumberId: string;
+    syncType: CoexistenceSyncType;
+    now?: Date | string;
+  }): Awaitable<CoexistenceSyncJobRecord | null>;
   updateSyncJobByRequestId(
     requestId: string,
     patch: Partial<CoexistenceSyncJobRecord>,

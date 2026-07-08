@@ -2,8 +2,11 @@ import type { Context } from "hono";
 import { normalizeCoexistenceSessionEvent, serializeError } from "better-zap";
 import type {
   CoexistenceGraphResult,
+  CoexistencePreflightFailureCode,
+  CoexistencePreflightStateRecord,
   CoexistenceSessionEventPayload,
   CoexistenceSyncResponse,
+  CoexistenceSyncType,
 } from "better-zap";
 import type { BetterZapEnv } from "./types";
 
@@ -18,10 +21,23 @@ type EmbeddedSignupCallbackBody = {
   nonce?: unknown;
   expectedNonce?: unknown;
   idempotencyKey?: unknown;
+  preflight?: unknown;
+  eligibility?: unknown;
+  billing?: unknown;
+  onboardingSessionId?: unknown;
 };
 
 const ROUTES_NOT_CONFIGURED = "Coexistence routes are not configured";
 const STORAGE_NOT_CONFIGURED = "Coexistence storage is not configured";
+const SYNC_DEADLINE_MS = 24 * 60 * 60 * 1000;
+
+const PREFLIGHT_FAILURE_FIELDS = [
+  ["unsupportedCountry", "unsupported_country"],
+  ["unsupportedAppVersion", "unsupported_app_version"],
+  ["lowActivityNumber", "low_activity_number"],
+  ["priorProviderWabaRegistration", "prior_provider_waba_registration"],
+  ["missingPaymentSetup", "missing_payment_setup"],
+] as const;
 
 function getCoexistence(c: Context<BetterZapEnv>) {
   return c.get("coexistence");
@@ -47,6 +63,7 @@ function graphResultResponse<TData>(
     {
       success: false,
       error: result.error ?? "Meta Graph request failed",
+      code: "meta_graph_request_failed",
       ...(result.errorCode ? { errorCode: result.errorCode } : {}),
       ...(result.details ? { details: result.details } : {}),
     },
@@ -151,6 +168,7 @@ async function recordOnboardingSession(
     idempotencyKey?: string;
     state?: string;
     nonce?: string;
+    preflight?: CoexistencePreflightStateRecord;
   },
 ) {
   const coexistenceStore = getCoexistenceStore(c);
@@ -169,7 +187,120 @@ async function recordOnboardingSession(
         ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
       },
     },
+    ...(input.preflight ? { preflight: input.preflight } : {}),
   });
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function boolField(value: Record<string, unknown>, key: string) {
+  return typeof value[key] === "boolean" ? (value[key] as boolean) : undefined;
+}
+
+function stringField(value: Record<string, unknown>, key: string) {
+  return typeof value[key] === "string" ? (value[key] as string) : undefined;
+}
+
+function failureCodesField(
+  value: Record<string, unknown> | undefined,
+): CoexistencePreflightFailureCode[] | undefined {
+  if (!Array.isArray(value?.failureCodes)) {
+    return undefined;
+  }
+
+  return value.failureCodes.filter(
+    (code): code is CoexistencePreflightFailureCode =>
+      typeof code === "string",
+  );
+}
+
+function resolvePreflightState(
+  body: EmbeddedSignupCallbackBody,
+  session: CoexistenceSessionEventPayload | null,
+): CoexistencePreflightStateRecord | undefined {
+  const source = isObject(body.preflight)
+    ? body.preflight
+    : isObject(body.eligibility)
+      ? body.eligibility
+      : undefined;
+  const billing = isObject(body.billing) ? body.billing : undefined;
+
+  if (!source && !billing) {
+    return undefined;
+  }
+
+  const state: CoexistencePreflightStateRecord = {
+    phoneNumberId:
+      stringField(source ?? {}, "phoneNumberId") ??
+      session?.data?.phone_number_id,
+    wabaId: stringField(source ?? {}, "wabaId") ?? session?.data?.waba_id,
+    displayPhoneNumber:
+      stringField(source ?? {}, "displayPhoneNumber") ??
+      session?.data?.display_phone_number,
+    eligibilityStatus:
+      stringField(source ?? {}, "eligibilityStatus") as
+        | CoexistencePreflightStateRecord["eligibilityStatus"]
+        | undefined,
+    billingStatus:
+      (stringField(source ?? {}, "billingStatus") ??
+        stringField(billing ?? {}, "status")) as
+        | CoexistencePreflightStateRecord["billingStatus"]
+        | undefined,
+    unsupportedCountry: boolField(source ?? {}, "unsupportedCountry"),
+    unsupportedAppVersion: boolField(source ?? {}, "unsupportedAppVersion"),
+    lowActivityNumber: boolField(source ?? {}, "lowActivityNumber"),
+    priorProviderWabaRegistration: boolField(
+      source ?? {},
+      "priorProviderWabaRegistration",
+    ),
+    missingPaymentSetup:
+      boolField(source ?? {}, "missingPaymentSetup") ??
+      boolField(billing ?? {}, "missingPaymentSetup") ??
+      (stringField(billing ?? {}, "status") === "missing_payment_setup"
+        ? true
+        : undefined),
+    failureCodes: failureCodesField(source),
+    metadata: {
+      ...(isObject(source?.metadata) ? { eligibility: source.metadata } : {}),
+      ...(isObject(billing) ? { billing } : {}),
+    },
+  };
+
+  state.failureCodes = getPreflightFailureCodes(state);
+
+  return state;
+}
+
+function getPreflightFailureCodes(
+  state: CoexistencePreflightStateRecord,
+): CoexistencePreflightFailureCode[] {
+  const explicit = Array.isArray(state.failureCodes)
+    ? state.failureCodes.filter((code): code is CoexistencePreflightFailureCode =>
+        typeof code === "string",
+      )
+    : [];
+  const derived = PREFLIGHT_FAILURE_FIELDS.flatMap(([field, code]) =>
+    state[field] ? [code] : [],
+  );
+
+  return [...new Set([...explicit, ...derived])];
+}
+
+function preflightFailureResponse(
+  c: Context<BetterZapEnv>,
+  failureCodes: CoexistencePreflightFailureCode[],
+) {
+  return c.json(
+    {
+      success: false,
+      error: "Coexistence preflight failed",
+      code: "coexistence_preflight_failed",
+      failureCodes,
+    },
+    422,
+  );
 }
 
 export async function handleEmbeddedSignupCallback(c: Context<BetterZapEnv>) {
@@ -201,26 +332,7 @@ export async function handleEmbeddedSignupCallback(c: Context<BetterZapEnv>) {
     const idempotencyKey = resolveIdempotencyKey(c, body);
     const state = optionalString(body.state);
     const nonce = optionalString(body.nonce);
-
-    if (normalizedEvent !== "FINISH") {
-      await recordOnboardingSession(c, {
-        session,
-        idempotencyKey,
-        state,
-        nonce,
-      });
-
-      return c.json({
-        success: true,
-        status: "recorded",
-        event: normalizedEvent,
-        session,
-      });
-    }
-
-    if (!code) {
-      return c.json({ error: "code is required" }, 400);
-    }
+    const preflight = resolvePreflightState(body, session);
 
     if (idempotencyKey && coexistenceStore.getRawEventStatus) {
       const existing = await coexistenceStore.getRawEventStatus(idempotencyKey);
@@ -232,6 +344,36 @@ export async function handleEmbeddedSignupCallback(c: Context<BetterZapEnv>) {
           result: existing.result ?? null,
         });
       }
+    }
+
+    await recordOnboardingSession(c, {
+      session,
+      idempotencyKey,
+      state,
+      nonce,
+      ...(preflight ? { preflight } : {}),
+    });
+
+    if (preflight) {
+      await coexistenceStore.upsertPreflightState?.(preflight);
+      const failureCodes = getPreflightFailureCodes(preflight);
+
+      if (failureCodes.length > 0) {
+        return preflightFailureResponse(c, failureCodes);
+      }
+    }
+
+    if (normalizedEvent !== "FINISH") {
+      return c.json({
+        success: true,
+        status: "recorded",
+        event: normalizedEvent,
+        session,
+      });
+    }
+
+    if (!code) {
+      return c.json({ error: "code is required" }, 400);
     }
 
     const tokenExchange = await coexistence.exchangeEmbeddedSignupCode({
@@ -267,13 +409,6 @@ export async function handleEmbeddedSignupCallback(c: Context<BetterZapEnv>) {
       );
     }
 
-    await recordOnboardingSession(c, {
-      session,
-      idempotencyKey,
-      state,
-      nonce,
-    });
-
     let subscriptionStatus:
       | "subscribed"
       | "failed"
@@ -307,6 +442,7 @@ export async function handleEmbeddedSignupCallback(c: Context<BetterZapEnv>) {
         credentialRef: tokenExchange.data.credentialRef,
         credentialProvider: tokenExchange.data.credentialProvider,
         credentialMetadata: tokenExchange.data.credentialMetadata,
+        ...(preflight ? { preflight } : {}),
         metadata: {
           onboardingEvent: session.event,
           tokenType: tokenExchange.data.tokenType,
@@ -400,7 +536,10 @@ export async function handleEmbeddedSignupCallback(c: Context<BetterZapEnv>) {
   } catch (error) {
     c.get("logger").error("coexistence.callback_error", serializeError(error));
     return c.json(
-      { error: "Internal error handling coexistence callback" },
+      {
+        error: "Internal error handling coexistence callback",
+        code: "coexistence_callback_failed",
+      },
       500,
     );
   }
@@ -423,7 +562,10 @@ export async function handlePhoneStatus(c: Context<BetterZapEnv>) {
   } catch (error) {
     c.get("logger").error("coexistence.status_error", serializeError(error));
     return c.json(
-      { error: "Internal error fetching coexistence phone status" },
+      {
+        error: "Internal error fetching coexistence phone status",
+        code: "coexistence_status_failed",
+      },
       500,
     );
   }
@@ -431,7 +573,7 @@ export async function handlePhoneStatus(c: Context<BetterZapEnv>) {
 
 async function handleSyncRequest(
   c: Context<BetterZapEnv>,
-  syncType: "smb_app_state_sync" | "history",
+  syncType: CoexistenceSyncType,
 ) {
   const coexistence = getCoexistence(c);
   if (!coexistence) {
@@ -442,6 +584,36 @@ async function handleSyncRequest(
     const phoneNumberId = c.req.param("phoneNumberId");
     if (!phoneNumberId) {
       return c.json({ error: "phoneNumberId is required" }, 400);
+    }
+
+    const body = await resolveOptionalJsonBody(c);
+    const coexistenceStore = getCoexistenceStore(c);
+    const inFlight = await coexistenceStore?.getInFlightSyncJob?.({
+      phoneNumberId,
+      syncType,
+    });
+
+    if (inFlight) {
+      return c.json(
+        {
+          success: false,
+          error: "Coexistence sync already in flight",
+          code: "sync_already_in_flight",
+          requestId: inFlight.requestId,
+          deadlineAt: inFlight.deadlineAt,
+        },
+        409,
+      );
+    }
+
+    const preflight =
+      (await coexistenceStore?.getPreflightStateByPhoneNumberId?.(
+        phoneNumberId,
+      )) ?? resolveInlinePreflightState(body, phoneNumberId);
+    const failureCodes = preflight ? getPreflightFailureCodes(preflight) : [];
+
+    if (failureCodes.length > 0) {
+      return preflightFailureResponse(c, failureCodes);
     }
 
     const result =
@@ -457,12 +629,22 @@ async function handleSyncRequest(
       phoneNumberId,
       syncType,
       result: result.data,
+      onboardingSessionId:
+        typeof body?.onboardingSessionId === "string"
+          ? body.onboardingSessionId
+          : undefined,
     });
 
     return graphResultResponse(c, result);
   } catch (error) {
     c.get("logger").error("coexistence.sync_error", serializeError(error));
-    return c.json({ error: "Internal error requesting coexistence sync" }, 500);
+    return c.json(
+      {
+        error: "Internal error requesting coexistence sync",
+        code: "coexistence_sync_failed",
+      },
+      500,
+    );
   }
 }
 
@@ -470,8 +652,9 @@ async function recordSyncJob(
   c: Context<BetterZapEnv>,
   input: {
     phoneNumberId: string;
-    syncType: "smb_app_state_sync" | "history";
+    syncType: CoexistenceSyncType;
     result?: CoexistenceSyncResponse;
+    onboardingSessionId?: string;
   },
 ) {
   const requestId = input.result?.request_id;
@@ -481,15 +664,56 @@ async function recordSyncJob(
     return;
   }
 
+  const requestedAt = new Date();
+  const deadlineAt =
+    input.syncType === "history"
+      ? new Date(requestedAt.getTime() + SYNC_DEADLINE_MS)
+      : undefined;
+
   await coexistenceStore.createSyncJob({
     requestId,
     syncType: input.syncType,
+    onboardingSessionId: input.onboardingSessionId,
     phoneNumberId: input.phoneNumberId,
     status: "requested",
+    requestedAt,
+    deadlineAt,
     metadata: {
       response: input.result,
     },
   });
+}
+
+async function resolveOptionalJsonBody(c: Context<BetterZapEnv>) {
+  const contentType = c.req.header("content-type") ?? "";
+  if (!contentType.includes("application/json")) {
+    return undefined;
+  }
+
+  try {
+    return (await c.req.json()) as Record<string, unknown>;
+  } catch {
+    return undefined;
+  }
+}
+
+function resolveInlinePreflightState(
+  body: Record<string, unknown> | undefined,
+  phoneNumberId: string,
+) {
+  if (!body) {
+    return undefined;
+  }
+
+  const state = resolvePreflightState(body, null);
+  if (!state) {
+    return undefined;
+  }
+
+  return {
+    ...state,
+    phoneNumberId: state.phoneNumberId ?? phoneNumberId,
+  };
 }
 
 export function handleContactsSync(c: Context<BetterZapEnv>) {
