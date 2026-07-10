@@ -1,5 +1,9 @@
 import { Hono } from "hono";
-import { MessageLoggerService, WhatsAppService } from "better-zap";
+import {
+  CoexistenceService,
+  MessageLoggerService,
+  WhatsAppService,
+} from "better-zap";
 import type {
   BetterZapContext,
   BetterZapCoreContext,
@@ -24,13 +28,27 @@ import {
   serializeError,
   serializeTemplateFromRegistry,
 } from "better-zap";
-import type { BetterZap, BetterZapApi, BetterZapConfig } from "./better-zap.types";
+import type {
+  BetterZap,
+  BetterZapApi,
+  BetterZapConfig,
+} from "./better-zap.types";
 import {
   initializePlugins,
   runPluginMessageHooks,
   runPluginStatusHooks,
 } from "./plugins/runtime";
-import type { Conversation, SendInteractiveMediaCarouselData, UIMessage } from "better-zap";
+import type {
+  Conversation,
+  SendInteractiveMediaCarouselData,
+  UIMessage,
+} from "better-zap";
+import {
+  handleContactsSync,
+  handleEmbeddedSignupCallback,
+  handleHistorySync,
+  handlePhoneStatus,
+} from "./handler/coexistence";
 import {
   handleGetConversation,
   handleGetMessages,
@@ -88,6 +106,19 @@ export function betterZap<
     createConversationSyncNotifier(conversationSync),
   );
   const whatsapp = new WhatsAppService(config, logger, log);
+  const coexistence =
+    options.coexistence && options.coexistence.enabled !== false
+      ? options.coexistence.service ??
+        new CoexistenceService({
+          accessToken: options.coexistence.accessToken,
+          appId: options.coexistence.appId,
+          appSecret: options.coexistence.appSecret,
+          graphApiVersion: options.coexistence.graphApiVersion,
+          graphBaseUrl: options.coexistence.graphBaseUrl,
+          fetch: options.coexistence.fetch,
+          credentialProvider: options.coexistence.credentials,
+        })
+      : undefined;
 
   const coreContext: BetterZapCoreContext<TDatabase> = {
     db: database,
@@ -114,6 +145,7 @@ export function betterZap<
     appSecret: config.appSecret,
     logger,
     log,
+    database,
     onMessage: async (ctx) => {
       const hookContext = {
         ...ctx,
@@ -149,6 +181,69 @@ export function betterZap<
           BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>,
       );
     },
+    onCoexistenceHistory: async (ctx) => {
+      await webhookHooks.onCoexistenceHistory?.({
+        ...ctx,
+        ...pluginRuntime.context,
+      } as typeof ctx &
+        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>);
+    },
+    onSmbAppStateSync: async (ctx) => {
+      await webhookHooks.onSmbAppStateSync?.({
+        ...ctx,
+        ...pluginRuntime.context,
+      } as typeof ctx &
+        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>);
+    },
+    onSmbMessageEcho: async (ctx) => {
+      await webhookHooks.onSmbMessageEcho?.({
+        ...ctx,
+        ...pluginRuntime.context,
+      } as typeof ctx &
+        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>);
+    },
+    onCoexistenceAccountUpdate: async (ctx) => {
+      await webhookHooks.onCoexistenceAccountUpdate?.({
+        ...ctx,
+        ...pluginRuntime.context,
+      } as typeof ctx &
+        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>);
+    },
+    onCoexistenceAccountOffboarded: async (ctx) => {
+      await webhookHooks.onCoexistenceAccountOffboarded?.({
+        ...ctx,
+        ...pluginRuntime.context,
+      } as typeof ctx &
+        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>);
+    },
+    onCoexistenceAccountReconnected: async (ctx) => {
+      await webhookHooks.onCoexistenceAccountReconnected?.({
+        ...ctx,
+        ...pluginRuntime.context,
+      } as typeof ctx &
+        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>);
+    },
+    onCoexistenceMessageEdit: async (ctx) => {
+      await webhookHooks.onCoexistenceMessageEdit?.({
+        ...ctx,
+        ...pluginRuntime.context,
+      } as typeof ctx &
+        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>);
+    },
+    onCoexistenceMessageRevoke: async (ctx) => {
+      await webhookHooks.onCoexistenceMessageRevoke?.({
+        ...ctx,
+        ...pluginRuntime.context,
+      } as typeof ctx &
+        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>);
+    },
+    onCoexistenceUnsupportedMessage: async (ctx) => {
+      await webhookHooks.onCoexistenceUnsupportedMessage?.({
+        ...ctx,
+        ...pluginRuntime.context,
+      } as typeof ctx &
+        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>);
+    },
   });
 
   const app = new Hono<BetterZapEnv>().basePath(basePath);
@@ -157,6 +252,12 @@ export function betterZap<
     c.set("whatsapp", whatsapp);
     c.set("store", database.whatsappLog);
     c.set("logger", log);
+    c.set("coexistence", coexistence);
+    c.set("coexistenceStore", database.coexistence);
+    c.set(
+      "subscribeWabaAfterCodeExchange",
+      options.coexistence?.subscribeWabaAfterCodeExchange ?? true,
+    );
     await next();
   });
 
@@ -189,6 +290,19 @@ export function betterZap<
   app.get("/conversations", handleListConversations);
   app.get("/conversations/:phone", handleGetConversation);
   app.get("/conversations/:phone/messages", handleGetMessages);
+  app.post(
+    "/coexistence/embedded-signup/callback",
+    handleEmbeddedSignupCallback,
+  );
+  app.get("/coexistence/phone-numbers/:phoneNumberId/status", handlePhoneStatus);
+  app.post(
+    "/coexistence/phone-numbers/:phoneNumberId/sync/contacts",
+    handleContactsSync,
+  );
+  app.post(
+    "/coexistence/phone-numbers/:phoneNumberId/sync/history",
+    handleHistorySync,
+  );
 
   const api: BetterZapApi<TTemplates> = {
     send: {

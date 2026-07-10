@@ -43,10 +43,52 @@ interface ZapClientOptions<TTemplates extends TemplateRegistry = {}> {
    */
   fetch?: typeof fetch;
   /**
+   * How requests authenticate to the Better Zap HTTP routes. Defaults to
+   * sending requests as-is (ambient same-origin cookies). See {@link ZapTransport}
+   * and the {@link sessionTransport} / {@link apiKeyTransport} built-ins.
+   */
+  transport?: ZapTransport;
+  /**
    * Optional template registry used only for type inference.
    * The HTTP server still owns runtime serialization and validation.
    */
   templates?: TTemplates;
+}
+
+/**
+ * Controls how the client authenticates its requests to the Better Zap HTTP
+ * routes. This is the seam that lets a browser client talk to the API without
+ * embedding an API key: the app proxies Better Zap behind its own
+ * session-authenticated routes and the client just forwards the session.
+ *
+ * Two built-ins cover the common cases:
+ * - {@link sessionTransport} — session/proxy auth: sends same-origin
+ *   credentials (cookies) and no API key. Use when a trusted server owns the
+ *   session and proxies Better Zap (e.g. a dashboard's own authed routes).
+ * - {@link apiKeyTransport} — sends `Authorization: Bearer <key>`. Use for
+ *   server-to-server calls in a trusted environment.
+ *
+ * Implement the interface directly for anything else (e.g. a rotating token).
+ */
+export interface ZapTransport {
+  /** Extra headers merged onto every request. Called per request, may be async. */
+  headers?(): Record<string, string> | Promise<Record<string, string>>;
+  /** Fetch credentials mode; `sessionTransport` sets `"include"`. */
+  credentials?: RequestCredentials;
+}
+
+/**
+ * Session/proxy transport: send same-origin credentials (cookies), no API key.
+ * The recommended browser default when the app proxies Better Zap behind its
+ * own authenticated routes.
+ */
+export function sessionTransport(): ZapTransport {
+  return { credentials: "include" };
+}
+
+/** API-key transport: send `Authorization: Bearer <apiKey>` on every request. */
+export function apiKeyTransport(apiKey: string): ZapTransport {
+  return { headers: () => ({ Authorization: `Bearer ${apiKey}` }) };
 }
 
 type BetterZapErrorBody = {
@@ -180,9 +222,23 @@ export function createZapClient<TTemplates extends TemplateRegistry = {}>(
   const basePath = options?.basePath ?? "/api/whatsapp";
   const fetchFn = options?.fetch ?? fetch;
 
+  const transport = options?.transport;
+
   async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const url = `${baseURL}${basePath}${path}`;
-    const response = await fetchFn(url, init);
+    const transportHeaders = transport?.headers ? await transport.headers() : undefined;
+    const requestInit: RequestInit =
+      transportHeaders || transport?.credentials
+        ? {
+            ...init,
+            ...(transport?.credentials ? { credentials: transport.credentials } : {}),
+            headers: {
+              ...(init?.headers as Record<string, string> | undefined),
+              ...transportHeaders,
+            },
+          }
+        : (init ?? {});
+    const response = await fetchFn(url, requestInit);
     const payload = (await response.json().catch(() => null)) as BetterZapErrorBody | T | null;
 
     if (!response.ok) {

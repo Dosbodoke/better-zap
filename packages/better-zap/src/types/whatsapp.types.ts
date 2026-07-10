@@ -236,8 +236,23 @@ export interface WebhookEntry {
 
 export interface WebhookChange {
   value: WebhookValue;
-  field: "messages";
+  field: WhatsAppWebhookField;
 }
+
+export type WhatsAppWebhookField =
+  | "messages"
+  | "message_template_status_update"
+  | "message_template_quality_update"
+  | "phone_number_name_update"
+  | "phone_number_quality_update"
+  | "account_update"
+  | "security"
+  | "history"
+  | "smb_app_state_sync"
+  | "smb_message_echoes"
+  | "account_offboarded"
+  | "account_reconnected"
+  | (string & {});
 
 export interface WebhookValue {
   messaging_product: "whatsapp";
@@ -273,7 +288,9 @@ export interface IncomingMessage {
     | "interactive"
     | "button"
     | "reaction"
-    | "sticker";
+    | "sticker"
+    | "unsupported"
+    | (string & {});
   text?: {
     body: string;
   };
@@ -315,6 +332,11 @@ export interface IncomingMessage {
     body: string;
     ctwa_clid?: string;
   };
+  errors?: MessageError[];
+  edited?: boolean;
+  revoked?: boolean;
+  unsupported?: true;
+  [key: string]: unknown;
 }
 
 export interface MediaMessage {

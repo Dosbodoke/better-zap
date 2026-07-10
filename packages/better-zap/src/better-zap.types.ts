@@ -8,6 +8,7 @@ import type {
   WhatsAppService,
 } from "./services/whatsapp.service";
 import type { WhatsAppConfig } from "./types/config";
+import type { CoexistenceStore } from "./types/coexistence.types";
 import type {
   Conversation,
   SendInteractiveMediaCarouselData,
@@ -24,6 +25,7 @@ import type { MessageContext, StatusContext } from "./events";
 
 export interface BetterZapDatabase {
   whatsappLog: WhatsAppLogStore;
+  coexistence?: CoexistenceStore;
 }
 
 export type BetterZapCoreConfig = WhatsAppConfig & {

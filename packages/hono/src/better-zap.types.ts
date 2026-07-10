@@ -12,6 +12,21 @@ import type {
   StatusContext,
   TemplateRegistry,
 } from "better-zap";
+import type {
+  CoexistenceCredentialProvider,
+  CoexistenceService,
+} from "better-zap";
+import type {
+  CoexistenceAccountOffboardedContext,
+  CoexistenceAccountReconnectedContext,
+  CoexistenceAccountUpdateContext,
+  CoexistenceHistoryContext,
+  CoexistenceMessageEditContext,
+  CoexistenceMessageRevokeContext,
+  CoexistenceUnsupportedMessageContext,
+  SmbAppStateSyncContext,
+  SmbMessageEchoContext,
+} from "./webhook/create-webhook-handler";
 
 export type BetterZapAuthorizeAppRequest = (input: {
   request: Request;
@@ -38,6 +53,59 @@ export interface BetterZapConfig<
       ctx: StatusContext &
         BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>,
     ) => Promise<void>;
+    onCoexistenceHistory?: (
+      ctx: CoexistenceHistoryContext &
+        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>,
+    ) => Promise<void>;
+    onSmbAppStateSync?: (
+      ctx: SmbAppStateSyncContext &
+        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>,
+    ) => Promise<void>;
+    onSmbMessageEcho?: (
+      ctx: SmbMessageEchoContext &
+        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>,
+    ) => Promise<void>;
+    onCoexistenceAccountUpdate?: (
+      ctx: CoexistenceAccountUpdateContext &
+        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>,
+    ) => Promise<void>;
+    onCoexistenceAccountOffboarded?: (
+      ctx: CoexistenceAccountOffboardedContext &
+        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>,
+    ) => Promise<void>;
+    onCoexistenceAccountReconnected?: (
+      ctx: CoexistenceAccountReconnectedContext &
+        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>,
+    ) => Promise<void>;
+    onCoexistenceMessageEdit?: (
+      ctx: CoexistenceMessageEditContext &
+        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>,
+    ) => Promise<void>;
+    onCoexistenceMessageRevoke?: (
+      ctx: CoexistenceMessageRevokeContext &
+        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>,
+    ) => Promise<void>;
+    onCoexistenceUnsupportedMessage?: (
+      ctx: CoexistenceUnsupportedMessageContext &
+        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>,
+    ) => Promise<void>;
+  };
+  coexistence?: {
+    enabled?: boolean;
+    service?: CoexistenceService;
+    credentials?: CoexistenceCredentialProvider;
+    accessToken?: string;
+    appId?: string;
+    appSecret?: string;
+    graphApiVersion?: string;
+    graphBaseUrl?: string;
+    fetch?: typeof fetch;
+    /**
+     * Subscribe the connected WABA to this app after a successful Embedded
+     * Signup code exchange. Defaults to true. Failures are returned and recorded
+     * instead of being silently ignored.
+     */
+    subscribeWabaAfterCodeExchange?: boolean;
   };
   basePath?: string;
   authorizeAppRequest?: BetterZapAuthorizeAppRequest;

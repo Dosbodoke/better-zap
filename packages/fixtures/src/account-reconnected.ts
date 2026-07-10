@@ -15,9 +15,20 @@ export const accountReconnectedFixture = {
               display_phone_number: "15550000001",
               phone_number_id: "phone_known",
             },
-            waba_id: "waba_fixture_1",
             event: "ACCOUNT_RECONNECTED",
-            reconnect_reason: "device_switch",
+            reconnect_reason: "APP_REINSTALL",
+            phone_number_id: "phone_known",
+            cloud_api_products: [
+              {
+                product_id: "cloud_api",
+                product_name: "WhatsApp Cloud API",
+                reconnected: true,
+              },
+            ],
+            waba_info: {
+              waba_id: "waba_fixture_1",
+              owner_business_id: "business_fixture_1",
+            },
           },
         },
       ],

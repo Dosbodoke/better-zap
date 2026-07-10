@@ -3,6 +3,11 @@
   "version": "0.0.0",
   "description": "Coexistence WhatsApp webhook fixtures for Better Zap.",
   "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Dosbodoke/better-zap",
+    "directory": "packages/fixtures"
+  },
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
