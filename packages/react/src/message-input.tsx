@@ -20,7 +20,7 @@ import {
   ComposerError,
   ComposerSend,
   ComposerTextarea,
-  useComposer,
+  useComposerState,
 } from "./composer";
 import { useFreeformMessageWindow } from "./use-freeform-message-window";
 
@@ -88,8 +88,9 @@ function MessageInputBody({
   onMicClick?: () => void;
   showDefaultError: boolean;
 }): React.JSX.Element {
-  const { isSending, value } = useComposer();
-  const hasText = value.trim().length > 0;
+  // useComposerState (not useComposer) so the toolbar and icon buttons don't
+  // re-render on every keystroke; hasText only flips on empty <-> non-empty.
+  const { isSending, hasText } = useComposerState();
 
   return (
     <>
