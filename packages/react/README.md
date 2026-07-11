@@ -2,6 +2,34 @@
 
 React UI components for Better Zap conversations and message views. The package ships presentational compound primitives for chat layout plus a domain-aware adapter for existing consumers.
 
+## Subpath imports
+
+The root entry (`@better-zap/react`) re-exports the full public surface and is a **client** boundary (aggregates client modules). Prefer leaf subpaths when you only need a slice of the UI — especially server components that should not pull virtualization or icon deps:
+
+| Import | Boundary | Notes |
+| --- | --- | --- |
+| `@better-zap/react` | client | Full barrel |
+| `@better-zap/react/bubble` | server-safe | Presentational bubble primitives |
+| `@better-zap/react/message` | server-safe | Row layout primitives |
+| `@better-zap/react/message-bubble` | server-safe | Domain `MessageBubble` adapter |
+| `@better-zap/react/utils` | server-safe | `cn`, `getDisplayDate`, `renderSlot` |
+| `@better-zap/react/composer` | client | Draft/send orchestration |
+| `@better-zap/react/message-input` | client | Domain input + freeform window |
+| `@better-zap/react/message-view` | client | Chat pane + `MessageList` |
+| `@better-zap/react/conversation-list` | client | Virtualized sidebar |
+| `@better-zap/react/whatsapp-dashboard` | client | Layout provider |
+| `@better-zap/react/tailwind.css` | asset | Stylesheet |
+
+Published client entries lead with `"use client"` in both ESM and CJS. There are **no** wildcard exports (`@better-zap/react/*` is not a public surface).
+
+```tsx
+// Server Component — no client graph / no LegendList
+import { Bubble, BubbleContent } from "@better-zap/react/bubble";
+
+// Client Component entry
+import { Composer, ComposerTextarea, ComposerSend } from "@better-zap/react/composer";
+```
+
 ## Message vs Bubble
 
 **Message** owns the row layout: alignment (`start` | `end`), optional avatar, header/footer slots, and metadata placement around the bubble.
@@ -121,8 +149,10 @@ const [drafts, setDrafts] = useState<Record<string, string>>({});
 
 ### Client boundary
 
-Composer modules (`composer.tsx`, `use-freeform-message-window.ts`,
-`message-input.tsx`) start with `"use client"` for App Router consumers.
+Published client entries (`composer`, `message-input`, and the root barrel)
+lead with `"use client"` in both ESM and CJS. Prefer `@better-zap/react/composer`
+or `@better-zap/react/message-input` when you want an explicit client boundary
+without the full dashboard graph.
 
 ## ConversationList
 
