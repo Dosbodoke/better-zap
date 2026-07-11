@@ -2,27 +2,29 @@ import { cn } from "./utils";
 
 export type ConversationFilterValue = "all" | "unread";
 
-interface ConversationFilterChipsProps {
+export interface ConversationFilterChipsProps {
   value: ConversationFilterValue;
   onValueChange: (value: ConversationFilterValue) => void;
   unreadCount?: number;
   className?: string;
+  labels?: { all: string; unread: string };
 }
-
-const chips: Array<{
-  label: string;
-  value: ConversationFilterValue;
-}> = [
-  { label: "Tudo", value: "all" },
-  { label: "Não lidas", value: "unread" },
-];
 
 export function ConversationFilterChips({
   value,
   onValueChange,
   unreadCount = 0,
   className,
+  labels,
 }: ConversationFilterChipsProps) {
+  const chips: Array<{
+    label: string;
+    value: ConversationFilterValue;
+  }> = [
+    { label: labels?.all ?? "Tudo", value: "all" },
+    { label: labels?.unread ?? "Não lidas", value: "unread" },
+  ];
+
   return (
     <div className={cn("flex items-center gap-2 px-3 py-3", className)}>
       {chips.map((chip) => {

@@ -23,6 +23,51 @@
       "import": "./dist/index.mjs",
       "require": "./dist/index.cjs"
     },
+    "./bubble": {
+      "types": "./dist/bubble.d.mts",
+      "import": "./dist/bubble.mjs",
+      "require": "./dist/bubble.cjs"
+    },
+    "./message": {
+      "types": "./dist/message.d.mts",
+      "import": "./dist/message.mjs",
+      "require": "./dist/message.cjs"
+    },
+    "./message-bubble": {
+      "types": "./dist/message-bubble.d.mts",
+      "import": "./dist/message-bubble.mjs",
+      "require": "./dist/message-bubble.cjs"
+    },
+    "./composer": {
+      "types": "./dist/composer.d.mts",
+      "import": "./dist/composer.mjs",
+      "require": "./dist/composer.cjs"
+    },
+    "./message-input": {
+      "types": "./dist/message-input.d.mts",
+      "import": "./dist/message-input.mjs",
+      "require": "./dist/message-input.cjs"
+    },
+    "./message-view": {
+      "types": "./dist/message-view.d.mts",
+      "import": "./dist/message-view.mjs",
+      "require": "./dist/message-view.cjs"
+    },
+    "./conversation-list": {
+      "types": "./dist/conversation-list.d.mts",
+      "import": "./dist/conversation-list.mjs",
+      "require": "./dist/conversation-list.cjs"
+    },
+    "./whatsapp-dashboard": {
+      "types": "./dist/whatsapp-dashboard.d.mts",
+      "import": "./dist/whatsapp-dashboard.mjs",
+      "require": "./dist/whatsapp-dashboard.cjs"
+    },
+    "./utils": {
+      "types": "./dist/utils.d.mts",
+      "import": "./dist/utils.mjs",
+      "require": "./dist/utils.cjs"
+    },
     "./tailwind.css": "./dist/tailwind.css",
     "./package.json": "./package.json"
   },
@@ -35,7 +80,7 @@
   "scripts": {
     "build": "tsdown",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "pnpm run build && vitest run"
   },
   "publishConfig": {
     "access": "public"
@@ -54,8 +99,11 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "jsdom": "^29.1.1",
     "tsdown": "^0.21.2",
     "typescript": "^6.0.2",
     "vitest": "^4.1.0"
