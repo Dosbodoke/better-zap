@@ -40,7 +40,34 @@ const REQUIRED_EXPORT_NAMES = [
   "FreeformWindowClosedError",
 ] as const;
 
-const EXPECTED_EXPORTS_KEYS = [".", "./tailwind.css", "./package.json"] as const;
+/** Normative export map keys from issue #32 / plan 012 (no wildcards). */
+const EXPECTED_EXPORTS_KEYS = [
+  ".",
+  "./bubble",
+  "./message",
+  "./message-bubble",
+  "./composer",
+  "./message-input",
+  "./message-view",
+  "./conversation-list",
+  "./whatsapp-dashboard",
+  "./utils",
+  "./tailwind.css",
+  "./package.json",
+] as const;
+
+const JS_ENTRY_BASES = [
+  "index",
+  "bubble",
+  "message",
+  "message-bubble",
+  "composer",
+  "message-input",
+  "message-view",
+  "conversation-list",
+  "whatsapp-dashboard",
+  "utils",
+] as const;
 
 /** Load CJS in a real CommonJS process (createRequire under ESM hits hugeicons dual-package hazard). */
 function loadCjsExportNames(cjsPath: string): string[] {
@@ -56,27 +83,61 @@ function loadCjsExportNames(cjsPath: string): string[] {
 }
 
 describe("published package surface", () => {
-  it("ships required dist artifacts", () => {
-    for (const file of [
-      "index.mjs",
-      "index.cjs",
-      "index.d.mts",
-      "tailwind.css",
-      "wpp-bg.webp",
-    ]) {
+  it("ships required dist artifacts for every JS entry plus assets", () => {
+    for (const base of JS_ENTRY_BASES) {
+      for (const ext of ["mjs", "cjs", "d.mts"] as const) {
+        const file = `${base}.${ext}`;
+        expect(existsSync(path.join(distDir, file)), `missing dist/${file}`).toBe(
+          true,
+        );
+      }
+    }
+    for (const file of ["tailwind.css", "wpp-bg.webp"]) {
       expect(existsSync(path.join(distDir, file)), `missing dist/${file}`).toBe(
         true,
       );
     }
   });
 
-  it("exports map keys are exactly ., ./tailwind.css, ./package.json", () => {
+  it("exports map keys match the normative subpath list (no wildcards)", () => {
     const pkg = JSON.parse(
       readFileSync(path.join(pkgRoot, "package.json"), "utf8"),
     ) as { exports: Record<string, unknown> };
     expect(Object.keys(pkg.exports).sort()).toEqual(
       [...EXPECTED_EXPORTS_KEYS].sort(),
     );
+    expect(Object.keys(pkg.exports).some((k) => k.includes("*"))).toBe(false);
+  });
+
+  it("each JS subpath export points at types/import/require with matching basenames", () => {
+    const pkg = JSON.parse(
+      readFileSync(path.join(pkgRoot, "package.json"), "utf8"),
+    ) as {
+      exports: Record<
+        string,
+        string | { types?: string; import?: string; require?: string }
+      >;
+    };
+
+    for (const base of JS_ENTRY_BASES) {
+      const key = base === "index" ? "." : `./${base}`;
+      const entry = pkg.exports[key];
+      expect(entry, `missing export ${key}`).toBeTypeOf("object");
+      if (typeof entry !== "object" || entry === null) continue;
+      expect(entry.types).toBe(`./dist/${base}.d.mts`);
+      expect(entry.import).toBe(`./dist/${base}.mjs`);
+      expect(entry.require).toBe(`./dist/${base}.cjs`);
+    }
+
+    expect(pkg.exports["./tailwind.css"]).toBe("./dist/tailwind.css");
+    expect(pkg.exports["./package.json"]).toBe("./package.json");
+  });
+
+  it("sideEffects remains stylesheet-only", () => {
+    const pkg = JSON.parse(
+      readFileSync(path.join(pkgRoot, "package.json"), "utf8"),
+    ) as { sideEffects: unknown };
+    expect(pkg.sideEffects).toEqual(["./dist/tailwind.css"]);
   });
 
   it("CJS and ESM export the same name set including required UI symbols", async () => {
