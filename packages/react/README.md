@@ -2,6 +2,118 @@
 
 React UI components for Better Zap conversations and message views. The package ships presentational compound primitives for chat layout plus a domain-aware adapter for existing consumers.
 
+## Installation
+
+```bash
+pnpm add @better-zap/react
+# or
+npm install @better-zap/react
+# or
+yarn add @better-zap/react
+```
+
+| Requirement | Version |
+| --- | --- |
+| `react` (peer) | `^19.0.0` |
+| `react-dom` (peer) | `^19.0.0` |
+| Node.js | `>=20` |
+
+### Styling (Tailwind CSS v4)
+
+Components are styled with Tailwind CSS utility classes; you need a **Tailwind CSS v4**
+build pipeline in the consuming app. Add the package stylesheet to your global CSS:
+
+```css
+@import "@better-zap/react/tailwind.css";
+```
+
+That file is not compiled CSS — it is a Tailwind v4 *source manifest* (an `@source "."`
+directive) that tells Tailwind's JIT scanner where to find the utility classes used
+inside `@better-zap/react`'s compiled output, so they get included in your build.
+
+**Without a Tailwind v4 build, the components still function but render unstyled
+markup** (no colors, spacing, or layout classes take effect).
+
+## Quick start
+
+A turnkey WhatsApp-style dashboard: a conversation list, a message pane with header
+and message list, and a composer — wired together with `useState` for the selected
+conversation.
+
+```tsx
+"use client";
+
+import { useState } from "react";
+import {
+  ConversationList,
+  MessageInput,
+  MessageList,
+  MessageView,
+  MessageViewContent,
+  MessageViewHeader,
+  WhatsappDashboard,
+} from "@better-zap/react";
+import type { Conversation, UIMessage } from "@better-zap/react";
+
+function Dashboard({
+  conversations,
+  messagesByConversation,
+  onSend,
+}: {
+  conversations: Conversation[];
+  messagesByConversation: Record<string, UIMessage[]>;
+  onSend: (conversationId: string, text: string) => void;
+}) {
+  const [selectedId, setSelectedId] = useState<string | null>(
+    conversations[0]?.id ?? null,
+  );
+  const selected = conversations.find((c) => c.id === selectedId) ?? null;
+  const messages = selected ? messagesByConversation[selected.id] ?? [] : [];
+
+  return (
+    <WhatsappDashboard>
+      <ConversationList
+        conversations={conversations}
+        selectedConversationId={selectedId}
+        onSelect={setSelectedId}
+      />
+      <MessageView>
+        <MessageViewHeader conversation={selected ?? undefined} />
+        <MessageViewContent>
+          <MessageList messages={messages} />
+        </MessageViewContent>
+        <MessageInput
+          onSend={(text) => selected && onSend(selected.id, text)}
+          conversation={selected}
+        />
+      </MessageView>
+    </WhatsappDashboard>
+  );
+}
+```
+
+`WhatsappDashboard` handles list/chat navigation on mobile viewports automatically;
+`ConversationList`, `MessageView`, and `MessageInput` all work the same way whether
+or not they're inside it (see the sections below).
+
+## Two layers
+
+The package has two layers: generic presentational **primitives** with no Better Zap
+dependency, and Better Zap **adapters** that map domain data onto those primitives.
+
+| Concern | Primitives (`Bubble*`, `Message*` layout, `Composer*`, `DateDivider`) | Adapters (`MessageBubble`, `MessageInput`, `MessageList`, `ConversationList`, `MessageView*`, `WhatsappDashboard`) |
+| --- | --- | --- |
+| Data mapping (domain → presentation) | None — you pass `align`/`variant` directly | Own it — map `Conversation`/`UIMessage` fields (`sender`/`status`/`direction`) to presentational props |
+| Row layout | `Message`, `MessageAvatar`, `MessageContent`, `MessageHeader`, `MessageFooter` | Composed internally by `MessageBubble` / `MessageList`'s default renderer |
+| Bubble surface | `Bubble`, `BubbleContent`, `BubbleReactions` | Composed internally; still swappable via `renderMessage` (see [MessageList](#messagelist)) |
+| Metadata / timestamps | You render them (`MessageFooter`, etc.) | Own default formatting (`formatDate`/`formatTime`), overridable via props |
+| Actions | `ComposerButton`, `ComposerSend`, etc. — you wire callbacks | `MessageInput` gates action buttons on callbacks being provided (see [Actions and failures](#actions-and-failures)) |
+| Responsive orchestration | None | `WhatsappDashboard` owns mobile list/chat navigation; `ConversationList`/`MessageView` read it optionally |
+| Localization | Locale-free — you own all copy | pt-BR defaults (labels, `HOJE`/`ONTEM`, `HH:mm`), overridable via `labels`/`formatDate`/`formatTime` props |
+
+See [Message vs Bubble](#message-vs-bubble) and [Composer vs MessageInput](#composer-vs-messageinput)
+for the detailed anatomy of each pair.
+
 ## Subpath imports
 
 The root entry (`@better-zap/react`) re-exports the full public surface and is a **client** boundary (aggregates client modules). Prefer leaf subpaths when you only need a slice of the UI — especially server components that should not pull virtualization or icon deps:
@@ -394,3 +506,26 @@ const [mobileView, setMobileView] = useState<"list" | "chat">("list");
 - Uncontrolled uses `defaultMobileView` (`"list"`). `onMobileViewChange` still
   fires when the view changes if provided.
 - When `isMobile` is set, `matchMedia` is not attached; the prop value is used.
+
+## Migration from the monolithic API
+
+All high-level components you may already be using are unchanged in name and
+remain public — nothing described below removes an export.
+
+| Legacy usage | Now | Notes |
+| --- | --- | --- |
+| `MessageBubble` | retained — compatibility adapter over `Message` + `Bubble` | compose primitives directly for custom metadata placement or grouping (see [Message vs Bubble](#message-vs-bubble)) |
+| `MessageInput` | retained — failure-safe adapter over `Composer*` + `useFreeformMessageWindow` | inert action buttons (emoji/attach/mic) no longer render without callbacks (see [Actions and failures](#actions-and-failures)) |
+| `MessageList` | retained — now extensible (`renderMessage`, `renderDateDivider`, grouping context, `formatDate`/`formatTime`) | default rendering is unchanged if you pass no new props |
+| `ConversationList` | retained — standalone-capable, controlled search/filter, `renderItem`/`renderAvatar`/`labels` | no provider required (see [Standalone vs dashboard](#standalone-vs-dashboard)) |
+| `MessageView` (+ header/content/empty) | retained — context-optional | standalone renders desktop semantics, no provider required (see [MessageView](#messageview)) |
+| `WhatsappDashboard` | retained — controllable (`mobileView`/`onMobileViewChange`/`isMobile`) | uncontrolled default behavior is unchanged |
+
+### Versioning
+
+`@better-zap/react` is `0.x`; per SemVer, minor releases in this range may
+include breaking changes. This wave, however, removes **no** high-level
+export: `MessageBubble`, `MessageInput`, `MessageList`, `ConversationList`,
+`MessageView`, and `WhatsappDashboard` all remain public. The composable
+primitives (`Bubble*`, `Message*` layout parts, `Composer*`, `DateDivider`)
+are additive — they sit alongside the adapters, not in place of them.
