@@ -31,5 +31,8 @@ jobs:
           publish: pnpm release:publish
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # setup-node's generated .npmrc authenticates via NODE_AUTH_TOKEN,
+          # so the secret must be exposed under that name for `npm publish`.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: true
