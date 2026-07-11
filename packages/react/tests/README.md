@@ -16,6 +16,7 @@ The package `test` script builds first (`pnpm run build && vitest run`) so asser
 | --- | --- |
 | `packaging.test.ts` | Exact `package.json#exports` keys (no wildcards), per-subpath `types`/`import`/`require`, `sideEffects` stylesheet-only, root CJS/ESM name parity + required UI symbols |
 | `entrypoints.test.ts` | Leading `"use client"` on client entries only; zero directive on server-safe entries; bubble/message static graph free of `@legendapp/list` and `@hugeicons/*`; ESM/CJS subpath symbols; CJS `message-view` `require` + `createElement` (import.meta shim); packed tarball includes entries, `tailwind.css`, `wpp-bg.webp`, and the export map |
+| `docs-examples.test.tsx` | Renders every code example added to `packages/react/README.md` (Installation, Quick start, Two layers, Migration) verbatim against the published surface — the fixture is the drift check. Editing a README example requires updating the matching block here. |
 
 Normative JS subpaths: `.`, `./bubble`, `./message`, `./message-bubble`, `./composer`, `./message-input`, `./message-view`, `./conversation-list`, `./whatsapp-dashboard`, `./utils` (plus `./tailwind.css` and `./package.json`).
 
