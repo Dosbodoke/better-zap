@@ -185,3 +185,100 @@ callbacks still fire when uncontrolled if provided.
 - `labels` — partial overrides for search, chips, loading/error/empty, preview
   prefix, and `"Ontem"`.
 - `formatTime(isoDate)` — optional time label override for rows.
+
+## MessageList
+
+**MessageList** is a virtualized, date-grouped message scroller (LegendList).
+It works inside `MessageViewContent` (scroll context) or **standalone** with
+direct `autoScroll` / `onScrollTop` props. Direct props win over context.
+
+### Default use
+
+```tsx
+import { MessageList } from "@better-zap/react";
+
+<MessageList
+  messages={messages}
+  renderMessageLabel={(m) =>
+    m.direction === "outgoing" ? "Assistente" : undefined
+  }
+/>
+```
+
+Default rendering uses `MessageBubble`, `getDisplayDate` (pt-BR HOJE/ONTEM),
+and pt-BR `HH:mm` timestamps. Default appearance does **not** change corners
+or spacing based on `groupPosition` — that field is for custom renderers.
+
+### Custom rich-message renderer
+
+Inject `renderMessage` to compose public `Message` + `Bubble` primitives.
+`MessageRenderContext` exposes stable `id`, `direction`, presentation `align`
+(`incoming` → `start`, `outgoing` → `end`), neighbor-derived `groupPosition`
+(`single` | `first` | `middle` | `last`), and optional `label`.
+
+Grouping: two adjacent messages share a group when `formatDate(a.sentAt) ===
+formatDate(b.sentAt)` **and** `a.direction === b.direction`. Date boundaries
+and direction changes start a new group.
+
+```tsx
+import {
+  MessageList,
+  Message,
+  MessageContent,
+  MessageFooter,
+  Bubble,
+  BubbleContent,
+} from "@better-zap/react";
+
+<MessageList
+  messages={messages}
+  renderMessage={({ message, align, groupPosition, label }) => (
+    <Message align={align} data-group={groupPosition}>
+      <MessageContent>
+        {label ? <span>{label}</span> : null}
+        <Bubble
+          variant={align === "end" ? "primary" : "default"}
+          align={align}
+        >
+          <BubbleContent>{message.content}</BubbleContent>
+        </Bubble>
+        <MessageFooter>{/* your time / status */}</MessageFooter>
+      </MessageContent>
+    </Message>
+  )}
+/>
+```
+
+### Custom date chrome
+
+```tsx
+import { MessageList, DateDivider } from "@better-zap/react";
+
+<MessageList
+  messages={messages}
+  formatDate={(iso) => new Date(iso).toLocaleDateString("en-US")}
+  renderDateDivider={({ label, date }) => (
+    <DateDivider data-raw={date}>{label}</DateDivider>
+  )}
+/>
+```
+
+`DateDivider` is a public presentational pill (`children` + standard `div`
+props). Date row ids are `date:${label}` for the first occurrence of a label
+in the list walk; later duplicates use `date:${label}:${occurrence}` (1-based
+after the first) so malformed timestamps that both format to
+`"Invalid Date"` stay unique. Occurrence suffixes may shift when history
+prepends *duplicate-label* groups (accepted).
+
+### Standalone scroll props
+
+```tsx
+<MessageList
+  messages={messages}
+  autoScroll={false}
+  onScrollTop={() => loadOlder()}
+/>
+```
+
+Also available: `formatTime(iso)` for the **default** bubble timestamp only
+(custom `renderMessage` owns its own time formatting).

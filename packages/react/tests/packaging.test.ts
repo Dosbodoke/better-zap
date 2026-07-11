@@ -15,6 +15,7 @@ const REQUIRED_EXPORT_NAMES = [
   "ConversationList",
   "WhatsappDashboard",
   "MessageList",
+  "DateDivider",
   "MessageView",
   "FormattedMessage",
   "useWhatsappDashboard",
