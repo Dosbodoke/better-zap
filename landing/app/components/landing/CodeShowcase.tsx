@@ -13,10 +13,30 @@ const packageManagers: {
   pkg: string;
   icon: ComponentType<SVGProps<SVGSVGElement>>;
 }[] = [
-  { name: "npm", command: "npm install", pkg: "@better-zap/core", icon: NPM },
-  { name: "pnpm", command: "pnpm add", pkg: "@better-zap/core", icon: Pnpm },
-  { name: "yarn", command: "yarn add", pkg: "@better-zap/core", icon: Yarn },
-  { name: "bun", command: "bun add", pkg: "@better-zap/core", icon: Bun },
+  {
+    name: "npm",
+    command: "npm install",
+    pkg: "better-zap @better-zap/hono",
+    icon: NPM,
+  },
+  {
+    name: "pnpm",
+    command: "pnpm add",
+    pkg: "better-zap @better-zap/hono",
+    icon: Pnpm,
+  },
+  {
+    name: "yarn",
+    command: "yarn add",
+    pkg: "better-zap @better-zap/hono",
+    icon: Yarn,
+  },
+  {
+    name: "bun",
+    command: "bun add",
+    pkg: "better-zap @better-zap/hono",
+    icon: Bun,
+  },
 ];
 
 const bulletKeys = [
@@ -137,10 +157,10 @@ export function CodeShowcase() {
                   </span>
                   <span>
                     <span className="text-violet-600">import</span>{" "}
-                    {"{ BetterZap }"}{" "}
+                    {"{ betterZap }"}{" "}
                     <span className="text-violet-600">from</span>{" "}
                     <span className="text-emerald-700">
-                      &quot;@better-zap/core&quot;
+                      &quot;@better-zap/hono&quot;
                     </span>
                     ;
                   </span>
@@ -158,9 +178,8 @@ export function CodeShowcase() {
                     3
                   </span>
                   <span>
-                    <span className="text-violet-600">const</span> bot ={" "}
-                    <span className="text-violet-600">new</span>{" "}
-                    <span className="text-amber-700">BetterZap</span>(
+                    <span className="text-violet-600">const</span> zap ={" "}
+                    <span className="text-amber-700">betterZap</span>(
                     {"{ ... }"});
                   </span>
                 </span>
@@ -175,8 +194,16 @@ export function CodeShowcase() {
                     5
                   </span>
                   <span>
-                    <span className="text-violet-600">await</span> bot.messages.
-                    <span className="text-blue-700">sendTemplate</span>({"{"}
+                    <span className="text-violet-600">await</span> zap.api.send.
+                    <span className="text-blue-700">template</span>(
+                    <span className="text-emerald-700">
+                      &quot;5511999999999&quot;
+                    </span>
+                    ,{" "}
+                    <span className="text-emerald-700">
+                      &quot;order_confirmation&quot;
+                    </span>
+                    , {"{"}
                   </span>
                 </span>
                 <span className="flex gap-3">
@@ -185,52 +212,15 @@ export function CodeShowcase() {
                   </span>
                   <span>
                     {"  "}
-                    to:{" "}
-                    <span className="text-emerald-700">
-                      &quot;5511999999999&quot;
-                    </span>
-                    ,
-                  </span>
-                </span>
-                <span className="flex gap-3">
-                  <span className="text-zinc-300 select-none w-5 text-right shrink-0">
-                    7
-                  </span>
-                  <span>
-                    {"  "}
-                    template:{" "}
-                    <span className="text-emerald-700">
-                      &quot;order_confirmation&quot;
-                    </span>
-                    ,
-                  </span>
-                </span>
-                <span className="flex gap-3">
-                  <span className="text-zinc-300 select-none w-5 text-right shrink-0">
-                    8
-                  </span>
-                  <span>{"  "}components: {"{"}</span>
-                </span>
-                <span className="flex gap-3">
-                  <span className="text-zinc-300 select-none w-5 text-right shrink-0">
-                    9
-                  </span>
-                  <span>
-                    {"    "}body: {"{ "}
-                    order_id:{" "}
+                    params: {"{ "}
+                    orderId:{" "}
                     <span className="text-emerald-700">&quot;123&quot;</span>
                     {" }"},
                   </span>
                 </span>
                 <span className="flex gap-3">
                   <span className="text-zinc-300 select-none w-5 text-right shrink-0">
-                    10
-                  </span>
-                  <span>{"  },"}</span>
-                </span>
-                <span className="flex gap-3">
-                  <span className="text-zinc-300 select-none w-5 text-right shrink-0">
-                    11
+                    7
                   </span>
                   <span>{"}"});</span>
                 </span>
