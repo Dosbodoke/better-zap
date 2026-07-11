@@ -1,6 +1,6 @@
 {
   "name": "@better-zap/fixtures",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Coexistence WhatsApp webhook fixtures for Better Zap.",
   "license": "ISC",
   "repository": {
