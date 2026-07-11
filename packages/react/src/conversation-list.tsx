@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Message01Icon, UserIcon } from "@hugeicons/core-free-icons";
 import { LegendList } from "@legendapp/list/react";
@@ -11,45 +11,144 @@ import {
   ConversationFilterChips,
   type ConversationFilterValue,
 } from "./conversation-filter-chips";
-import { useWhatsappDashboard } from "./whatsapp-dashboard";
+import { useOptionalWhatsappDashboard } from "./whatsapp-dashboard";
 
-interface ConversationListProps {
+export interface ConversationListLabels {
+  searchPlaceholder: string;
+  searchLabel: string;
+  filterAll: string;
+  filterUnread: string;
+  loading: string;
+  error: string;
+  empty: string;
+  outgoingPrefix: string;
+  noPreview: string;
+  yesterday: string;
+}
+
+const DEFAULT_LABELS: ConversationListLabels = {
+  searchPlaceholder: "Buscar conversa",
+  searchLabel: "Buscar conversa",
+  filterAll: "Tudo",
+  filterUnread: "Não lidas",
+  loading: "Carregando...",
+  error: "Erro ao carregar conversas",
+  empty: "Nenhuma conversa encontrada",
+  outgoingPrefix: "Você: ",
+  noPreview: "Sem mensagem",
+  yesterday: "Ontem",
+};
+
+export interface ConversationListProps
+  extends Omit<React.ComponentProps<"div">, "onSelect"> {
   conversations: Conversation[];
-  isLoading: boolean;
+  isLoading?: boolean;
   isError?: boolean;
-  selectedConversationId: string | null;
-  onSelect: (id: string) => void;
-  className?: string;
+  selectedConversationId?: string | null;
+  onSelect?: (id: string) => void;
+
+  search?: string;
+  defaultSearch?: string;
+  onSearchChange?: (value: string) => void;
+  filter?: ConversationFilterValue;
+  defaultFilter?: ConversationFilterValue;
+  onFilterChange?: (value: ConversationFilterValue) => void;
+
+  renderItem?: (
+    conversation: Conversation,
+    context: { isSelected: boolean; select: () => void },
+  ) => React.ReactNode;
+  renderAvatar?: (conversation: Conversation) => React.ReactNode;
+
+  formatTime?: (isoDate: string) => string;
+  labels?: Partial<ConversationListLabels>;
 }
 
 export function ConversationList({
   conversations,
-  isLoading,
+  isLoading = false,
   isError,
   selectedConversationId,
   onSelect,
+  search: searchProp,
+  defaultSearch = "",
+  onSearchChange,
+  filter: filterProp,
+  defaultFilter = "all",
+  onFilterChange,
+  renderItem,
+  renderAvatar,
+  formatTime: formatTimeProp,
+  labels: labelsProp,
   className,
+  ...props
 }: ConversationListProps) {
-  const { isMobile, mobileView, setMobileView } = useWhatsappDashboard();
-  const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<ConversationFilterValue>("all");
+  const dashboard = useOptionalWhatsappDashboard();
+  const isMobile = dashboard?.isMobile ?? false;
+  const mobileView = dashboard?.mobileView ?? "list";
+
+  const isSearchControlled = searchProp !== undefined;
+  const [internalSearch, setInternalSearch] = useState(defaultSearch);
+  const search = isSearchControlled ? searchProp : internalSearch;
+
+  const isFilterControlled = filterProp !== undefined;
+  const [internalFilter, setInternalFilter] =
+    useState<ConversationFilterValue>(defaultFilter);
+  const filter = isFilterControlled ? filterProp : internalFilter;
+
+  const labels: ConversationListLabels = {
+    ...DEFAULT_LABELS,
+    ...labelsProp,
+    // When only searchPlaceholder is overridden, searchLabel follows unless set
+    searchLabel:
+      labelsProp?.searchLabel ??
+      labelsProp?.searchPlaceholder ??
+      DEFAULT_LABELS.searchLabel,
+  };
+
+  const effectiveFormatTime =
+    formatTimeProp ??
+    ((isoDate: string) => formatTimeDefault(isoDate, labels.yesterday));
+
+  const handleSearchChange = (value: string) => {
+    if (!isSearchControlled) {
+      setInternalSearch(value);
+    }
+    onSearchChange?.(value);
+  };
+
+  const handleFilterChange = (value: ConversationFilterValue) => {
+    if (!isFilterControlled) {
+      setInternalFilter(value);
+    }
+    onFilterChange?.(value);
+  };
 
   const normalizedSearch = search.trim().toLowerCase();
-  const unreadConversationsCount = conversations.filter((c) => c.unreadCount > 0).length;
-  const filtered = conversations.filter((conversation) => {
-    const matchesSearch =
-      normalizedSearch.length === 0 ||
-      conversation.phone.toLowerCase().includes(normalizedSearch) ||
-      conversation.contactName?.toLowerCase().includes(normalizedSearch);
+  const effectiveFilter = filter;
 
-    const matchesFilter = filter === "all" || conversation.unreadCount > 0;
+  const unreadConversationsCount = useMemo(
+    () => conversations.filter((c) => c.unreadCount > 0).length,
+    [conversations],
+  );
 
-    return matchesSearch && matchesFilter;
-  });
+  const filtered = useMemo(() => {
+    return conversations.filter((conversation) => {
+      const matchesSearch =
+        normalizedSearch.length === 0 ||
+        conversation.phone.toLowerCase().includes(normalizedSearch) ||
+        conversation.contactName?.toLowerCase().includes(normalizedSearch);
+
+      const matchesFilter =
+        effectiveFilter === "all" || conversation.unreadCount > 0;
+
+      return matchesSearch && matchesFilter;
+    });
+  }, [conversations, normalizedSearch, effectiveFilter]);
 
   const handleSelect = (id: string) => {
-    onSelect(id);
-    setMobileView("chat");
+    onSelect?.(id);
+    dashboard?.setMobileView("chat");
   };
 
   const isVisible = !isMobile || mobileView === "list";
@@ -61,28 +160,35 @@ export function ConversationList({
         isMobile ? "w-full" : "min-w-[320px] max-w-105",
         className,
       )}
-      style={isVisible ? undefined : { display: "none" }}
+      {...props}
+      style={isVisible ? props.style : { display: "none" }}
     >
-      <ConversationSearch value={search} onChange={setSearch} />
+      <ConversationSearch
+        value={search}
+        onChange={handleSearchChange}
+        placeholder={labels.searchPlaceholder}
+        aria-label={labels.searchLabel}
+      />
       <ConversationFilterChips
         value={filter}
-        onValueChange={setFilter}
+        onValueChange={handleFilterChange}
         unreadCount={unreadConversationsCount}
+        labels={{ all: labels.filterAll, unread: labels.filterUnread }}
       />
 
       <div className="min-h-0 flex-1">
         {isLoading ? (
           <div className="flex items-center justify-center h-full text-sm text-[#667781]">
-            Carregando...
+            {labels.loading}
           </div>
         ) : isError ? (
           <div className="flex items-center justify-center h-full text-sm text-red-500">
-            Erro ao carregar conversas
+            {labels.error}
           </div>
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-2 text-[#667781]">
             <HugeiconsIcon icon={Message01Icon} size={32} />
-            <p className="text-sm">Nenhuma conversa encontrada</p>
+            <p className="text-sm">{labels.empty}</p>
           </div>
         ) : (
           <LegendList
@@ -93,13 +199,26 @@ export function ConversationList({
             getFixedItemSize={() => 72}
             keyExtractor={(conversation) => conversation.id}
             recycleItems
-            renderItem={({ item: conversation }) => (
-              <ConversationItem
-                conversation={conversation}
-                isSelected={selectedConversationId === conversation.id}
-                onClick={() => handleSelect(conversation.id)}
-              />
-            )}
+            renderItem={({ item: conversation }) => {
+              const isSelected = selectedConversationId === conversation.id;
+              const select = () => handleSelect(conversation.id);
+
+              if (renderItem) {
+                return renderItem(conversation, { isSelected, select });
+              }
+
+              return (
+                <ConversationItem
+                  conversation={conversation}
+                  isSelected={isSelected}
+                  onClick={select}
+                  avatar={renderAvatar?.(conversation)}
+                  outgoingPrefix={labels.outgoingPrefix}
+                  noPreviewLabel={labels.noPreview}
+                  formatTime={effectiveFormatTime}
+                />
+              );
+            }}
             style={{ height: "100%", overflowX: "hidden" }}
           />
         )}
@@ -108,31 +227,50 @@ export function ConversationList({
   );
 }
 
-interface ConversationItemProps {
+export interface ConversationItemProps extends React.ComponentProps<"button"> {
   conversation: Conversation;
-  isSelected: boolean;
-  onClick: () => void;
+  isSelected?: boolean;
+  avatar?: React.ReactNode;
+  outgoingPrefix?: string;
+  noPreviewLabel?: string;
+  formatTime?: (isoDate: string) => string;
 }
 
 export function ConversationItem({
   conversation,
-  isSelected,
-  onClick,
+  isSelected = false,
+  avatar,
+  outgoingPrefix = "Você: ",
+  noPreviewLabel = "Sem mensagem",
+  formatTime: formatTimeProp,
+  className,
+  ...props
 }: ConversationItemProps) {
+  const timeLabel = formatTimeProp
+    ? formatTimeProp(conversation.lastMessageAt)
+    : formatTimeDefault(conversation.lastMessageAt, "Ontem");
+
   return (
     <button
-      onClick={onClick}
+      {...props}
+      type="button"
       data-selected={isSelected}
-      className="group flex items-center w-full h-[72px] px-3 gap-3 transition-all cursor-pointer text-left relative overflow-hidden hover:bg-[#f5f6f6] data-[selected=true]:bg-[#075e54] data-[selected=true]:hover:bg-[#064940]"
+      aria-current={isSelected ? "true" : undefined}
+      className={cn(
+        "group flex items-center w-full h-[72px] px-3 gap-3 transition-all cursor-pointer text-left relative overflow-hidden hover:bg-[#f5f6f6] data-[selected=true]:bg-[#075e54] data-[selected=true]:hover:bg-[#064940]",
+        className,
+      )}
     >
       {/* Avatar */}
-      <div className="w-[49px] h-[49px] rounded-full bg-[#dfe5e7] flex items-center justify-center shrink-0 group-data-[selected=true]:bg-white/20">
-        <HugeiconsIcon
-          icon={UserIcon}
-          size={28}
-          className="text-[#aebac1] group-data-[selected=true]:text-white/80"
-        />
-      </div>
+      {avatar ?? (
+        <div className="w-[49px] h-[49px] rounded-full bg-[#dfe5e7] flex items-center justify-center shrink-0 group-data-[selected=true]:bg-white/20">
+          <HugeiconsIcon
+            icon={UserIcon}
+            size={28}
+            className="text-[#aebac1] group-data-[selected=true]:text-white/80"
+          />
+        </div>
+      )}
 
       {/* Content */}
       <div className="flex-1 min-w-0 border-b border-[#f2f2f2] h-full flex flex-col justify-center pr-1 group-last:border-none group-data-[selected=true]:border-transparent">
@@ -141,13 +279,13 @@ export function ConversationItem({
             {conversation.contactName || formatPhone(conversation.phone)}
           </span>
           <span className="text-xs text-[#667781] shrink-0 group-data-[selected=true]:text-white/90">
-            {formatTime(conversation.lastMessageAt)}
+            {timeLabel}
           </span>
         </div>
         <div className="flex justify-between items-center gap-2">
           <p className="text-[14px] text-[#667781] truncate group-data-[selected=true]:text-white/90">
-            {conversation.lastDirection === "incoming" ? "" : "Você: "}
-            {conversation.lastMessagePreview || "Sem mensagem"}
+            {conversation.lastDirection === "incoming" ? "" : outgoingPrefix}
+            {conversation.lastMessagePreview || noPreviewLabel}
           </p>
           {conversation.unreadCount > 0 && (
             <span className="bg-[#25d366] text-white text-[11px] font-bold rounded-full min-w-[20px] h-[20px] flex items-center justify-center px-1.5 shrink-0 group-data-[selected=true]:bg-white">
@@ -170,7 +308,7 @@ function formatPhone(phone: string): string {
   return phone;
 }
 
-function formatTime(dateStr: string): string {
+function formatTimeDefault(dateStr: string, yesterdayLabel: string): string {
   try {
     const date = new Date(dateStr);
     const now = new Date();
@@ -186,7 +324,7 @@ function formatTime(dateStr: string): string {
     const yesterday = new Date(now);
     yesterday.setDate(yesterday.getDate() - 1);
     if (date.toDateString() === yesterday.toDateString()) {
-      return "Ontem";
+      return yesterdayLabel;
     }
 
     return date.toLocaleDateString("pt-BR", {
