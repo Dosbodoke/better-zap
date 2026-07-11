@@ -2,19 +2,8 @@ import React from "react";
 import { cva } from "class-variance-authority";
 import { cn } from "./utils";
 import type { UIMessageStatus } from "better-zap";
-
-const bubbleVariants = cva(
-  "relative shadow-[0_1px_0.5px_rgba(11,20,26,0.13)] rounded-lg px-3 py-2 max-w-[65%]",
-  {
-    variants: {
-      variant: {
-        outgoing: "bg-green-100 text-green-900 rounded-tr-none",
-        incoming: "bg-gray-100 text-gray-900 rounded-tl-none",
-        failed: "bg-red-100 text-red-900 rounded-tr-none border border-red-200",
-      },
-    },
-  }
-);
+import { Bubble, BubbleContent } from "./bubble";
+import { Message, MessageContent } from "./message";
 
 const statusVariants = cva("text-[13px] leading-none", {
   variants: {
@@ -51,7 +40,13 @@ export function MessageBubble({
   const isIncoming = sender === "user";
   const isFailed = status === "failed";
 
-  const bubbleVariant = isIncoming ? "incoming" : isFailed ? "failed" : "outgoing";
+  const align = sender === "user" ? "start" : "end";
+  const variant =
+    sender === "user"
+      ? "default"
+      : status === "failed"
+        ? "destructive"
+        : "primary";
   const statusVariant = status === "read" ? "read" : isFailed ? "failed" : "default";
 
   // Display content or template name as fallback
@@ -62,53 +57,48 @@ export function MessageBubble({
       : "[Conteúdo não disponível]");
 
   return (
-    <div
-      className={cn(
-        "flex w-full mb-1",
-        isIncoming ? "justify-start" : "justify-end",
-        className
-      )}
-      {...props}
-    >
-      <div className={bubbleVariants({ variant: bubbleVariant })}>
-        {label && !isIncoming && (
-          <span className="mb-1 block text-xs font-medium opacity-70">
-            {label}
-          </span>
-        )}
-
-        {templateName && !label && (
-          <div className="mb-1 border-b border-black/5 pb-1">
-            <span className="text-[11px] font-medium opacity-70">
-              📋 {templateName}
-            </span>
-          </div>
-        )}
-
-        <div className="text-[14.5px] leading-normal whitespace-pre-wrap break-words select-text">
-          <FormattedMessage text={displayContent} />
-
-          {/* Timestamp and Status */}
-          <div className="float-right -mb-1 ml-2 mt-1.5 flex items-center justify-end gap-1 shrink-0 h-[15px] select-none">
-            {timestamp && (
-              <span className="text-[11px] opacity-60 leading-none whitespace-nowrap">
-                {timestamp}
+    <Message align={align} className={cn("mb-1", className)} {...props}>
+      <MessageContent>
+        <Bubble variant={variant} align={align}>
+          <BubbleContent>
+            {label && !isIncoming && (
+              <span className="mb-1 block text-xs font-medium opacity-70">
+                {label}
               </span>
             )}
-            {!isIncoming && status && (
-              <span className={statusVariants({ variant: statusVariant })}>
-                {status === "read" || status === "delivered"
-                  ? "✓✓"
-                  : isFailed
-                  ? "✕"
-                  : "✓"}
-              </span>
+
+            {templateName && !label && (
+              <div className="mb-1 border-b border-black/5 pb-1">
+                <span className="text-[11px] font-medium opacity-70">
+                  📋 {templateName}
+                </span>
+              </div>
             )}
-          </div>
-          <div className="clear-both" />
-        </div>
-      </div>
-    </div>
+
+            <FormattedMessage text={displayContent} />
+
+            {/* Timestamp and Status */}
+            <div className="float-right -mb-1 ml-2 mt-1.5 flex items-center justify-end gap-1 shrink-0 h-[15px] select-none">
+              {timestamp && (
+                <span className="text-[11px] opacity-60 leading-none whitespace-nowrap">
+                  {timestamp}
+                </span>
+              )}
+              {!isIncoming && status && (
+                <span className={statusVariants({ variant: statusVariant })}>
+                  {status === "read" || status === "delivered"
+                    ? "✓✓"
+                    : isFailed
+                      ? "✕"
+                      : "✓"}
+                </span>
+              )}
+            </div>
+            <div className="clear-both" />
+          </BubbleContent>
+        </Bubble>
+      </MessageContent>
+    </Message>
   );
 }
 

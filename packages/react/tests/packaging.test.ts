@@ -18,6 +18,16 @@ const REQUIRED_EXPORT_NAMES = [
   "MessageView",
   "FormattedMessage",
   "useWhatsappDashboard",
+  "Bubble",
+  "BubbleContent",
+  "BubbleReactions",
+  "BubbleGroup",
+  "Message",
+  "MessageAvatar",
+  "MessageContent",
+  "MessageHeader",
+  "MessageFooter",
+  "MessageGroup",
 ] as const;
 
 const EXPECTED_EXPORTS_KEYS = [".", "./tailwind.css", "./package.json"] as const;
