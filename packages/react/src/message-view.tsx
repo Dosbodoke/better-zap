@@ -6,24 +6,26 @@ import {
   ArrowLeft02Icon,
   InformationCircleIcon,
   Message01Icon,
-  LockIcon,
 } from "@hugeicons/core-free-icons";
 import { LegendList } from "@legendapp/list/react";
 import type { Conversation, UIMessage } from "better-zap";
 import { cn, getDisplayDate } from "./utils";
 import { MessageBubble } from "./message-bubble";
-import { useWhatsappDashboard } from "./whatsapp-dashboard";
+import { useOptionalWhatsappDashboard } from "./whatsapp-dashboard";
 
-interface MessageViewProps extends React.HTMLAttributes<HTMLDivElement> {
+export interface MessageViewProps extends React.ComponentProps<"div"> {
   children?: React.ReactNode;
 }
 
 export function MessageView({
   children,
   className,
+  style,
   ...props
 }: MessageViewProps) {
-  const { isMobile, mobileView } = useWhatsappDashboard();
+  const ctx = useOptionalWhatsappDashboard();
+  const isMobile = ctx?.isMobile ?? false;
+  const mobileView = ctx?.mobileView ?? "chat";
   const hasContent = React.Children.count(children) > 0;
 
   const isVisible = !isMobile || mobileView === "chat";
@@ -31,13 +33,13 @@ export function MessageView({
   if (!hasContent) {
     // Don't show empty state on mobile — the conversation list is shown instead
     if (isMobile) return null;
-    return <MessageViewEmpty className={className} {...props} />;
+    return <MessageViewEmpty className={className} style={style} {...props} />;
   }
 
   return (
     <div
       className={cn("relative flex flex-1 flex-col bg-[#efeae2]", className)}
-      style={isVisible ? undefined : { display: "none" }}
+      style={{ ...style, ...(isVisible ? null : { display: "none" }) }}
       {...props}
     >
       <div
@@ -55,23 +57,49 @@ export function MessageView({
 }
 
 // Header Component
-interface MessageViewHeaderProps {
-  conversation: Conversation;
+export interface MessageViewHeaderLabels {
+  back: string;
+  info: string;
+}
+
+const DEFAULT_HEADER_LABELS: MessageViewHeaderLabels = {
+  back: "Voltar",
+  info: "Informações",
+};
+
+export interface MessageViewHeaderProps extends React.ComponentProps<"div"> {
+  conversation?: Conversation;
   onBack?: () => void;
   onInfoClick?: () => void;
-  className?: string;
+  /** Force the back button outside dashboard context. Default: ctx?.isMobile ?? false */
+  showBackButton?: boolean;
+  /** Replaces the right-side default info button entirely. */
+  actions?: React.ReactNode;
+  labels?: Partial<MessageViewHeaderLabels>;
+  /** children replace the identity block (name + phone) when provided. */
+  children?: React.ReactNode;
 }
+
+const iconButtonClassName =
+  "inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-black/5 focus-visible:outline-2 focus-visible:outline-offset-2";
 
 export function MessageViewHeader({
   conversation,
   onBack,
   onInfoClick,
+  showBackButton,
+  actions,
+  labels: labelsProp,
+  children,
   className,
+  ...props
 }: MessageViewHeaderProps) {
-  const { isMobile, setMobileView } = useWhatsappDashboard();
+  const ctx = useOptionalWhatsappDashboard();
+  const labels = { ...DEFAULT_HEADER_LABELS, ...labelsProp };
+  const showBack = showBackButton ?? ctx?.isMobile ?? false;
 
   const handleBack = () => {
-    setMobileView("list");
+    ctx?.setMobileView("list");
     onBack?.();
   };
 
@@ -81,41 +109,52 @@ export function MessageViewHeader({
         "flex h-16 shrink-0 items-center justify-between border-b bg-[#f0f2f5] px-4 z-20",
         className,
       )}
+      {...props}
     >
       <div className="flex items-center gap-3">
-        {isMobile && (
+        {showBack && (
           <button
             type="button"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-black/5"
+            aria-label={labels.back}
+            className={iconButtonClassName}
             onClick={handleBack}
           >
             <HugeiconsIcon icon={ArrowLeft02Icon} size={20} />
           </button>
         )}
-        <div className="flex flex-col">
-          <h2 className="text-[15px] font-medium text-[#111b21] leading-tight">
-            {conversation.contactName || conversation.phone}
-          </h2>
-          {conversation.contactName && (
-            <span className="text-sm text-[#667781] leading-tight">
-              {conversation.phone}
-            </span>
-          )}
-        </div>
+        {children ??
+          (conversation ? (
+            <div className="flex flex-col">
+              <h2 className="text-[15px] font-medium text-[#111b21] leading-tight">
+                {conversation.contactName || conversation.phone}
+              </h2>
+              {conversation.contactName && (
+                <span className="text-sm text-[#667781] leading-tight">
+                  {conversation.phone}
+                </span>
+              )}
+            </div>
+          ) : (
+            <div className="flex flex-col" />
+          ))}
       </div>
-      <button
-        type="button"
-        className="inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-black/5"
-        onClick={onInfoClick}
-      >
-        <HugeiconsIcon icon={InformationCircleIcon} size={20} />
-      </button>
+      {actions ??
+        (onInfoClick ? (
+          <button
+            type="button"
+            aria-label={labels.info}
+            className={iconButtonClassName}
+            onClick={onInfoClick}
+          >
+            <HugeiconsIcon icon={InformationCircleIcon} size={20} />
+          </button>
+        ) : null)}
     </div>
   );
 }
 
 // Content Component (Scrollable area)
-interface MessageViewContentProps extends React.HTMLAttributes<HTMLDivElement> {
+export interface MessageViewContentProps extends React.ComponentProps<"div"> {
   children?: React.ReactNode;
   autoScroll?: boolean;
   /** Called when the user scrolls to the top of the container. */
@@ -378,8 +417,9 @@ export function DateDivider({
 // Empty State
 export function MessageViewEmpty({
   className,
+  children,
   ...props
-}: React.HTMLAttributes<HTMLDivElement>) {
+}: React.ComponentProps<"div">) {
   return (
     <div
       className={cn(
@@ -388,24 +428,28 @@ export function MessageViewEmpty({
       )}
       {...props}
     >
-      <div className="mb-8 flex h-48 w-48 items-center justify-center rounded-full bg-[#f0f2f5] shadow-sm">
-        <HugeiconsIcon
-          icon={Message01Icon}
-          size={80}
-          className="text-[#bbc5cb]"
-        />
-      </div>
-      <h1 className="mb-3 text-2xl font-semibold text-[#41525d]">Better Zap</h1>
-      <div className="max-w-sm space-y-3 text-center">
-        <p className="text-[15px] leading-relaxed">
-          Esta é uma interface dedicada para visualização e monitoramento de
-          mensagens da <strong>API Oficial do WhatsApp</strong>.
-        </p>
-        <p className="text-sm opacity-80">
-          Acompanhe o histórico de conversas, verifique o status de entrega e
-          gerencie as interações do Cloud API de forma profissional.
-        </p>
-      </div>
+      {children ?? (
+        <>
+          <div className="mb-8 flex h-48 w-48 items-center justify-center rounded-full bg-[#f0f2f5] shadow-sm">
+            <HugeiconsIcon
+              icon={Message01Icon}
+              size={80}
+              className="text-[#bbc5cb]"
+            />
+          </div>
+          <h1 className="mb-3 text-2xl font-semibold text-[#41525d]">Better Zap</h1>
+          <div className="max-w-sm space-y-3 text-center">
+            <p className="text-[15px] leading-relaxed">
+              Esta é uma interface dedicada para visualização e monitoramento de
+              mensagens da <strong>API Oficial do WhatsApp</strong>.
+            </p>
+            <p className="text-sm opacity-80">
+              Acompanhe o histórico de conversas, verifique o status de entrega e
+              gerencie as interações do Cloud API de forma profissional.
+            </p>
+          </div>
+        </>
+      )}
     </div>
   );
 }

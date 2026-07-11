@@ -152,8 +152,7 @@ Outside a provider the list is always visible and selection only calls
 ```
 
 `useOptionalWhatsappDashboard()` returns the context value or `null` outside the
-provider (MessageView will reuse the same hook). Prefer
-`useWhatsappDashboard()` only when absence should throw.
+provider. Prefer `useWhatsappDashboard()` only when absence should throw.
 
 ### Controlled search and filter
 
@@ -282,3 +281,86 @@ prepends *duplicate-label* groups (accepted).
 
 Also available: `formatTime(iso)` for the **default** bubble timestamp only
 (custom `renderMessage` owns its own time formatting).
+
+## MessageView
+
+**MessageView** is the chat pane shell (background, empty state, header, content).
+It works **standalone** or inside `WhatsappDashboard`. Leaves use
+`useOptionalWhatsappDashboard()` — no provider required.
+
+### Standalone
+
+```tsx
+// No provider — always visible (desktop semantics)
+<MessageView>
+  <MessageViewHeader conversation={active} onInfoClick={openInfo} />
+  <MessageViewContent>
+    <MessageList messages={messages} />
+  </MessageViewContent>
+</MessageView>
+```
+
+Outside a provider, empty `MessageView` (no children) renders the default
+pt-BR "Better Zap" empty state. Inside a mobile dashboard with no children it
+returns `null` so the list can fill the viewport.
+
+### Header composition
+
+- `conversation` is optional; omit or pass `children` to replace the identity
+  block (name + phone).
+- Back button: `showBackButton ?? ctx?.isMobile ?? false`. Click calls
+  `ctx?.setMobileView("list")` then `onBack`.
+- Info button renders **only** when `onInfoClick` is provided (no inert
+  controls). `actions` replaces the default info slot entirely.
+- `labels` partial overrides for back/info `aria-label` defaults
+  (`"Voltar"` / `"Informações"`).
+
+```tsx
+<MessageViewHeader
+  conversation={active}
+  showBackButton
+  onBack={() => setView("list")}
+  onInfoClick={openInfo}
+  labels={{ back: "Back", info: "Info" }}
+  actions={<button type="button">More</button>}
+/>
+```
+
+### Empty content seam
+
+`MessageViewEmpty` accepts optional `children` to replace the default icon +
+copy. Used automatically by empty `MessageView` on desktop / standalone.
+
+### Style merge
+
+Consumer `style` composes with internal visibility. When the pane is hidden on
+mobile (`mobileView !== "chat"`), internal `display: "none"` is applied **after**
+consumer styles so a consumer `display` cannot reveal a hidden pane.
+
+## WhatsappDashboard
+
+Layout provider for list/chat mobile navigation. Context value is memoized.
+
+```tsx
+// Uncontrolled
+<WhatsappDashboard defaultMobileView="list">
+  <ConversationList ... />
+  <MessageView>...</MessageView>
+</WhatsappDashboard>
+
+// Controlled navigation + app-owned breakpoint
+const [mobileView, setMobileView] = useState<"list" | "chat">("list");
+
+<WhatsappDashboard
+  isMobile={isNarrow}
+  mobileView={mobileView}
+  onMobileViewChange={setMobileView}
+>
+  ...
+</WhatsappDashboard>
+```
+
+- Controlled when `mobileView !== undefined` (local state not written).
+- Uncontrolled uses `defaultMobileView` (`"list"`). `onMobileViewChange` still
+  fires when the view changes if provided.
+- When `isMobile` is set, `matchMedia` is not attached; the prop value is used.
