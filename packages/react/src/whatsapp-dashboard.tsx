@@ -1,14 +1,22 @@
 "use client";
 
-import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { cn } from "./utils";
 
 const MOBILE_BREAKPOINT = 1024; // matches `lg` in Tailwind
 
-function useIsMobile() {
+function useIsMobile(enabled = true) {
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
+    if (!enabled) return;
     const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`);
     const onChange = (e: MediaQueryListEvent | MediaQueryList) => {
       setIsMobile(e.matches);
@@ -16,14 +24,14 @@ function useIsMobile() {
     onChange(mql);
     mql.addEventListener("change", onChange);
     return () => mql.removeEventListener("change", onChange);
-  }, []);
+  }, [enabled]);
 
   return isMobile;
 }
 
-type MobileView = "list" | "chat";
+export type MobileView = "list" | "chat";
 
-interface WhatsappDashboardContextValue {
+export interface WhatsappDashboardContextValue {
   isMobile: boolean;
   mobileView: MobileView;
   setMobileView: (view: MobileView) => void;
@@ -39,28 +47,55 @@ export function useWhatsappDashboard() {
   return ctx;
 }
 
-interface WhatsappDashboardProps extends React.HTMLAttributes<HTMLDivElement> {
+/** Returns the dashboard context, or null when rendered outside <WhatsappDashboard>. */
+export function useOptionalWhatsappDashboard(): WhatsappDashboardContextValue | null {
+  return useContext(WhatsappDashboardContext);
+}
+
+export interface WhatsappDashboardProps extends React.ComponentProps<"div"> {
   children: React.ReactNode;
   defaultMobileView?: MobileView;
+  /** Controlled mobile navigation view. When set, local state is not updated. */
+  mobileView?: MobileView;
+  onMobileViewChange?: (view: MobileView) => void;
+  /** Override media-query detection (e.g. app-owned responsive state). */
+  isMobile?: boolean;
 }
 
 export function WhatsappDashboard({
   children,
   className,
   defaultMobileView = "list",
+  mobileView: mobileViewProp,
+  onMobileViewChange,
+  isMobile: isMobileProp,
   ...props
 }: WhatsappDashboardProps) {
-  const isMobile = useIsMobile();
-  const [mobileView, setMobileView] = useState<MobileView>(defaultMobileView);
+  const detectedIsMobile = useIsMobile(isMobileProp === undefined);
+  const isMobile = isMobileProp ?? detectedIsMobile;
 
-  const handleSetMobileView = useCallback((view: MobileView) => {
-    setMobileView(view);
-  }, []);
+  const [uncontrolledView, setUncontrolledView] =
+    useState<MobileView>(defaultMobileView);
+  const isViewControlled = mobileViewProp !== undefined;
+  const mobileView = isViewControlled ? mobileViewProp : uncontrolledView;
+
+  const setMobileView = useCallback(
+    (view: MobileView) => {
+      if (!isViewControlled) {
+        setUncontrolledView(view);
+      }
+      onMobileViewChange?.(view);
+    },
+    [isViewControlled, onMobileViewChange],
+  );
+
+  const value = useMemo(
+    () => ({ isMobile, mobileView, setMobileView }),
+    [isMobile, mobileView, setMobileView],
+  );
 
   return (
-    <WhatsappDashboardContext.Provider
-      value={{ isMobile, mobileView, setMobileView: handleSetMobileView }}
-    >
+    <WhatsappDashboardContext.Provider value={value}>
       <div
         className={cn(
           "bg-background flex h-full w-full overflow-hidden",
