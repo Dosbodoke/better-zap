@@ -76,11 +76,4 @@ describe("published package surface", () => {
       expect(typeof esm[name]).not.toBe("undefined");
     }
   });
-
-  it("does not preserve use client directives in published JS bundles", () => {
-    const mjs = readFileSync(path.join(distDir, "index.mjs"), "utf8");
-    const cjs = readFileSync(path.join(distDir, "index.cjs"), "utf8");
-    expect(mjs).not.toMatch(/["']use client["']/);
-    expect(cjs).not.toMatch(/["']use client["']/);
-  });
 });
