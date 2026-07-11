@@ -13,4 +13,6 @@ export type {
   UIMessage,
   UIMessageStatus,
 } from "better-zap";
+export * from "./composer";
+export * from "./use-freeform-message-window";
 export * from "./message-input";

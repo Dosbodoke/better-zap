@@ -28,6 +28,14 @@ const REQUIRED_EXPORT_NAMES = [
   "MessageHeader",
   "MessageFooter",
   "MessageGroup",
+  "Composer",
+  "ComposerTextarea",
+  "ComposerSend",
+  "ComposerButton",
+  "ComposerError",
+  "useComposer",
+  "useFreeformMessageWindow",
+  "FreeformWindowClosedError",
 ] as const;
 
 const EXPECTED_EXPORTS_KEYS = [".", "./tailwind.css", "./package.json"] as const;
