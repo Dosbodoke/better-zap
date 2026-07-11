@@ -68,3 +68,58 @@ Prefer composing `Message` + `Bubble` for custom metadata placement, grouping, o
 - `BubbleGroup` / `MessageGroup` only stack children — they do **not** auto-adjust corner rounding.
 - Interactive bubbles use `BubbleContent`'s `render` prop (Base UI-style element polymorphism), not `asChild`.
 - Composition model follows shadcn-style compound parts: children + variants, no required React context between Message and Bubble.
+
+## Composer vs MessageInput
+
+**Composer** owns draft state and send orchestration via React context (`useComposer`).
+Parts: `Composer`, `ComposerTextarea`, `ComposerSend`, `ComposerButton`, `ComposerError`.
+
+**MessageInput** is the Better Zap domain adapter: freeform 24h window gating
+(`useFreeformMessageWindow`), default pt-BR labels, optional action callbacks, and
+the closed-window banner. Prefer `Composer*` when you need custom chrome or
+controlled multi-conversation drafts.
+
+```
+MessageInput                 — domain adapter (window + labels + optional actions)
+└── Composer                 — draft + send orchestration (context)
+    ├── ComposerButton*      — emoji/attach/mic only if callbacks provided
+    ├── ComposerTextarea
+    ├── ComposerSend
+    └── ComposerError
+```
+
+### Controlled multi-conversation drafts
+
+Parent owns the draft map; `Composer` is controlled when `value !== undefined`:
+
+```tsx
+const [activeId, setActiveId] = useState(conversationId);
+const [drafts, setDrafts] = useState<Record<string, string>>({});
+
+<Composer
+  value={drafts[activeId] ?? ""}
+  onValueChange={(next) =>
+    setDrafts((prev) => ({ ...prev, [activeId]: next }))
+  }
+  onSubmit={handleSend}
+>
+  <ComposerTextarea aria-label="Mensagem" />
+  <ComposerSend aria-label="Enviar" />
+</Composer>
+```
+
+### Actions and failures
+
+- Emoji / attach / mic on `MessageInput` render **only** when `onEmojiClick` /
+  `onAttachClick` / `onMicClick` are provided. Without callbacks they are omitted
+  (deliberate — no enabled inert controls).
+- `onSubmit` / `onSend` may throw or reject; the draft is preserved, controls restore,
+  and `onError` / `onSendError` run. `send()` is fire-and-forget and never surfaces a
+  rejecting promise to click/keydown handlers.
+- Freeform window: `useFreeformMessageWindow` schedules a timer at `expiresAt` and
+  `MessageInput` revalidates immediately before calling `onSend`.
+
+### Client boundary
+
+Composer modules (`composer.tsx`, `use-freeform-message-window.ts`,
+`message-input.tsx`) start with `"use client"` for App Router consumers.
