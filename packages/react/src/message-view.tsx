@@ -152,9 +152,40 @@ export function MessageViewContent({
 }
 
 // Standalone Message List
-interface MessageListProps {
+
+export type MessageGroupPosition = "single" | "first" | "middle" | "last";
+
+export interface MessageRenderContext {
+  message: UIMessage;
+  /** Stable list identity — always message.id. */
+  id: string;
+  direction: "incoming" | "outgoing";
+  /** Presentation alignment: incoming → "start", outgoing → "end". */
+  align: "start" | "end";
+  groupPosition: MessageGroupPosition;
+  /** Result of renderMessageLabel, when provided. */
+  label?: string;
+}
+
+export interface DateDividerRenderContext {
+  /** Formatted label (output of formatDate / getDisplayDate). */
+  label: string;
+  /** sentAt of the first message under this divider (raw ISO string). */
+  date: string;
+}
+
+export interface MessageListProps {
   messages: UIMessage[];
+  renderMessage?: (context: MessageRenderContext) => React.ReactNode;
+  renderDateDivider?: (context: DateDividerRenderContext) => React.ReactNode;
+  /** Formats divider labels. Default: getDisplayDate (pt-BR HOJE/ONTEM). */
+  formatDate?: (isoDate: string) => string;
+  /** Formats the in-bubble timestamp used by the DEFAULT renderer. Default: pt-BR HH:mm. */
+  formatTime?: (isoDate: string) => string;
   renderMessageLabel?: (message: UIMessage) => string | undefined;
+  /** Direct props — context from MessageViewContent still works; these win over it. */
+  autoScroll?: boolean;
+  onScrollTop?: () => void;
   className?: string;
 }
 
@@ -162,38 +193,94 @@ type MessageListItem =
   | {
       type: "date";
       id: string;
-      date: string;
+      label: string;
+      date: string; // raw sentAt of first message in section
     }
   | {
       type: "message";
       id: string;
       message: UIMessage;
+      groupPosition: MessageGroupPosition;
     };
+
+function defaultFormatTime(isoDate: string): string {
+  return new Date(isoDate).toLocaleTimeString("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function sameGroup(
+  a: UIMessage,
+  b: UIMessage,
+  resolveFormatDate: (isoDate: string) => string,
+): boolean {
+  return (
+    resolveFormatDate(a.sentAt) === resolveFormatDate(b.sentAt) &&
+    a.direction === b.direction
+  );
+}
+
+function getGroupPosition(
+  messages: UIMessage[],
+  index: number,
+  resolveFormatDate: (isoDate: string) => string,
+): MessageGroupPosition {
+  const n = messages.length;
+  const prevSame =
+    index > 0 && sameGroup(messages[index - 1]!, messages[index]!, resolveFormatDate);
+  const nextSame =
+    index < n - 1 &&
+    sameGroup(messages[index]!, messages[index + 1]!, resolveFormatDate);
+
+  if (!prevSame && !nextSame) return "single";
+  if (!prevSame && nextSame) return "first";
+  if (prevSame && nextSame) return "middle";
+  return "last";
+}
 
 export function MessageList({
   messages,
+  renderMessage,
+  renderDateDivider,
+  formatDate,
+  formatTime,
   renderMessageLabel,
+  autoScroll: autoScrollProp,
+  onScrollTop: onScrollTopProp,
   className,
 }: MessageListProps) {
   const scrollContext = useContext(MessageViewScrollContext);
-  const autoScroll = scrollContext?.autoScroll ?? true;
-  const onScrollTop = scrollContext?.onScrollTop;
+  const resolvedAutoScroll =
+    autoScrollProp ?? scrollContext?.autoScroll ?? true;
+  const resolvedOnScrollTop =
+    onScrollTopProp ?? scrollContext?.onScrollTop;
+
+  const resolveFormatDate = formatDate ?? getDisplayDate;
+  const resolveFormatTime = formatTime ?? defaultFormatTime;
 
   const { items, stickyHeaderIndices } = useMemo(() => {
     const itemsNew: MessageListItem[] = [];
     const stickyHeaderIndicesNew: number[] = [];
-    let currentDate: string | null = null;
+    let currentLabel: string | null = null;
+    const labelCounts = new Map<string, number>();
 
-    messages.forEach((msg) => {
-      const displayDate = getDisplayDate(msg.sentAt);
+    messages.forEach((msg, index) => {
+      const label = resolveFormatDate(msg.sentAt);
 
-      if (currentDate !== displayDate) {
-        currentDate = displayDate;
+      if (currentLabel !== label) {
+        currentLabel = label;
         stickyHeaderIndicesNew.push(itemsNew.length);
+
+        const seen = labelCounts.get(label) ?? 0;
+        labelCounts.set(label, seen + 1);
+        const id = seen === 0 ? `date:${label}` : `date:${label}:${seen}`;
+
         itemsNew.push({
           type: "date",
-          id: `date:${displayDate}`,
-          date: displayDate,
+          id,
+          label,
+          date: msg.sentAt,
         });
       }
 
@@ -201,11 +288,12 @@ export function MessageList({
         type: "message",
         id: msg.id,
         message: msg,
+        groupPosition: getGroupPosition(messages, index, resolveFormatDate),
       });
     });
 
     return { items: itemsNew, stickyHeaderIndices: stickyHeaderIndicesNew };
-  }, [messages]);
+  }, [messages, resolveFormatDate]);
 
   return (
     <LegendList
@@ -215,33 +303,51 @@ export function MessageList({
       data={items}
       estimatedItemSize={72}
       getItemType={(item) => item.type}
-      initialScrollAtEnd={autoScroll}
+      initialScrollAtEnd={resolvedAutoScroll}
       keyExtractor={(item) => item.id}
-      maintainScrollAtEnd={autoScroll}
+      maintainScrollAtEnd={resolvedAutoScroll}
       maintainVisibleContentPosition
-      onStartReached={onScrollTop ? () => onScrollTop() : undefined}
+      onStartReached={
+        resolvedOnScrollTop ? () => resolvedOnScrollTop() : undefined
+      }
       onStartReachedThreshold={0.1}
       recycleItems
-      renderItem={({ item }) =>
-        item.type === "date" ? (
-          <DateDivider date={item.date} />
-        ) : (
-          <MessageBubble
-            content={item.message.content || ""}
-            sender={item.message.direction === "incoming" ? "user" : "bot"}
-            timestamp={new Date(item.message.sentAt).toLocaleTimeString(
-              "pt-BR",
-              {
-                hour: "2-digit",
-                minute: "2-digit",
-              },
-            )}
-            status={item.message.status}
-            templateName={item.message.templateName || undefined}
-            label={renderMessageLabel?.(item.message)}
-          />
-        )
-      }
+      renderItem={({ item }) => {
+        if (item.type === "date") {
+          return (
+            renderDateDivider?.({
+              label: item.label,
+              date: item.date,
+            }) ?? <DateDivider>{item.label}</DateDivider>
+          );
+        }
+
+        const { message, groupPosition } = item;
+        const label = renderMessageLabel?.(message);
+        const direction = message.direction;
+        const align = direction === "incoming" ? "start" : "end";
+        const ctx: MessageRenderContext = {
+          message,
+          id: message.id,
+          direction,
+          align,
+          groupPosition,
+          label,
+        };
+
+        return (
+          renderMessage?.(ctx) ?? (
+            <MessageBubble
+              content={message.content || ""}
+              sender={direction === "incoming" ? "user" : "bot"}
+              timestamp={resolveFormatTime(message.sentAt)}
+              status={message.status}
+              templateName={message.templateName || undefined}
+              label={label}
+            />
+          )
+        );
+      }}
       stickyHeaderIndices={stickyHeaderIndices}
       style={{ height: "100%", minHeight: 0 }}
     />
@@ -249,11 +355,21 @@ export function MessageList({
 }
 
 // Date Divider
-function DateDivider({ date }: { date: string }) {
+export function DateDivider({
+  children,
+  className,
+  ...props
+}: React.ComponentProps<"div">) {
   return (
-    <div className="sticky top-0 z-10 flex justify-center w-full py-2 pointer-events-none">
+    <div
+      className={cn(
+        "sticky top-0 z-10 flex justify-center w-full py-2 pointer-events-none",
+        className,
+      )}
+      {...props}
+    >
       <span className="bg-white border border-[#e9edef] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)] text-[#54656f] text-[12.5px] font-medium px-3 py-1.5 rounded-lg uppercase pointer-events-auto">
-        {date}
+        {children}
       </span>
     </div>
   );
