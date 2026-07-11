@@ -123,3 +123,65 @@ const [drafts, setDrafts] = useState<Record<string, string>>({});
 
 Composer modules (`composer.tsx`, `use-freeform-message-window.ts`,
 `message-input.tsx`) start with `"use client"` for App Router consumers.
+
+## ConversationList
+
+**ConversationList** is a virtualized conversation sidebar with search, unread
+filter chips, and row chrome. It works **standalone** or inside
+`WhatsappDashboard`.
+
+### Standalone vs dashboard
+
+Outside a provider the list is always visible and selection only calls
+`onSelect`. Inside `WhatsappDashboard`, selecting a row also sets mobile view to
+`"chat"` (list hides on small viewports).
+
+```tsx
+// Standalone — no provider required
+<ConversationList
+  conversations={conversations}
+  selectedConversationId={activeId}
+  onSelect={setActiveId}
+/>
+
+// Dashboard layout
+<WhatsappDashboard>
+  <ConversationList conversations={...} onSelect={...} />
+  <MessageView>...</MessageView>
+</WhatsappDashboard>
+```
+
+`useOptionalWhatsappDashboard()` returns the context value or `null` outside the
+provider (MessageView will reuse the same hook). Prefer
+`useWhatsappDashboard()` only when absence should throw.
+
+### Controlled search and filter
+
+Search/filter are controlled when `search` / `filter` are `!== undefined`
+(same convention as Composer):
+
+```tsx
+const [search, setSearch] = useState("");
+const [filter, setFilter] = useState<"all" | "unread">("all");
+
+<ConversationList
+  conversations={conversations}
+  search={search}
+  onSearchChange={setSearch}
+  filter={filter}
+  onFilterChange={setFilter}
+/>
+```
+
+Uncontrolled defaults: `defaultSearch=""`, `defaultFilter="all"`. Change
+callbacks still fire when uncontrolled if provided.
+
+### Render seams and labels
+
+- `renderItem(conversation, { isSelected, select })` — replace the whole row
+  (wins over `renderAvatar`).
+- `renderAvatar(conversation)` — swap the default avatar inside
+  `ConversationItem`.
+- `labels` — partial overrides for search, chips, loading/error/empty, preview
+  prefix, and `"Ontem"`.
+- `formatTime(isoDate)` — optional time label override for rows.

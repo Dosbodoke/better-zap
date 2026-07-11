@@ -21,9 +21,9 @@ function useIsMobile() {
   return isMobile;
 }
 
-type MobileView = "list" | "chat";
+export type MobileView = "list" | "chat";
 
-interface WhatsappDashboardContextValue {
+export interface WhatsappDashboardContextValue {
   isMobile: boolean;
   mobileView: MobileView;
   setMobileView: (view: MobileView) => void;
@@ -37,6 +37,11 @@ export function useWhatsappDashboard() {
     throw new Error("useWhatsappDashboard must be used within <WhatsappDashboard>");
   }
   return ctx;
+}
+
+/** Returns the dashboard context, or null when rendered outside <WhatsappDashboard>. */
+export function useOptionalWhatsappDashboard(): WhatsappDashboardContextValue | null {
+  return useContext(WhatsappDashboardContext);
 }
 
 interface WhatsappDashboardProps extends React.HTMLAttributes<HTMLDivElement> {

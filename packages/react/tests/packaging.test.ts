@@ -18,6 +18,7 @@ const REQUIRED_EXPORT_NAMES = [
   "MessageView",
   "FormattedMessage",
   "useWhatsappDashboard",
+  "useOptionalWhatsappDashboard",
   "Bubble",
   "BubbleContent",
   "BubbleReactions",
