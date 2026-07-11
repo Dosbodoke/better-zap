@@ -48,7 +48,7 @@ export interface ComposerProps
 }
 
 const PILL_CLASS =
-  "flex flex-wrap items-center gap-1 px-2 py-1 min-h-[62px] bg-white rounded-2xl shadow-lg border border-gray-100";
+  "flex flex-wrap items-center gap-1 px-2 py-1 min-h-[52px] bg-white rounded-[24px] shadow-[0_1px_3px_rgba(11,20,26,0.12)]";
 
 export function Composer({
   value: valueProp,
@@ -224,14 +224,14 @@ export function ComposerSend({
     <button
       type={type}
       className={cn(
-        "p-2 rounded-full transition-colors disabled:opacity-40 disabled:cursor-not-allowed text-[#00a884]",
+        "flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white transition-colors hover:bg-[#008f72] disabled:opacity-40 disabled:cursor-not-allowed",
         className,
       )}
       disabled={!canSend || !!disabledProp}
       onClick={handleClick}
       {...props}
     >
-      {children ?? <HugeiconsIcon icon={Sent02Icon} size={24} />}
+      {children ?? <HugeiconsIcon icon={Sent02Icon} size={20} />}
     </button>
   );
 }

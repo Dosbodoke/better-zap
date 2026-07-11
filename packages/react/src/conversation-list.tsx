@@ -249,6 +249,7 @@ export function ConversationItem({
   const timeLabel = formatTimeProp
     ? formatTimeProp(conversation.lastMessageAt)
     : formatTimeDefault(conversation.lastMessageAt, "Ontem");
+  const hasUnread = conversation.unreadCount > 0;
 
   return (
     <button
@@ -257,38 +258,39 @@ export function ConversationItem({
       data-selected={isSelected}
       aria-current={isSelected ? "true" : undefined}
       className={cn(
-        "group flex items-center w-full h-[72px] px-3 gap-3 transition-all cursor-pointer text-left relative overflow-hidden hover:bg-[#f5f6f6] data-[selected=true]:bg-[#075e54] data-[selected=true]:hover:bg-[#064940]",
+        "group flex items-center w-full h-[72px] px-3 gap-3 transition-colors cursor-pointer text-left relative overflow-hidden hover:bg-[#f5f6f6] data-[selected=true]:bg-[#f0f2f5]",
         className,
       )}
     >
       {/* Avatar */}
       {avatar ?? (
-        <div className="w-[49px] h-[49px] rounded-full bg-[#dfe5e7] flex items-center justify-center shrink-0 group-data-[selected=true]:bg-white/20">
-          <HugeiconsIcon
-            icon={UserIcon}
-            size={28}
-            className="text-[#aebac1] group-data-[selected=true]:text-white/80"
-          />
+        <div className="w-[49px] h-[49px] rounded-full bg-[#dfe5e7] flex items-center justify-center shrink-0">
+          <HugeiconsIcon icon={UserIcon} size={28} className="text-white" />
         </div>
       )}
 
       {/* Content */}
-      <div className="flex-1 min-w-0 border-b border-[#f2f2f2] h-full flex flex-col justify-center pr-1 group-last:border-none group-data-[selected=true]:border-transparent">
+      <div className="flex-1 min-w-0 border-b border-[#e9edef]/70 h-full flex flex-col justify-center pr-1 group-last:border-none group-data-[selected=true]:border-transparent">
         <div className="flex justify-between items-baseline mb-0.5">
-          <span className="text-[17px] font-normal text-[#111b21] truncate group-data-[selected=true]:text-white">
+          <span className="text-[17px] font-normal text-[#111b21] truncate">
             {conversation.contactName || formatPhone(conversation.phone)}
           </span>
-          <span className="text-xs text-[#667781] shrink-0 group-data-[selected=true]:text-white/90">
+          <span
+            className={cn(
+              "text-xs shrink-0",
+              hasUnread ? "text-[#1daa61]" : "text-[#667781]",
+            )}
+          >
             {timeLabel}
           </span>
         </div>
         <div className="flex justify-between items-center gap-2">
-          <p className="text-[14px] text-[#667781] truncate group-data-[selected=true]:text-white/90">
+          <p className="text-[14px] text-[#667781] truncate">
             {conversation.lastDirection === "incoming" ? "" : outgoingPrefix}
             {conversation.lastMessagePreview || noPreviewLabel}
           </p>
-          {conversation.unreadCount > 0 && (
-            <span className="bg-[#25d366] text-white text-[11px] font-bold rounded-full min-w-[20px] h-[20px] flex items-center justify-center px-1.5 shrink-0 group-data-[selected=true]:bg-white">
+          {hasUnread && (
+            <span className="bg-[#25d366] text-white text-[11px] font-semibold rounded-full min-w-[20px] h-[20px] flex items-center justify-center px-1.5 shrink-0">
               {conversation.unreadCount}
             </span>
           )}

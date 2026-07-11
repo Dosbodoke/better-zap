@@ -26,7 +26,7 @@ export function ConversationFilterChips({
   ];
 
   return (
-    <div className={cn("flex items-center gap-2 px-3 py-3", className)}>
+    <div className={cn("flex items-center gap-1.5 px-3 pb-2 pt-1", className)}>
       {chips.map((chip) => {
         const isActive = chip.value === value;
         const showCount = chip.value === "unread" && unreadCount > 0;
@@ -38,10 +38,10 @@ export function ConversationFilterChips({
             onClick={() => onValueChange(chip.value)}
             aria-pressed={isActive}
             className={cn(
-              "inline-flex h-8 items-center rounded-full border px-4 text-[15px] font-medium transition-colors",
+              "inline-flex h-8 items-center rounded-full px-3 text-[14px] transition-colors",
               isActive
-                ? "border-[#b8e6c1] bg-[#e7fce3] text-[#017561]"
-                : "border-[#d1d7db] bg-white text-[#54656f] hover:bg-[#f5f6f6]",
+                ? "bg-[#e7fce3] text-[#008069]"
+                : "bg-[#f0f2f5] text-[#54656f] hover:bg-[#e9edef]",
             )}
           >
             <span>{chip.label}</span>
