@@ -52,7 +52,10 @@ export function MessageContent({
   return (
     <div
       className={cn(
-        "flex min-w-0 max-w-full flex-col gap-0.5 items-start group-data-[align=end]/message:items-end",
+        // 65% of the Message row (w-full), i.e. of the chat area: WhatsApp's
+        // bubble width cap. The row is the nearest ancestor whose width does
+        // not derive from the bubble itself.
+        "flex min-w-0 max-w-[65%] flex-col gap-0.5 items-start group-data-[align=end]/message:items-end",
         className,
       )}
       {...props}

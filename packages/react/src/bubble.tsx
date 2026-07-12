@@ -11,7 +11,11 @@ export type BubbleVariant =
   | "muted";
 
 const bubbleVariants = cva(
-  "relative w-fit max-w-[65%] rounded-[7.5px] px-[9px] py-[6px] text-[14.2px] leading-[19px] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]",
+  // max-w-full, not a percentage: a percentage here resolves against the
+  // content-sized MessageContent (circular), squeezing short bubbles below
+  // their own timestamp width. The 65% cap lives on MessageContent, whose
+  // containing block (the full-width Message row) makes it meaningful.
+  "relative w-fit max-w-full rounded-[7.5px] px-[9px] py-[6px] text-[14.2px] leading-[19px] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]",
   {
     variants: {
       variant: {
