@@ -25,6 +25,14 @@ jobs:
           cache: pnpm
           registry-url: https://registry.npmjs.org
       - run: pnpm install --frozen-lockfile
+      # Build before the changesets action publishes. Scoped @better-zap/*
+      # packages gitignore their dist/, so without this step `changeset publish`
+      # ships tarballs containing only LICENSE/README/package.json (see #52).
+      # The root better-zap package happened to survive only because its dist/
+      # is committed. pack:check then fails the release if any tarball is
+      # missing a file its package.json exports/types point at.
+      - run: pnpm build
+      - run: pnpm pack:check
       - uses: changesets/action@v1
         with:
           version: pnpm version-packages

@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, readdir, rm } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -16,21 +16,114 @@ const packageDirs = [
   path.join(packagesRoot, "fixtures"),
 ];
 
+/**
+ * Collect every relative path a package.json points consumers at:
+ * `main`, `module`, `types`/`typings`, and all leaf values under `exports`.
+ * These files MUST exist in the published tarball — a build that silently
+ * skips dist/ (see #52) leaves them dangling and breaks every consumer with
+ * TS2307 / unresolved imports.
+ */
+function collectReferencedPaths(pkg) {
+  const paths = new Set();
+
+  const addIfRelative = (value) => {
+    if (typeof value === "string" && value.startsWith(".")) {
+      // Normalize "./dist/index.mjs" -> "dist/index.mjs"
+      paths.add(value.replace(/^\.\//, ""));
+    }
+  };
+
+  addIfRelative(pkg.main);
+  addIfRelative(pkg.module);
+  addIfRelative(pkg.types);
+  addIfRelative(pkg.typings);
+
+  const walkExports = (node) => {
+    if (typeof node === "string") {
+      addIfRelative(node);
+      return;
+    }
+    if (node && typeof node === "object") {
+      for (const value of Object.values(node)) walkExports(value);
+    }
+  };
+  walkExports(pkg.exports);
+
+  // package.json is always in the tarball; don't flag it as a build artifact.
+  paths.delete("package.json");
+  return [...paths];
+}
+
+/** File list inside an npm tarball, with the leading `package/` prefix stripped. */
+async function tarballEntries(tarballPath) {
+  const { stdout } = await execFileAsync("tar", ["-tzf", tarballPath]);
+  return stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((entry) => entry.replace(/^package\//, ""));
+}
+
 await rm(outputDir, { recursive: true, force: true });
 await mkdir(outputDir, { recursive: true });
 
+const failures = [];
+
 for (const packageDir of packageDirs) {
-  await execFileAsync("pnpm", ["pack", "--pack-destination", outputDir], {
-    cwd: packageDir,
-  });
+  const pkg = JSON.parse(
+    await readFile(path.join(packageDir, "package.json"), "utf8"),
+  );
+
+  const { stdout } = await execFileAsync(
+    "pnpm",
+    ["pack", "--pack-destination", outputDir],
+    { cwd: packageDir },
+  );
+
+  // pnpm prints the created tarball path as the last non-empty stdout line.
+  const tarballPath = stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .at(-1);
+
+  if (!tarballPath) {
+    failures.push(`${pkg.name}: pnpm pack produced no tarball path`);
+    continue;
+  }
+
+  const entries = new Set(await tarballEntries(tarballPath));
+  const referenced = collectReferencedPaths(pkg);
+  const missing = referenced.filter((rel) => !entries.has(rel));
+
+  if (missing.length > 0) {
+    failures.push(
+      `${pkg.name}@${pkg.version}: tarball missing ${missing.length} referenced file(s): ${missing.join(", ")}\n` +
+        `    packed entries: ${[...entries].join(", ")}`,
+    );
+  } else {
+    console.log(
+      `[pack-smoke] ${pkg.name}@${pkg.version}: OK (${referenced.length} referenced files present)`,
+    );
+  }
 }
 
-const tarballs = (await readdir(outputDir)).filter((file) => file.endsWith(".tgz"));
+const tarballs = (await readdir(outputDir)).filter((file) =>
+  file.endsWith(".tgz"),
+);
 
 if (tarballs.length !== packageDirs.length) {
-  throw new Error(
-    `[pack-smoke] Expected ${packageDirs.length} tarballs, found ${tarballs.length}.`,
+  failures.push(
+    `Expected ${packageDirs.length} tarballs, found ${tarballs.length}.`,
   );
 }
 
-console.log(`[pack-smoke] Packed ${tarballs.length} tarballs into ${outputDir}.`);
+if (failures.length > 0) {
+  throw new Error(
+    `[pack-smoke] Publish would ship broken package(s):\n  - ${failures.join("\n  - ")}`,
+  );
+}
+
+console.log(
+  `[pack-smoke] Packed ${tarballs.length} tarballs into ${outputDir}; all exports/types targets present.`,
+);
