@@ -238,6 +238,11 @@ export interface MessageListProps {
   className?: string;
 }
 
+// Memoized default renderers: all props passed to them are primitives, so a
+// change to one message (e.g. a status tick) re-renders that bubble only.
+const MemoizedMessageBubble = React.memo(MessageBubble);
+const MemoizedDateDivider = React.memo(DateDivider);
+
 type MessageListItem =
   | {
       type: "date";
@@ -367,7 +372,7 @@ export function MessageList({
             renderDateDivider?.({
               label: item.label,
               date: item.date,
-            }) ?? <DateDivider>{item.label}</DateDivider>
+            }) ?? <MemoizedDateDivider>{item.label}</MemoizedDateDivider>
           );
         }
 
@@ -386,7 +391,7 @@ export function MessageList({
 
         return (
           renderMessage?.(ctx) ?? (
-            <MessageBubble
+            <MemoizedMessageBubble
               content={message.content || ""}
               sender={direction === "incoming" ? "user" : "bot"}
               timestamp={resolveFormatTime(message.sentAt)}

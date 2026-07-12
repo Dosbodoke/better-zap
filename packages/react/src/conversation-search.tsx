@@ -11,7 +11,11 @@ export interface ConversationSearchProps {
   "aria-label"?: string;
 }
 
-export function ConversationSearch({
+/**
+ * Memoized: with a stable onChange, sibling state changes (filter chips,
+ * selection) don't re-render the search box.
+ */
+export const ConversationSearch = React.memo(function ConversationSearch({
   value,
   onChange,
   className,
@@ -40,4 +44,4 @@ export function ConversationSearch({
       </div>
     </div>
   );
-}
+});

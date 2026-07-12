@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Message01Icon, UserIcon } from "@hugeicons/core-free-icons";
 import { LegendList } from "@legendapp/list/react";
@@ -64,6 +64,45 @@ export interface ConversationListProps
   labels?: Partial<ConversationListLabels>;
 }
 
+/**
+ * Memoized default row. Every prop is a primitive or a stable reference, so
+ * selecting a conversation re-renders exactly two rows (the newly selected
+ * and the previously selected one), not the whole list.
+ */
+const ConversationListRow = React.memo(function ConversationListRow({
+  conversation,
+  isSelected,
+  onSelectConversation,
+  avatar,
+  outgoingPrefix,
+  noPreviewLabel,
+  formatTime,
+}: {
+  conversation: Conversation;
+  isSelected: boolean;
+  onSelectConversation: (id: string) => void;
+  avatar?: React.ReactNode;
+  outgoingPrefix: string;
+  noPreviewLabel: string;
+  formatTime: (isoDate: string) => string;
+}) {
+  const handleClick = useCallback(() => {
+    onSelectConversation(conversation.id);
+  }, [onSelectConversation, conversation.id]);
+
+  return (
+    <ConversationItem
+      conversation={conversation}
+      isSelected={isSelected}
+      onClick={handleClick}
+      avatar={avatar}
+      outgoingPrefix={outgoingPrefix}
+      noPreviewLabel={noPreviewLabel}
+      formatTime={formatTime}
+    />
+  );
+});
+
 export function ConversationList({
   conversations,
   isLoading = false,
@@ -106,23 +145,57 @@ export function ConversationList({
       DEFAULT_LABELS.searchLabel,
   };
 
-  const effectiveFormatTime =
-    formatTimeProp ??
-    ((isoDate: string) => formatTimeDefault(isoDate, labels.yesterday));
+  // Latest-value refs so the callbacks below stay referentially stable no
+  // matter what the consumer passes; stable callbacks are what let the
+  // memoized search/chips/rows skip re-rendering.
+  const isSearchControlledRef = useRef(isSearchControlled);
+  isSearchControlledRef.current = isSearchControlled;
+  const isFilterControlledRef = useRef(isFilterControlled);
+  isFilterControlledRef.current = isFilterControlled;
+  const onSearchChangeRef = useRef(onSearchChange);
+  onSearchChangeRef.current = onSearchChange;
+  const onFilterChangeRef = useRef(onFilterChange);
+  onFilterChangeRef.current = onFilterChange;
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
+  const dashboardRef = useRef(dashboard);
+  dashboardRef.current = dashboard;
+  const formatTimePropRef = useRef(formatTimeProp);
+  formatTimePropRef.current = formatTimeProp;
+  const yesterdayLabelRef = useRef(labels.yesterday);
+  yesterdayLabelRef.current = labels.yesterday;
 
-  const handleSearchChange = (value: string) => {
-    if (!isSearchControlled) {
+  const handleSearchChange = useCallback((value: string) => {
+    if (!isSearchControlledRef.current) {
       setInternalSearch(value);
     }
-    onSearchChange?.(value);
-  };
+    onSearchChangeRef.current?.(value);
+  }, []);
 
-  const handleFilterChange = (value: ConversationFilterValue) => {
-    if (!isFilterControlled) {
+  const handleFilterChange = useCallback((value: ConversationFilterValue) => {
+    if (!isFilterControlledRef.current) {
       setInternalFilter(value);
     }
-    onFilterChange?.(value);
-  };
+    onFilterChangeRef.current?.(value);
+  }, []);
+
+  const handleSelect = useCallback((id: string) => {
+    onSelectRef.current?.(id);
+    dashboardRef.current?.setMobileView("chat");
+  }, []);
+
+  const effectiveFormatTime = useCallback(
+    (isoDate: string) =>
+      formatTimePropRef.current
+        ? formatTimePropRef.current(isoDate)
+        : formatTimeDefault(isoDate, yesterdayLabelRef.current),
+    [],
+  );
+
+  const chipLabels = useMemo(
+    () => ({ all: labels.filterAll, unread: labels.filterUnread }),
+    [labels.filterAll, labels.filterUnread],
+  );
 
   const normalizedSearch = search.trim().toLowerCase();
   const effectiveFilter = filter;
@@ -146,11 +219,6 @@ export function ConversationList({
     });
   }, [conversations, normalizedSearch, effectiveFilter]);
 
-  const handleSelect = (id: string) => {
-    onSelect?.(id);
-    dashboard?.setMobileView("chat");
-  };
-
   const isVisible = !isMobile || mobileView === "list";
 
   return (
@@ -173,7 +241,7 @@ export function ConversationList({
         value={filter}
         onValueChange={handleFilterChange}
         unreadCount={unreadConversationsCount}
-        labels={{ all: labels.filterAll, unread: labels.filterUnread }}
+        labels={chipLabels}
       />
 
       <div className="min-h-0 flex-1">
@@ -201,17 +269,19 @@ export function ConversationList({
             recycleItems
             renderItem={({ item: conversation }) => {
               const isSelected = selectedConversationId === conversation.id;
-              const select = () => handleSelect(conversation.id);
 
               if (renderItem) {
-                return renderItem(conversation, { isSelected, select });
+                return renderItem(conversation, {
+                  isSelected,
+                  select: () => handleSelect(conversation.id),
+                });
               }
 
               return (
-                <ConversationItem
+                <ConversationListRow
                   conversation={conversation}
                   isSelected={isSelected}
-                  onClick={select}
+                  onSelectConversation={handleSelect}
                   avatar={renderAvatar?.(conversation)}
                   outgoingPrefix={labels.outgoingPrefix}
                   noPreviewLabel={labels.noPreview}
