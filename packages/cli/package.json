@@ -1,6 +1,6 @@
 {
   "name": "@better-zap/cli",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "CLI tools for Better Zap.",
   "license": "ISC",
   "repository": {
