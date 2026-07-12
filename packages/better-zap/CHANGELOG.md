@@ -1,5 +1,18 @@
 # better-zap
 
+## 0.2.1
+
+### Patch Changes
+
+- 7762b6a: Republish the core package with its complete build output. Version 0.2.0 omitted
+  the code-split `client*` runtime and declaration chunks referenced by its packed
+  entrypoints, breaking both runtime imports and consumer types (#56).
+
+  Package validation now uses `publint` and Are the Types Wrong across every
+  published package. Dual ESM/CommonJS export maps point each condition at its
+  matching declaration format, and release metadata explicitly enables public
+  npm publishing with provenance.
+
 ## 0.2.0
 
 ### Minor Changes
