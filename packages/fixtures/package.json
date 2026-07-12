@@ -5,7 +5,7 @@
   "license": "ISC",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Dosbodoke/better-zap",
+    "url": "git+https://github.com/Dosbodoke/better-zap.git",
     "directory": "packages/fixtures"
   },
   "type": "module",
@@ -19,22 +19,31 @@
   ],
   "exports": {
     ".": {
-      "types": "./dist/index.d.mts",
-      "import": "./dist/index.mjs",
-      "require": "./dist/index.cjs"
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
     },
     "./package.json": "./package.json"
   },
   "engines": {
     "node": ">=20"
   },
+  "sideEffects": false,
   "scripts": {
     "build": "tsdown",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "package:check": "publint --strict && attw --pack --profile node16"
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "registry": "https://registry.npmjs.org/",
+    "provenance": true
   },
   "devDependencies": {
     "@types/node": "^25.4.0",

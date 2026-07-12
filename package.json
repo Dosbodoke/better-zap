@@ -7,7 +7,7 @@
     "typecheck": "pnpm --filter \"./packages/better-zap\" --filter \"./packages/react\" --filter \"./packages/hono\" --filter \"./packages/cli\" --filter \"./packages/fixtures\" -r typecheck",
     "landing:typecheck": "pnpm --dir landing typecheck",
     "test": "pnpm --filter \"./packages/better-zap\" --filter \"./packages/react\" --filter \"./packages/hono\" --filter \"./packages/cli\" --filter \"./packages/fixtures\" -r test",
-    "pack:check": "node --test ./scripts/pack-smoke.test.mjs && node ./scripts/pack-smoke.mjs",
+    "pack:check": "pnpm --filter \"./packages/better-zap\" --filter \"./packages/react\" --filter \"./packages/hono\" --filter \"./packages/cli\" --filter \"./packages/fixtures\" -r package:check",
     "release:check": "pnpm build && pnpm typecheck && pnpm landing:typecheck && pnpm test && pnpm pack:check && pnpm changeset status --verbose",
     "changeset": "changeset",
     "version-packages": "changeset version",
@@ -17,9 +17,11 @@
     "release:publish:nightly": "changeset publish --tag nightly --no-git-tag"
   },
   "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
     "@biomejs/biome": "^2.4.6",
     "@changesets/cli": "^2.29.7",
     "@types/node": "^25.4.0",
+    "publint": "^0.3.21",
     "tsdown": "^0.21.2",
     "turbo": "^2.8.16",
     "typescript": "^6.0.2",

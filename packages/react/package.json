@@ -5,7 +5,7 @@
   "license": "ISC",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Dosbodoke/better-zap",
+    "url": "git+https://github.com/Dosbodoke/better-zap.git",
     "directory": "packages/react"
   },
   "type": "module",
@@ -19,54 +19,104 @@
   ],
   "exports": {
     ".": {
-      "types": "./dist/index.d.mts",
-      "import": "./dist/index.mjs",
-      "require": "./dist/index.cjs"
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
     },
     "./bubble": {
-      "types": "./dist/bubble.d.mts",
-      "import": "./dist/bubble.mjs",
-      "require": "./dist/bubble.cjs"
+      "import": {
+        "types": "./dist/bubble.d.mts",
+        "default": "./dist/bubble.mjs"
+      },
+      "require": {
+        "types": "./dist/bubble.d.cts",
+        "default": "./dist/bubble.cjs"
+      }
     },
     "./message": {
-      "types": "./dist/message.d.mts",
-      "import": "./dist/message.mjs",
-      "require": "./dist/message.cjs"
+      "import": {
+        "types": "./dist/message.d.mts",
+        "default": "./dist/message.mjs"
+      },
+      "require": {
+        "types": "./dist/message.d.cts",
+        "default": "./dist/message.cjs"
+      }
     },
     "./message-bubble": {
-      "types": "./dist/message-bubble.d.mts",
-      "import": "./dist/message-bubble.mjs",
-      "require": "./dist/message-bubble.cjs"
+      "import": {
+        "types": "./dist/message-bubble.d.mts",
+        "default": "./dist/message-bubble.mjs"
+      },
+      "require": {
+        "types": "./dist/message-bubble.d.cts",
+        "default": "./dist/message-bubble.cjs"
+      }
     },
     "./composer": {
-      "types": "./dist/composer.d.mts",
-      "import": "./dist/composer.mjs",
-      "require": "./dist/composer.cjs"
+      "import": {
+        "types": "./dist/composer.d.mts",
+        "default": "./dist/composer.mjs"
+      },
+      "require": {
+        "types": "./dist/composer.d.cts",
+        "default": "./dist/composer.cjs"
+      }
     },
     "./message-input": {
-      "types": "./dist/message-input.d.mts",
-      "import": "./dist/message-input.mjs",
-      "require": "./dist/message-input.cjs"
+      "import": {
+        "types": "./dist/message-input.d.mts",
+        "default": "./dist/message-input.mjs"
+      },
+      "require": {
+        "types": "./dist/message-input.d.cts",
+        "default": "./dist/message-input.cjs"
+      }
     },
     "./message-view": {
-      "types": "./dist/message-view.d.mts",
-      "import": "./dist/message-view.mjs",
-      "require": "./dist/message-view.cjs"
+      "import": {
+        "types": "./dist/message-view.d.mts",
+        "default": "./dist/message-view.mjs"
+      },
+      "require": {
+        "types": "./dist/message-view.d.cts",
+        "default": "./dist/message-view.cjs"
+      }
     },
     "./conversation-list": {
-      "types": "./dist/conversation-list.d.mts",
-      "import": "./dist/conversation-list.mjs",
-      "require": "./dist/conversation-list.cjs"
+      "import": {
+        "types": "./dist/conversation-list.d.mts",
+        "default": "./dist/conversation-list.mjs"
+      },
+      "require": {
+        "types": "./dist/conversation-list.d.cts",
+        "default": "./dist/conversation-list.cjs"
+      }
     },
     "./whatsapp-dashboard": {
-      "types": "./dist/whatsapp-dashboard.d.mts",
-      "import": "./dist/whatsapp-dashboard.mjs",
-      "require": "./dist/whatsapp-dashboard.cjs"
+      "import": {
+        "types": "./dist/whatsapp-dashboard.d.mts",
+        "default": "./dist/whatsapp-dashboard.mjs"
+      },
+      "require": {
+        "types": "./dist/whatsapp-dashboard.d.cts",
+        "default": "./dist/whatsapp-dashboard.cjs"
+      }
     },
     "./utils": {
-      "types": "./dist/utils.d.mts",
-      "import": "./dist/utils.mjs",
-      "require": "./dist/utils.cjs"
+      "import": {
+        "types": "./dist/utils.d.mts",
+        "default": "./dist/utils.mjs"
+      },
+      "require": {
+        "types": "./dist/utils.d.cts",
+        "default": "./dist/utils.cjs"
+      }
     },
     "./tailwind.css": "./dist/tailwind.css",
     "./package.json": "./package.json"
@@ -80,10 +130,13 @@
   "scripts": {
     "build": "tsdown",
     "typecheck": "tsc --noEmit",
-    "test": "pnpm run build && vitest run"
+    "test": "pnpm run build && vitest run",
+    "package:check": "publint --strict && attw --pack --profile node16 --exclude-entrypoints @better-zap/react/tailwind.css"
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "registry": "https://registry.npmjs.org/",
+    "provenance": true
   },
   "dependencies": {
     "@hugeicons/core-free-icons": "^3.1.1",
