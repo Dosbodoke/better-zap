@@ -6,6 +6,7 @@ import {
   ArrowLeft02Icon,
   InformationCircleIcon,
   Message01Icon,
+  UserIcon,
 } from "@hugeicons/core-free-icons";
 import { LegendList } from "@legendapp/list/react";
 import type { Conversation, UIMessage } from "better-zap";
@@ -81,7 +82,7 @@ export interface MessageViewHeaderProps extends React.ComponentProps<"div"> {
 }
 
 const iconButtonClassName =
-  "inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-black/5 focus-visible:outline-2 focus-visible:outline-offset-2";
+  "inline-flex h-10 w-10 items-center justify-center rounded-full text-[#54656f] hover:bg-black/5 focus-visible:outline-2 focus-visible:outline-offset-2";
 
 export function MessageViewHeader({
   conversation,
@@ -106,7 +107,7 @@ export function MessageViewHeader({
   return (
     <div
       className={cn(
-        "flex h-16 shrink-0 items-center justify-between border-b bg-[#f0f2f5] px-4 z-20",
+        "flex h-[59px] shrink-0 items-center justify-between bg-[#f0f2f5] px-4 z-20",
         className,
       )}
       {...props}
@@ -124,16 +125,25 @@ export function MessageViewHeader({
         )}
         {children ??
           (conversation ? (
-            <div className="flex flex-col">
-              <h2 className="text-[15px] font-medium text-[#111b21] leading-tight">
-                {conversation.contactName || conversation.phone}
-              </h2>
-              {conversation.contactName && (
-                <span className="text-sm text-[#667781] leading-tight">
-                  {conversation.phone}
-                </span>
-              )}
-            </div>
+            <>
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#dfe5e7]">
+                <HugeiconsIcon
+                  icon={UserIcon}
+                  size={24}
+                  className="text-white"
+                />
+              </div>
+              <div className="flex flex-col">
+                <h2 className="text-[16px] font-medium text-[#111b21] leading-tight">
+                  {conversation.contactName || conversation.phone}
+                </h2>
+                {conversation.contactName && (
+                  <span className="text-[13px] text-[#667781] leading-tight">
+                    {conversation.phone}
+                  </span>
+                )}
+              </div>
+            </>
           ) : (
             <div className="flex flex-col" />
           ))}
@@ -227,6 +237,11 @@ export interface MessageListProps {
   onScrollTop?: () => void;
   className?: string;
 }
+
+// Memoized default renderers: all props passed to them are primitives, so a
+// change to one message (e.g. a status tick) re-renders that bubble only.
+const MemoizedMessageBubble = React.memo(MessageBubble);
+const MemoizedDateDivider = React.memo(DateDivider);
 
 type MessageListItem =
   | {
@@ -357,7 +372,7 @@ export function MessageList({
             renderDateDivider?.({
               label: item.label,
               date: item.date,
-            }) ?? <DateDivider>{item.label}</DateDivider>
+            }) ?? <MemoizedDateDivider>{item.label}</MemoizedDateDivider>
           );
         }
 
@@ -376,13 +391,14 @@ export function MessageList({
 
         return (
           renderMessage?.(ctx) ?? (
-            <MessageBubble
+            <MemoizedMessageBubble
               content={message.content || ""}
               sender={direction === "incoming" ? "user" : "bot"}
               timestamp={resolveFormatTime(message.sentAt)}
               status={message.status}
               templateName={message.templateName || undefined}
               label={label}
+              groupPosition={groupPosition}
             />
           )
         );
@@ -407,7 +423,7 @@ export function DateDivider({
       )}
       {...props}
     >
-      <span className="bg-white border border-[#e9edef] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)] text-[#54656f] text-[12.5px] font-medium px-3 py-1.5 rounded-lg uppercase pointer-events-auto">
+      <span className="bg-white shadow-[0_1px_0.5px_rgba(11,20,26,0.13)] text-[#54656f] text-[12.5px] font-medium px-3 py-[5px] rounded-[7.5px] uppercase pointer-events-auto">
         {children}
       </span>
     </div>
@@ -423,27 +439,28 @@ export function MessageViewEmpty({
   return (
     <div
       className={cn(
-        "relative flex flex-1 flex-col items-center justify-center bg-[#f8f9fa] text-[#667781] p-6",
+        "relative flex flex-1 flex-col items-center justify-center bg-[#f0f2f5] text-[#667781] p-6 border-b-[6px] border-[#25d366]",
         className,
       )}
       {...props}
     >
       {children ?? (
         <>
-          <div className="mb-8 flex h-48 w-48 items-center justify-center rounded-full bg-[#f0f2f5] shadow-sm">
-            <HugeiconsIcon
-              icon={Message01Icon}
-              size={80}
-              className="text-[#bbc5cb]"
-            />
-          </div>
-          <h1 className="mb-3 text-2xl font-semibold text-[#41525d]">Better Zap</h1>
-          <div className="max-w-sm space-y-3 text-center">
-            <p className="text-[15px] leading-relaxed">
+          <HugeiconsIcon
+            icon={Message01Icon}
+            size={96}
+            strokeWidth={1}
+            className="mb-6 text-[#c6cdd2]"
+          />
+          <h1 className="mb-4 text-[32px] font-light text-[#41525d]">
+            Better Zap
+          </h1>
+          <div className="max-w-md space-y-3 text-center">
+            <p className="text-sm leading-[20px]">
               Esta é uma interface dedicada para visualização e monitoramento de
               mensagens da <strong>API Oficial do WhatsApp</strong>.
             </p>
-            <p className="text-sm opacity-80">
+            <p className="text-sm leading-[20px] opacity-80">
               Acompanhe o histórico de conversas, verifique o status de entrega e
               gerencie as interações do Cloud API de forma profissional.
             </p>

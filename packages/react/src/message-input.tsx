@@ -20,7 +20,7 @@ import {
   ComposerError,
   ComposerSend,
   ComposerTextarea,
-  useComposer,
+  useComposerState,
 } from "./composer";
 import { useFreeformMessageWindow } from "./use-freeform-message-window";
 
@@ -88,8 +88,9 @@ function MessageInputBody({
   onMicClick?: () => void;
   showDefaultError: boolean;
 }): React.JSX.Element {
-  const { isSending, value } = useComposer();
-  const hasText = value.trim().length > 0;
+  // useComposerState (not useComposer) so the toolbar and icon buttons don't
+  // re-render on every keystroke; hasText only flips on empty <-> non-empty.
+  const { isSending, hasText } = useComposerState();
 
   return (
     <>
@@ -116,7 +117,7 @@ function MessageInputBody({
         </div>
       )}
 
-      <div className="flex-1 flex items-center min-h-[42px] py-3 px-2">
+      <div className="flex-1 flex items-center min-h-[40px] py-2 px-2">
         <ComposerTextarea
           aria-label={labels.textarea}
           placeholder={isSending ? labels.sending : placeholder}
@@ -209,14 +210,16 @@ export function MessageInput({
 
   if (!isContextWindowOpen) {
     return (
-      <div className={cn("w-full flex flex-col p-4 z-10 shrink-0", className)}>
-        <div className="flex items-center gap-2 px-4 py-3 min-h-[62px] bg-[#fef3c7] rounded-2xl border border-[#f59e0b]/20">
+      <div
+        className={cn("w-full flex flex-col px-4 py-3 z-10 shrink-0", className)}
+      >
+        <div className="flex items-center gap-3 px-4 py-3 min-h-[52px] bg-[#ffeecd] rounded-[7.5px] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]">
           <HugeiconsIcon
             icon={Clock01Icon}
             size={20}
-            className="text-[#92400e] shrink-0"
+            className="text-[#54656f] shrink-0"
           />
-          <span className="text-[13px] leading-[18px] text-[#92400e]">
+          <span className="text-[13px] leading-[18px] text-[#54656f]">
             {labels.expired}
           </span>
         </div>
@@ -225,7 +228,7 @@ export function MessageInput({
   }
 
   return (
-    <div className={cn("w-full flex flex-col p-4 z-10 shrink-0", className)}>
+    <div className={cn("w-full flex flex-col px-4 py-3 z-10 shrink-0", className)}>
       <Composer
         onSubmit={handleSubmit}
         onError={handleError}

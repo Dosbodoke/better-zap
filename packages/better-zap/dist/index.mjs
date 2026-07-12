@@ -1,4 +1,4 @@
-import { BetterZapClientError, createZapClient } from "./client.mjs";
+import { BetterZapClientError, apiKeyTransport, createZapClient, sessionTransport } from "./client.mjs";
 //#region src/freeform-message-window.ts
 const FREEFORM_MESSAGE_WINDOW_MS = 1440 * 60 * 1e3;
 function toTimestamp(value) {
@@ -1055,4 +1055,4 @@ function serializeTemplateParameter(parameter, value) {
 	}
 }
 //#endregion
-export { BetterZapClientError, CoexistenceService, EMPTY_TEMPLATE_REGISTRY, FREEFORM_MESSAGE_WINDOW_MS, InMemoryCoexistenceStore, MessageLoggerService, WHATSAPP_MESSAGE_TYPES, WhatsAppService, createCoexistenceEmbeddedSignupConfig, createFreeformMessageWindow, createLogger, createZapClient, defineTemplates, delay, formatPhone, getLatestIncomingMessageAt, getTemplateNames, hasConfiguredTemplates, launchCoexistenceEmbeddedSignup, noopLogger, normalizeCoexistenceSessionEvent, normalizeCoexistenceSessionPayload, normalizeConversationRecord, normalizeConversationRecords, resolveConversationFreeformMessageWindow, serializeError, serializeTemplateFromRegistry, toLegacyCoexistenceSessionEvent };
+export { BetterZapClientError, CoexistenceService, EMPTY_TEMPLATE_REGISTRY, FREEFORM_MESSAGE_WINDOW_MS, InMemoryCoexistenceStore, MessageLoggerService, WHATSAPP_MESSAGE_TYPES, WhatsAppService, apiKeyTransport, createCoexistenceEmbeddedSignupConfig, createFreeformMessageWindow, createLogger, createZapClient, defineTemplates, delay, formatPhone, getLatestIncomingMessageAt, getTemplateNames, hasConfiguredTemplates, launchCoexistenceEmbeddedSignup, noopLogger, normalizeCoexistenceSessionEvent, normalizeCoexistenceSessionPayload, normalizeConversationRecord, normalizeConversationRecords, resolveConversationFreeformMessageWindow, serializeError, serializeTemplateFromRegistry, sessionTransport, toLegacyCoexistenceSessionEvent };

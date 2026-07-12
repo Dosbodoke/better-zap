@@ -48,7 +48,7 @@ describe("Bubble", () => {
     );
     const el = container.querySelector("[data-testid=bubble]") as HTMLElement;
     expect(el.className).toContain("consumer-class");
-    expect(el.className).toContain("bg-gray-100");
+    expect(el.className).toContain("bg-white");
   });
 });
 
@@ -155,6 +155,6 @@ describe("MessageBubble adapter smoke", () => {
       <MessageBubble content="adapter ok" sender="bot" status="sent" />,
     );
     expect(screen.getByText("adapter ok")).toBeTruthy();
-    expect(screen.getByText("✓")).toBeTruthy();
+    expect(screen.getByRole("img", { name: "sent" })).toBeTruthy();
   });
 });

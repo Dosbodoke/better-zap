@@ -1,15 +1,22 @@
 import React from "react";
 import { cva } from "class-variance-authority";
+import { HugeiconsIcon } from "@hugeicons/react";
+import {
+  Alert02Icon,
+  File02Icon,
+  Tick02Icon,
+  TickDouble02Icon,
+} from "@hugeicons/core-free-icons";
 import { cn } from "./utils";
 import type { UIMessageStatus } from "better-zap";
 import { Bubble, BubbleContent } from "./bubble";
 import { Message, MessageContent } from "./message";
 
-const statusVariants = cva("text-[13px] leading-none", {
+const statusVariants = cva("flex items-center leading-none", {
   variants: {
     variant: {
-      default: "opacity-60",
-      read: "text-blue-500",
+      default: "text-[#111b21]/40",
+      read: "text-[#53bdeb]",
       failed: "text-red-500",
     },
   },
@@ -18,6 +25,8 @@ const statusVariants = cva("text-[13px] leading-none", {
   },
 });
 
+export type MessageBubbleGroupPosition = "single" | "first" | "middle" | "last";
+
 export interface MessageBubbleProps extends React.HTMLAttributes<HTMLDivElement> {
   content: string;
   sender: "user" | "bot";
@@ -25,6 +34,12 @@ export interface MessageBubbleProps extends React.HTMLAttributes<HTMLDivElement>
   status?: UIMessageStatus | string;
   templateName?: string;
   label?: string;
+  /**
+   * Position within a run of same-direction messages. Controls the corner
+   * tail (first/single only) and the gap to the next message, mirroring
+   * WhatsApp's grouping. @default "single"
+   */
+  groupPosition?: MessageBubbleGroupPosition;
 }
 
 export function MessageBubble({
@@ -34,6 +49,7 @@ export function MessageBubble({
   status,
   templateName,
   label,
+  groupPosition = "single",
   className,
   ...props
 }: MessageBubbleProps) {
@@ -48,6 +64,14 @@ export function MessageBubble({
         ? "destructive"
         : "primary";
   const statusVariant = status === "read" ? "read" : isFailed ? "failed" : "default";
+  const statusIcon = isFailed
+    ? Alert02Icon
+    : status === "read" || status === "delivered"
+      ? TickDouble02Icon
+      : Tick02Icon;
+
+  const hasTail = groupPosition === "single" || groupPosition === "first";
+  const endsGroup = groupPosition === "single" || groupPosition === "last";
 
   // Display content or template name as fallback
   const displayContent =
@@ -57,9 +81,13 @@ export function MessageBubble({
       : "[Conteúdo não disponível]");
 
   return (
-    <Message align={align} className={cn("mb-1", className)} {...props}>
+    <Message
+      align={align}
+      className={cn(endsGroup ? "mb-3" : "mb-0.5", className)}
+      {...props}
+    >
       <MessageContent>
-        <Bubble variant={variant} align={align}>
+        <Bubble variant={variant} align={align} tail={hasTail}>
           <BubbleContent>
             {label && !isIncoming && (
               <span className="mb-1 block text-xs font-medium opacity-70">
@@ -69,8 +97,9 @@ export function MessageBubble({
 
             {templateName && !label && (
               <div className="mb-1 border-b border-black/5 pb-1">
-                <span className="text-[11px] font-medium opacity-70">
-                  📋 {templateName}
+                <span className="flex items-center gap-1 text-[11px] font-medium opacity-70">
+                  <HugeiconsIcon icon={File02Icon} size={12} />
+                  {templateName}
                 </span>
               </div>
             )}
@@ -80,17 +109,18 @@ export function MessageBubble({
             {/* Timestamp and Status */}
             <div className="float-right -mb-1 ml-2 mt-1.5 flex items-center justify-end gap-1 shrink-0 h-[15px] select-none">
               {timestamp && (
-                <span className="text-[11px] opacity-60 leading-none whitespace-nowrap">
+                <span className="text-[11px] text-[#111b21]/60 leading-none whitespace-nowrap">
                   {timestamp}
                 </span>
               )}
               {!isIncoming && status && (
-                <span className={statusVariants({ variant: statusVariant })}>
-                  {status === "read" || status === "delivered"
-                    ? "✓✓"
-                    : isFailed
-                      ? "✕"
-                      : "✓"}
+                <span
+                  role="img"
+                  aria-label={String(status)}
+                  data-status={status}
+                  className={statusVariants({ variant: statusVariant })}
+                >
+                  <HugeiconsIcon icon={statusIcon} size={15} strokeWidth={2} />
                 </span>
               )}
             </div>

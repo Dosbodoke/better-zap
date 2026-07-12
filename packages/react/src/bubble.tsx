@@ -11,48 +11,107 @@ export type BubbleVariant =
   | "muted";
 
 const bubbleVariants = cva(
-  "relative w-fit max-w-[65%] rounded-lg px-3 py-2 text-[14.5px] leading-normal shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]",
+  // max-w-full, not a percentage: a percentage here resolves against the
+  // content-sized MessageContent (circular), squeezing short bubbles below
+  // their own timestamp width. The 65% cap lives on MessageContent, whose
+  // containing block (the full-width Message row) makes it meaningful.
+  "relative w-fit max-w-full rounded-[7.5px] px-[9px] py-[6px] text-[14.2px] leading-[19px] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]",
   {
     variants: {
       variant: {
-        default: "bg-gray-100 text-gray-900",
-        primary: "bg-green-100 text-green-900",
-        destructive: "bg-red-100 text-red-900 border border-red-200",
-        outline: "border border-gray-300 bg-transparent text-gray-900 shadow-none",
+        default: "bg-white text-[#111b21]",
+        primary: "bg-[#d9fdd3] text-[#111b21]",
+        destructive: "bg-[#fdd8d5] text-[#111b21]",
+        outline: "border border-gray-300 bg-transparent text-[#111b21] shadow-none",
         muted: "bg-gray-50 text-gray-500",
-      },
-      align: {
-        start: "rounded-tl-none",
-        end: "rounded-tr-none",
       },
     },
     defaultVariants: {
       variant: "default",
-      align: "start",
     },
   },
 );
+
+const tailCornerByAlign: Record<BubbleAlign, string> = {
+  start: "rounded-tl-none",
+  end: "rounded-tr-none",
+};
+
+const tailColorByVariant: Record<BubbleVariant, string> = {
+  default: "text-white",
+  primary: "text-[#d9fdd3]",
+  destructive: "text-[#fdd8d5]",
+  outline: "text-transparent",
+  muted: "text-gray-50",
+};
+
+/** WhatsApp's bubble tail, drawn outside the top corner of the bubble. */
+function BubbleTail({
+  align,
+  variant,
+}: {
+  align: BubbleAlign;
+  variant: BubbleVariant;
+}): React.JSX.Element {
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        "absolute top-0 block h-[13px] w-2",
+        align === "start" ? "-left-2 -scale-x-100" : "-right-2",
+        tailColorByVariant[variant],
+      )}
+    >
+      <svg viewBox="0 0 8 13" width="8" height="13" fill="none">
+        <path
+          fill="#0b141a"
+          opacity="0.13"
+          d="M5.188 1H0v11.193l6.467-8.625C7.526 2.156 6.958 1 5.188 1Z"
+        />
+        <path
+          fill="currentColor"
+          d="M5.188 0H0v11.193l6.467-8.625C7.526 1.156 6.958 0 5.188 0Z"
+        />
+      </svg>
+    </span>
+  );
+}
 
 export interface BubbleProps extends React.ComponentProps<"div"> {
   /** Visual treatment. Presentational only — never domain terms. @default "default" */
   variant?: BubbleVariant;
   /** Which side the corner tail sits on. @default "start" */
   align?: BubbleAlign;
+  /**
+   * Renders WhatsApp's corner tail and squares that corner. Show it on the
+   * first bubble of a group (or a lone bubble), hide it on follow-ups.
+   * @default true
+   */
+  tail?: boolean;
 }
 
 export function Bubble({
   variant = "default",
   align = "start",
+  tail = true,
   className,
+  children,
   ...props
 }: BubbleProps): React.JSX.Element {
   return (
     <div
       data-variant={variant}
       data-align={align}
-      className={cn(bubbleVariants({ variant, align }), className)}
+      className={cn(
+        bubbleVariants({ variant }),
+        tail && tailCornerByAlign[align],
+        className,
+      )}
       {...props}
-    />
+    >
+      {tail && <BubbleTail align={align} variant={variant} />}
+      {children}
+    </div>
   );
 }
 
