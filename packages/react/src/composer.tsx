@@ -5,6 +5,7 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -26,14 +27,56 @@ export interface ComposerContextValue {
   send: () => void;
 }
 
-const ComposerContext = createContext<ComposerContextValue | null>(null);
+/**
+ * Everything except the live draft string. Changes only on boundary events
+ * (empty <-> non-empty, send lifecycle, errors), so consumers skip the
+ * per-keystroke re-render that `useComposer` implies.
+ */
+export interface ComposerStateContextValue
+  extends Omit<ComposerContextValue, "value"> {
+  /** value.trim() is non-empty. Boundary-stable, unlike `value` itself. */
+  hasText: boolean;
+}
 
-export function useComposer(): ComposerContextValue {
-  const ctx = useContext(ComposerContext);
+// Split contexts so typing only re-renders draft consumers: the value context
+// changes every keystroke, the state context object is memoized and only
+// changes on boundary events.
+const ComposerValueContext = createContext<string | null>(null);
+const ComposerStateContext = createContext<ComposerStateContextValue | null>(
+  null,
+);
+
+/** The live draft string. Consumers re-render on every keystroke. */
+export function useComposerValue(): string {
+  const value = useContext(ComposerValueContext);
+  if (value === null) {
+    throw new Error("useComposerValue must be used within <Composer>");
+  }
+  return value;
+}
+
+/**
+ * Actions and boundary-stable flags without the live draft. Prefer this in
+ * children that don't display the text (send/attach buttons, error slots) so
+ * they don't re-render per keystroke.
+ */
+export function useComposerState(): ComposerStateContextValue {
+  const ctx = useContext(ComposerStateContext);
   if (!ctx) {
-    throw new Error("useComposer must be used within <Composer>");
+    throw new Error("useComposerState must be used within <Composer>");
   }
   return ctx;
+}
+
+/** Full composer context. Subscribes to the draft: re-renders per keystroke. */
+export function useComposer(): ComposerContextValue {
+  const ctx = useContext(ComposerStateContext);
+  const value = useContext(ComposerValueContext);
+  if (!ctx || value === null) {
+    throw new Error("useComposer must be used within <Composer>");
+  }
+  const { hasText: _hasText, ...rest } = ctx;
+  return { ...rest, value };
 }
 
 export interface ComposerProps
@@ -48,19 +91,32 @@ export interface ComposerProps
 }
 
 const PILL_CLASS =
-  "flex flex-wrap items-center gap-1 px-2 py-1 min-h-[62px] bg-white rounded-2xl shadow-lg border border-gray-100";
+  "flex flex-wrap items-center gap-1 px-2 py-1 min-h-[52px] bg-white rounded-[24px] shadow-[0_1px_3px_rgba(11,20,26,0.12)]";
 
-export function Composer({
+interface ComposerProviderProps {
+  value?: string;
+  defaultValue: string;
+  onValueChange?: (value: string) => void;
+  onSubmit: (text: string) => void | Promise<void>;
+  onError?: (error: unknown, context: { text: string }) => void;
+  disabled: boolean;
+  children: React.ReactNode;
+}
+
+/**
+ * Owns draft/send state below the pill markup, so uncontrolled keystrokes
+ * re-render this provider and draft consumers only, never the pill div or
+ * children that stick to useComposerState.
+ */
+function ComposerProvider({
   value: valueProp,
-  defaultValue = "",
+  defaultValue,
   onValueChange,
   onSubmit,
   onError,
-  disabled = false,
-  className,
+  disabled,
   children,
-  ...props
-}: ComposerProps): React.JSX.Element {
+}: ComposerProviderProps): React.JSX.Element {
   const isControlled = valueProp !== undefined;
   const [internalValue, setInternalValue] = useState(defaultValue);
   const [isSending, setIsSending] = useState(false);
@@ -118,25 +174,56 @@ export function Composer({
     })();
   }, [setValue]);
 
-  const canSend = value.trim().length > 0 && !disabled && !isSending;
+  const hasText = value.trim().length > 0;
+  const canSend = hasText && !disabled && !isSending;
 
-  const contextValue: ComposerContextValue = {
-    value,
-    setValue,
-    isSending,
-    disabled,
-    canSend,
-    error,
-    clearError,
-    send,
-  };
+  const stateValue = useMemo<ComposerStateContextValue>(
+    () => ({
+      setValue,
+      isSending,
+      disabled,
+      canSend,
+      hasText,
+      error,
+      clearError,
+      send,
+    }),
+    [setValue, isSending, disabled, canSend, hasText, error, clearError, send],
+  );
 
   return (
-    <ComposerContext.Provider value={contextValue}>
-      <div className={cn(PILL_CLASS, className)} {...props}>
+    <ComposerStateContext.Provider value={stateValue}>
+      <ComposerValueContext.Provider value={value}>
         {children}
-      </div>
-    </ComposerContext.Provider>
+      </ComposerValueContext.Provider>
+    </ComposerStateContext.Provider>
+  );
+}
+
+export function Composer({
+  value,
+  defaultValue = "",
+  onValueChange,
+  onSubmit,
+  onError,
+  disabled = false,
+  className,
+  children,
+  ...props
+}: ComposerProps): React.JSX.Element {
+  return (
+    <div className={cn(PILL_CLASS, className)} {...props}>
+      <ComposerProvider
+        value={value}
+        defaultValue={defaultValue}
+        onValueChange={onValueChange}
+        onSubmit={onSubmit}
+        onError={onError}
+        disabled={disabled}
+      >
+        {children}
+      </ComposerProvider>
+    </div>
   );
 }
 
@@ -157,7 +244,8 @@ export function ComposerTextarea({
   onChange,
   ...props
 }: ComposerTextareaProps): React.JSX.Element {
-  const { value, setValue, disabled, isSending, send } = useComposer();
+  const value = useComposerValue();
+  const { setValue, disabled, isSending, send } = useComposerState();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const isDisabled = disabled || isSending || !!disabledProp;
@@ -213,7 +301,7 @@ export function ComposerSend({
   type = "button",
   ...props
 }: ComposerSendProps): React.JSX.Element {
-  const { canSend, send } = useComposer();
+  const { canSend, send } = useComposerState();
 
   const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
     send();
@@ -224,14 +312,14 @@ export function ComposerSend({
     <button
       type={type}
       className={cn(
-        "p-2 rounded-full transition-colors disabled:opacity-40 disabled:cursor-not-allowed text-[#00a884]",
+        "flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white transition-colors hover:bg-[#008f72] disabled:opacity-40 disabled:cursor-not-allowed",
         className,
       )}
       disabled={!canSend || !!disabledProp}
       onClick={handleClick}
       {...props}
     >
-      {children ?? <HugeiconsIcon icon={Sent02Icon} size={24} />}
+      {children ?? <HugeiconsIcon icon={Sent02Icon} size={20} />}
     </button>
   );
 }
@@ -244,7 +332,7 @@ export function ComposerButton({
   type = "button",
   ...props
 }: ComposerButtonProps): React.JSX.Element {
-  const { isSending } = useComposer();
+  const { isSending } = useComposerState();
   const isDisabled =
     disabledProp !== undefined ? disabledProp : isSending;
 
@@ -272,7 +360,7 @@ export function ComposerError({
   className,
   ...props
 }: ComposerErrorProps): React.JSX.Element | null {
-  const { error } = useComposer();
+  const { error } = useComposerState();
 
   if (error == null) {
     return null;

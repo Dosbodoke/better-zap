@@ -9,3 +9,25 @@
  * regardless of where the consuming app lives in the monorepo.
  */
 @source ".";
+
+/*
+ * WhatsApp-style thin scrollbar used by ConversationList and MessageList.
+ * Plain CSS (not utilities) so it ships even without Tailwind plugins.
+ */
+.chat-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(11, 20, 26, 0.2) transparent;
+}
+
+.chat-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chat-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.chat-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(11, 20, 26, 0.2);
+  border-radius: 3px;
+}

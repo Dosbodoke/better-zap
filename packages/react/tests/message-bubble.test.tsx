@@ -14,22 +14,26 @@ describe("MessageBubble (published surface)", () => {
     render(
       <MessageBubble content="enviado" sender="bot" status="sent" />,
     );
-    expect(screen.getByText("✓")).toBeTruthy();
+    expect(screen.getByRole("img", { name: "sent" })).toBeTruthy();
   });
 
   it("shows double check for delivered and read", () => {
     const { rerender } = render(
       <MessageBubble content="ok" sender="bot" status="delivered" />,
     );
-    expect(screen.getByText("✓✓")).toBeTruthy();
+    expect(screen.getByRole("img", { name: "delivered" })).toBeTruthy();
 
     rerender(<MessageBubble content="ok" sender="bot" status="read" />);
-    expect(screen.getByText("✓✓")).toBeTruthy();
+    const read = screen.getByRole("img", { name: "read" });
+    expect(read).toBeTruthy();
+    expect(read.className).toContain("text-[#53bdeb]");
   });
 
   it("shows failed marker for failed status", () => {
     render(<MessageBubble content="falhou" sender="bot" status="failed" />);
-    expect(screen.getByText("✕")).toBeTruthy();
+    const failed = screen.getByRole("img", { name: "failed" });
+    expect(failed).toBeTruthy();
+    expect(failed.className).toContain("text-red-500");
   });
 
   it("renders label only for outgoing messages", () => {
@@ -65,7 +69,7 @@ describe("MessageBubble (published surface)", () => {
     );
     expect(screen.getByText("[Template: hello_world]")).toBeTruthy();
     // header chip also mentions the template name
-    expect(screen.getByText(/📋/)).toBeTruthy();
+    expect(screen.getByText("hello_world")).toBeTruthy();
   });
 
   it("falls back to unavailable content message", () => {

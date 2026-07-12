@@ -98,7 +98,7 @@ export function WhatsappDashboard({
     <WhatsappDashboardContext.Provider value={value}>
       <div
         className={cn(
-          "bg-background flex h-full w-full overflow-hidden",
+          "flex h-full w-full overflow-hidden bg-[#f0f2f5]",
           className,
         )}
         {...props}

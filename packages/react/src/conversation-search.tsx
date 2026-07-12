@@ -11,7 +11,11 @@ export interface ConversationSearchProps {
   "aria-label"?: string;
 }
 
-export function ConversationSearch({
+/**
+ * Memoized: with a stable onChange, sibling state changes (filter chips,
+ * selection) don't re-render the search box.
+ */
+export const ConversationSearch = React.memo(function ConversationSearch({
   value,
   onChange,
   className,
@@ -22,8 +26,8 @@ export function ConversationSearch({
   const effectiveAriaLabel = ariaLabel ?? effectivePlaceholder;
 
   return (
-    <div className={cn("border-b border-[#e9edef] shrink-0 p-2", className)}>
-      <div className="flex items-center bg-[#f0f2f5] rounded-full px-4 h-[38px] gap-3 focus-within:bg-white focus-within:ring-1 focus-within:ring-green-200 focus-within:shadow-md transition-all border border-transparent focus-within:border-transparent">
+    <div className={cn("shrink-0 px-3 py-2", className)}>
+      <div className="flex items-center bg-[#f0f2f5] rounded-full px-3 h-[35px] gap-3 border border-transparent transition-colors focus-within:bg-white focus-within:border-[#e9edef]">
         <HugeiconsIcon
           icon={Search01Icon}
           size={18}
@@ -40,4 +44,4 @@ export function ConversationSearch({
       </div>
     </div>
   );
-}
+});

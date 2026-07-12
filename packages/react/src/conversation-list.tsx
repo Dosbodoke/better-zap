@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Message01Icon, UserIcon } from "@hugeicons/core-free-icons";
 import { LegendList } from "@legendapp/list/react";
@@ -64,6 +64,45 @@ export interface ConversationListProps
   labels?: Partial<ConversationListLabels>;
 }
 
+/**
+ * Memoized default row. Every prop is a primitive or a stable reference, so
+ * selecting a conversation re-renders exactly two rows (the newly selected
+ * and the previously selected one), not the whole list.
+ */
+const ConversationListRow = React.memo(function ConversationListRow({
+  conversation,
+  isSelected,
+  onSelectConversation,
+  avatar,
+  outgoingPrefix,
+  noPreviewLabel,
+  formatTime,
+}: {
+  conversation: Conversation;
+  isSelected: boolean;
+  onSelectConversation: (id: string) => void;
+  avatar?: React.ReactNode;
+  outgoingPrefix: string;
+  noPreviewLabel: string;
+  formatTime: (isoDate: string) => string;
+}) {
+  const handleClick = useCallback(() => {
+    onSelectConversation(conversation.id);
+  }, [onSelectConversation, conversation.id]);
+
+  return (
+    <ConversationItem
+      conversation={conversation}
+      isSelected={isSelected}
+      onClick={handleClick}
+      avatar={avatar}
+      outgoingPrefix={outgoingPrefix}
+      noPreviewLabel={noPreviewLabel}
+      formatTime={formatTime}
+    />
+  );
+});
+
 export function ConversationList({
   conversations,
   isLoading = false,
@@ -106,23 +145,57 @@ export function ConversationList({
       DEFAULT_LABELS.searchLabel,
   };
 
-  const effectiveFormatTime =
-    formatTimeProp ??
-    ((isoDate: string) => formatTimeDefault(isoDate, labels.yesterday));
+  // Latest-value refs so the callbacks below stay referentially stable no
+  // matter what the consumer passes; stable callbacks are what let the
+  // memoized search/chips/rows skip re-rendering.
+  const isSearchControlledRef = useRef(isSearchControlled);
+  isSearchControlledRef.current = isSearchControlled;
+  const isFilterControlledRef = useRef(isFilterControlled);
+  isFilterControlledRef.current = isFilterControlled;
+  const onSearchChangeRef = useRef(onSearchChange);
+  onSearchChangeRef.current = onSearchChange;
+  const onFilterChangeRef = useRef(onFilterChange);
+  onFilterChangeRef.current = onFilterChange;
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
+  const dashboardRef = useRef(dashboard);
+  dashboardRef.current = dashboard;
+  const formatTimePropRef = useRef(formatTimeProp);
+  formatTimePropRef.current = formatTimeProp;
+  const yesterdayLabelRef = useRef(labels.yesterday);
+  yesterdayLabelRef.current = labels.yesterday;
 
-  const handleSearchChange = (value: string) => {
-    if (!isSearchControlled) {
+  const handleSearchChange = useCallback((value: string) => {
+    if (!isSearchControlledRef.current) {
       setInternalSearch(value);
     }
-    onSearchChange?.(value);
-  };
+    onSearchChangeRef.current?.(value);
+  }, []);
 
-  const handleFilterChange = (value: ConversationFilterValue) => {
-    if (!isFilterControlled) {
+  const handleFilterChange = useCallback((value: ConversationFilterValue) => {
+    if (!isFilterControlledRef.current) {
       setInternalFilter(value);
     }
-    onFilterChange?.(value);
-  };
+    onFilterChangeRef.current?.(value);
+  }, []);
+
+  const handleSelect = useCallback((id: string) => {
+    onSelectRef.current?.(id);
+    dashboardRef.current?.setMobileView("chat");
+  }, []);
+
+  const effectiveFormatTime = useCallback(
+    (isoDate: string) =>
+      formatTimePropRef.current
+        ? formatTimePropRef.current(isoDate)
+        : formatTimeDefault(isoDate, yesterdayLabelRef.current),
+    [],
+  );
+
+  const chipLabels = useMemo(
+    () => ({ all: labels.filterAll, unread: labels.filterUnread }),
+    [labels.filterAll, labels.filterUnread],
+  );
 
   const normalizedSearch = search.trim().toLowerCase();
   const effectiveFilter = filter;
@@ -146,11 +219,6 @@ export function ConversationList({
     });
   }, [conversations, normalizedSearch, effectiveFilter]);
 
-  const handleSelect = (id: string) => {
-    onSelect?.(id);
-    dashboard?.setMobileView("chat");
-  };
-
   const isVisible = !isMobile || mobileView === "list";
 
   return (
@@ -173,7 +241,7 @@ export function ConversationList({
         value={filter}
         onValueChange={handleFilterChange}
         unreadCount={unreadConversationsCount}
-        labels={{ all: labels.filterAll, unread: labels.filterUnread }}
+        labels={chipLabels}
       />
 
       <div className="min-h-0 flex-1">
@@ -201,17 +269,19 @@ export function ConversationList({
             recycleItems
             renderItem={({ item: conversation }) => {
               const isSelected = selectedConversationId === conversation.id;
-              const select = () => handleSelect(conversation.id);
 
               if (renderItem) {
-                return renderItem(conversation, { isSelected, select });
+                return renderItem(conversation, {
+                  isSelected,
+                  select: () => handleSelect(conversation.id),
+                });
               }
 
               return (
-                <ConversationItem
+                <ConversationListRow
                   conversation={conversation}
                   isSelected={isSelected}
-                  onClick={select}
+                  onSelectConversation={handleSelect}
                   avatar={renderAvatar?.(conversation)}
                   outgoingPrefix={labels.outgoingPrefix}
                   noPreviewLabel={labels.noPreview}
@@ -249,6 +319,7 @@ export function ConversationItem({
   const timeLabel = formatTimeProp
     ? formatTimeProp(conversation.lastMessageAt)
     : formatTimeDefault(conversation.lastMessageAt, "Ontem");
+  const hasUnread = conversation.unreadCount > 0;
 
   return (
     <button
@@ -257,38 +328,39 @@ export function ConversationItem({
       data-selected={isSelected}
       aria-current={isSelected ? "true" : undefined}
       className={cn(
-        "group flex items-center w-full h-[72px] px-3 gap-3 transition-all cursor-pointer text-left relative overflow-hidden hover:bg-[#f5f6f6] data-[selected=true]:bg-[#075e54] data-[selected=true]:hover:bg-[#064940]",
+        "group flex items-center w-full h-[72px] px-3 gap-3 transition-colors cursor-pointer text-left relative overflow-hidden hover:bg-[#f5f6f6] data-[selected=true]:bg-[#f0f2f5]",
         className,
       )}
     >
       {/* Avatar */}
       {avatar ?? (
-        <div className="w-[49px] h-[49px] rounded-full bg-[#dfe5e7] flex items-center justify-center shrink-0 group-data-[selected=true]:bg-white/20">
-          <HugeiconsIcon
-            icon={UserIcon}
-            size={28}
-            className="text-[#aebac1] group-data-[selected=true]:text-white/80"
-          />
+        <div className="w-[49px] h-[49px] rounded-full bg-[#dfe5e7] flex items-center justify-center shrink-0">
+          <HugeiconsIcon icon={UserIcon} size={28} className="text-white" />
         </div>
       )}
 
       {/* Content */}
-      <div className="flex-1 min-w-0 border-b border-[#f2f2f2] h-full flex flex-col justify-center pr-1 group-last:border-none group-data-[selected=true]:border-transparent">
+      <div className="flex-1 min-w-0 border-b border-[#e9edef]/70 h-full flex flex-col justify-center pr-1 group-last:border-none group-data-[selected=true]:border-transparent">
         <div className="flex justify-between items-baseline mb-0.5">
-          <span className="text-[17px] font-normal text-[#111b21] truncate group-data-[selected=true]:text-white">
+          <span className="text-[17px] font-normal text-[#111b21] truncate">
             {conversation.contactName || formatPhone(conversation.phone)}
           </span>
-          <span className="text-xs text-[#667781] shrink-0 group-data-[selected=true]:text-white/90">
+          <span
+            className={cn(
+              "text-xs shrink-0",
+              hasUnread ? "text-[#1daa61]" : "text-[#667781]",
+            )}
+          >
             {timeLabel}
           </span>
         </div>
         <div className="flex justify-between items-center gap-2">
-          <p className="text-[14px] text-[#667781] truncate group-data-[selected=true]:text-white/90">
+          <p className="text-[14px] text-[#667781] truncate">
             {conversation.lastDirection === "incoming" ? "" : outgoingPrefix}
             {conversation.lastMessagePreview || noPreviewLabel}
           </p>
-          {conversation.unreadCount > 0 && (
-            <span className="bg-[#25d366] text-white text-[11px] font-bold rounded-full min-w-[20px] h-[20px] flex items-center justify-center px-1.5 shrink-0 group-data-[selected=true]:bg-white">
+          {hasUnread && (
+            <span className="bg-[#25d366] text-white text-[11px] font-semibold rounded-full min-w-[20px] h-[20px] flex items-center justify-center px-1.5 shrink-0">
               {conversation.unreadCount}
             </span>
           )}
