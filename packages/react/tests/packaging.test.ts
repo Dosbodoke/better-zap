@@ -85,7 +85,7 @@ function loadCjsExportNames(cjsPath: string): string[] {
 describe("published package surface", () => {
   it("ships required dist artifacts for every JS entry plus assets", () => {
     for (const base of JS_ENTRY_BASES) {
-      for (const ext of ["mjs", "cjs", "d.mts"] as const) {
+      for (const ext of ["mjs", "cjs", "d.mts", "d.cts"] as const) {
         const file = `${base}.${ext}`;
         expect(existsSync(path.join(distDir, file)), `missing dist/${file}`).toBe(
           true,
@@ -109,13 +109,17 @@ describe("published package surface", () => {
     expect(Object.keys(pkg.exports).some((k) => k.includes("*"))).toBe(false);
   });
 
-  it("each JS subpath export points at types/import/require with matching basenames", () => {
+  it("each JS subpath export maps ESM and CJS to matching declarations", () => {
     const pkg = JSON.parse(
       readFileSync(path.join(pkgRoot, "package.json"), "utf8"),
     ) as {
       exports: Record<
         string,
-        string | { types?: string; import?: string; require?: string }
+        | string
+        | {
+            import?: { types?: string; default?: string };
+            require?: { types?: string; default?: string };
+          }
       >;
     };
 
@@ -124,9 +128,14 @@ describe("published package surface", () => {
       const entry = pkg.exports[key];
       expect(entry, `missing export ${key}`).toBeTypeOf("object");
       if (typeof entry !== "object" || entry === null) continue;
-      expect(entry.types).toBe(`./dist/${base}.d.mts`);
-      expect(entry.import).toBe(`./dist/${base}.mjs`);
-      expect(entry.require).toBe(`./dist/${base}.cjs`);
+      expect(entry.import).toEqual({
+        types: `./dist/${base}.d.mts`,
+        default: `./dist/${base}.mjs`,
+      });
+      expect(entry.require).toEqual({
+        types: `./dist/${base}.d.cts`,
+        default: `./dist/${base}.cjs`,
+      });
     }
 
     expect(pkg.exports["./tailwind.css"]).toBe("./dist/tailwind.css");
