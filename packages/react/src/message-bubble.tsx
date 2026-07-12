@@ -72,6 +72,8 @@ export function MessageBubble({
 
   const hasTail = groupPosition === "single" || groupPosition === "first";
   const endsGroup = groupPosition === "single" || groupPosition === "last";
+  const showStatus = !isIncoming && !!status;
+  const hasMeta = !!timestamp || showStatus;
 
   // Display content or template name as fallback
   const displayContent =
@@ -106,25 +108,48 @@ export function MessageBubble({
 
             <FormattedMessage text={displayContent} />
 
-            {/* Timestamp and Status */}
-            <div className="float-right -mb-1 ml-2 mt-1.5 flex items-center justify-end gap-1 shrink-0 h-[15px] select-none">
-              {timestamp && (
-                <span className="text-[11px] text-[#111b21]/60 leading-none whitespace-nowrap">
-                  {timestamp}
-                </span>
-              )}
-              {!isIncoming && status && (
+            {/* Timestamp and status, WhatsApp-style: an invisible inline twin
+                reserves room in the text flow (widening short bubbles and
+                wrapping under long ones), while the visible copy is pinned to
+                the bubble's bottom-right corner so it can never overflow. */}
+            {hasMeta && (
+              <>
                 <span
-                  role="img"
-                  aria-label={String(status)}
-                  data-status={status}
-                  className={statusVariants({ variant: statusVariant })}
+                  aria-hidden
+                  className="invisible inline-flex h-0 items-center gap-1 ml-2"
                 >
-                  <HugeiconsIcon icon={statusIcon} size={15} strokeWidth={2} />
+                  {timestamp && (
+                    <span className="text-[11px] leading-none whitespace-nowrap">
+                      {timestamp}
+                    </span>
+                  )}
+                  {showStatus && (
+                    <HugeiconsIcon icon={statusIcon} size={15} strokeWidth={2} />
+                  )}
                 </span>
-              )}
-            </div>
-            <div className="clear-both" />
+                <span className="absolute bottom-[5px] right-[9px] flex items-center gap-1 select-none">
+                  {timestamp && (
+                    <span className="text-[11px] text-[#111b21]/60 leading-none whitespace-nowrap">
+                      {timestamp}
+                    </span>
+                  )}
+                  {showStatus && (
+                    <span
+                      role="img"
+                      aria-label={String(status)}
+                      data-status={status}
+                      className={statusVariants({ variant: statusVariant })}
+                    >
+                      <HugeiconsIcon
+                        icon={statusIcon}
+                        size={15}
+                        strokeWidth={2}
+                      />
+                    </span>
+                  )}
+                </span>
+              </>
+            )}
           </BubbleContent>
         </Bubble>
       </MessageContent>
