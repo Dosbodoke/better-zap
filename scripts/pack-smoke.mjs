@@ -1,7 +1,8 @@
 import { execFile } from "node:child_process";
-import { mkdir, readFile, readdir, rm } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
+import { findMissingRelativeImports } from "./pack-smoke-lib.mjs";
 
 const execFileAsync = promisify(execFile);
 const workspaceRoot = process.cwd();
@@ -64,6 +65,15 @@ async function tarballEntries(tarballPath) {
     .map((entry) => entry.replace(/^package\//, ""));
 }
 
+async function tarballFile(tarballPath, entry) {
+  const { stdout } = await execFileAsync("tar", [
+    "-xOzf",
+    tarballPath,
+    `package/${entry}`,
+  ]);
+  return stdout;
+}
+
 await rm(outputDir, { recursive: true, force: true });
 await mkdir(outputDir, { recursive: true });
 
@@ -95,15 +105,26 @@ for (const packageDir of packageDirs) {
   const entries = new Set(await tarballEntries(tarballPath));
   const referenced = collectReferencedPaths(pkg);
   const missing = referenced.filter((rel) => !entries.has(rel));
+  const missingImports = await findMissingRelativeImports(
+    entries,
+    (entry) => tarballFile(tarballPath, entry),
+  );
 
-  if (missing.length > 0) {
+  if (missing.length > 0 || missingImports.length > 0) {
+    const details = [];
+    if (missing.length > 0) {
+      details.push(`missing referenced file(s): ${missing.join(", ")}`);
+    }
+    if (missingImports.length > 0) {
+      details.push(`missing relative import(s): ${missingImports.join(", ")}`);
+    }
     failures.push(
-      `${pkg.name}@${pkg.version}: tarball missing ${missing.length} referenced file(s): ${missing.join(", ")}\n` +
+      `${pkg.name}@${pkg.version}: ${details.join("; ")}\n` +
         `    packed entries: ${[...entries].join(", ")}`,
     );
   } else {
     console.log(
-      `[pack-smoke] ${pkg.name}@${pkg.version}: OK (${referenced.length} referenced files present)`,
+      `[pack-smoke] ${pkg.name}@${pkg.version}: OK (${referenced.length} referenced files and all relative imports present)`,
     );
   }
 }
@@ -125,5 +146,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `[pack-smoke] Packed ${tarballs.length} tarballs into ${outputDir}; all exports/types targets present.`,
+  `[pack-smoke] Packed ${tarballs.length} tarballs into ${outputDir}; all exports/types targets and relative imports present.`,
 );

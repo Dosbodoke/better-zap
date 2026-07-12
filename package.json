@@ -7,7 +7,7 @@
     "typecheck": "pnpm --filter \"./packages/better-zap\" --filter \"./packages/react\" --filter \"./packages/hono\" --filter \"./packages/cli\" --filter \"./packages/fixtures\" -r typecheck",
     "landing:typecheck": "pnpm --dir landing typecheck",
     "test": "pnpm --filter \"./packages/better-zap\" --filter \"./packages/react\" --filter \"./packages/hono\" --filter \"./packages/cli\" --filter \"./packages/fixtures\" -r test",
-    "pack:check": "node ./scripts/pack-smoke.mjs",
+    "pack:check": "node --test ./scripts/pack-smoke.test.mjs && node ./scripts/pack-smoke.mjs",
     "release:check": "pnpm build && pnpm typecheck && pnpm landing:typecheck && pnpm test && pnpm pack:check && pnpm changeset status --verbose",
     "changeset": "changeset",
     "version-packages": "changeset version",
