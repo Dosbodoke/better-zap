@@ -244,7 +244,7 @@ describe("createWebhookHandler", () => {
       expect(mockOnMessage).toHaveBeenCalledOnce();
     });
 
-    it("falls back to await when neither runInBackground nor executionCtx is present", async () => {
+    it("returns 500 when no executionCtx is supplied (pre-existing Hono getter behavior)", async () => {
       const rawBody = JSON.stringify(makeTextMessage());
       const req = new Request("http://localhost/webhook", {
         method: "POST",
@@ -260,7 +260,9 @@ describe("createWebhookHandler", () => {
       // behavior, unchanged by this refactor), so this exercises the outer
       // catch → 500 path rather than the `await work` fallback line — the
       // same as before this move (see git show a599f9b, same `if (c.executionCtx)`
-      // shape).
+      // shape). Dispatch must not have run: `processor.process(payload)` is
+      // constructed inside the `else if (c.executionCtx)` branch, so reading
+      // the throwing getter happens before dispatch is ever invoked.
       const res = await app.fetch(req, {});
 
       expect(res.status).toBe(500);
@@ -268,6 +270,7 @@ describe("createWebhookHandler", () => {
         "webhook.request_error",
         expect.anything(),
       );
+      expect(mockOnMessage).not.toHaveBeenCalled();
     });
   });
 });

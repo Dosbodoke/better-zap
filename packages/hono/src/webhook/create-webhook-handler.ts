@@ -151,14 +151,13 @@ export function createWebhookHandler(
       }
 
       // Respond immediately — Meta enforces a 20s timeout.
-      const work = processor.process(payload);
       if (config.runInBackground) {
-        await config.runInBackground(work);
+        await config.runInBackground(processor.process(payload));
       } else if (c.executionCtx) {
-        c.executionCtx.waitUntil(work);
+        c.executionCtx.waitUntil(processor.process(payload));
       } else {
         // Fallback for environments where executionCtx is missing (e.g. some Next.js route simulations)
-        await work;
+        await processor.process(payload);
       }
       return c.text("OK", 200);
     } catch (error) {
