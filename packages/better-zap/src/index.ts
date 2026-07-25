@@ -180,6 +180,23 @@ export type {
 export { formatPhone } from "./utils/phone";
 export { delay } from "./utils/delay";
 
+export { getMessageContent } from "./webhook/message-content";
+export {
+  createWebhookProcessor,
+  type CoexistenceAccountOffboardedContext,
+  type CoexistenceAccountReconnectedContext,
+  type CoexistenceAccountUpdateContext,
+  type CoexistenceHistoryContext,
+  type CoexistenceMessageEditContext,
+  type CoexistenceMessageRevokeContext,
+  type CoexistenceUnsupportedMessageContext,
+  type SmbAppStateSyncContext,
+  type SmbMessageEchoContext,
+  type WebhookProcessor,
+  type WebhookProcessorConfig,
+  type WebhookProcessorHooks,
+} from "./webhook/webhook-processor";
+
 export type {
   Awaitable,
   BetterZapApi,
