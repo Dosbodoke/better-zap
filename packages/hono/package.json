@@ -1,6 +1,6 @@
 {
   "name": "@better-zap/hono",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Hono adapter and webhook runtime for Better Zap.",
   "license": "ISC",
   "repository": {
@@ -53,6 +53,7 @@
     "hono": "^4.12.25"
   },
   "devDependencies": {
+    "@better-zap/fixtures": "workspace:*",
     "@cloudflare/workers-types": "^4.20240117.0",
     "@types/node": "^25.4.0",
     "tsdown": "^0.21.2",

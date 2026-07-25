@@ -1,5 +1,13 @@
 # @better-zap/demo-dashboard
 
+## 0.0.3
+
+### Patch Changes
+
+- Updated dependencies [7762b6a]
+  - better-zap@0.2.1
+  - @better-zap/react@0.2.3
+
 ## 0.0.2
 
 ### Patch Changes
