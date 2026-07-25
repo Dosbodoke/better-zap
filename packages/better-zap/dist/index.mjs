@@ -1055,4 +1055,546 @@ function serializeTemplateParameter(parameter, value) {
 	}
 }
 //#endregion
-export { BetterZapClientError, CoexistenceService, EMPTY_TEMPLATE_REGISTRY, FREEFORM_MESSAGE_WINDOW_MS, InMemoryCoexistenceStore, MessageLoggerService, WHATSAPP_MESSAGE_TYPES, WhatsAppService, apiKeyTransport, createCoexistenceEmbeddedSignupConfig, createFreeformMessageWindow, createLogger, createZapClient, defineTemplates, delay, formatPhone, getLatestIncomingMessageAt, getTemplateNames, hasConfiguredTemplates, launchCoexistenceEmbeddedSignup, noopLogger, normalizeCoexistenceSessionEvent, normalizeCoexistenceSessionPayload, normalizeConversationRecord, normalizeConversationRecords, resolveConversationFreeformMessageWindow, serializeError, serializeTemplateFromRegistry, sessionTransport, toLegacyCoexistenceSessionEvent };
+//#region src/webhook/message-content.ts
+/**
+* Extract human-readable content from incoming messages for audit logs.
+*/
+function getMessageContent(message) {
+	switch (message.type) {
+		case "text": return message.text?.body || "[texto vazio]";
+		case "image": return `[imagem${message.image?.caption ? `: ${message.image.caption}` : ""}]`;
+		case "audio": return "[áudio]";
+		case "video": return `[vídeo${message.video?.caption ? `: ${message.video.caption}` : ""}]`;
+		case "document": return `[documento: ${message.document?.filename || "arquivo"}]`;
+		case "location": return `[localização: ${message.location?.name || `${message.location?.latitude},${message.location?.longitude}`}]`;
+		case "button": return `[botão: ${message.button?.text}]`;
+		case "interactive":
+			if (message.interactive?.button_reply) return `[resposta botão: ${message.interactive.button_reply.title}]`;
+			if (message.interactive?.list_reply) return `[resposta lista: ${message.interactive.list_reply.title}]`;
+			return "[interativo]";
+		case "sticker": return "[figurinha]";
+		case "reaction": return "[reação]";
+		default: return `[${message.type}]`;
+	}
+}
+//#endregion
+//#region src/webhook/webhook-processor.ts
+function createWebhookProcessor(config) {
+	return { process: (payload) => processPayload(payload, config) };
+}
+/** Top-level dispatcher — iterates entries in the webhook payload. */
+async function processPayload(payload, config) {
+	const log = config.log;
+	try {
+		if (payload.object !== "whatsapp_business_account") {
+			log.debug("webhook.ignored_payload", { object: payload.object });
+			return;
+		}
+		for (const entry of payload.entry) await processEntry(entry, config, log);
+	} catch (error) {
+		log.error("webhook.async_process_error", serializeError(error));
+	}
+}
+/** Iterates changes within a single entry. */
+async function processEntry(entry, config, log) {
+	for (const change of entry.changes) await processChange(change, config, log);
+}
+/** Routes webhook changes to field-specific processors. */
+async function processChange(change, config, log) {
+	switch (change.field) {
+		case "messages":
+			await processMessagesChange(change, config, log);
+			return;
+		case "history":
+			await processHistoryChange(change, config, log);
+			return;
+		case "smb_app_state_sync":
+			await processSmbAppStateSyncChange(change, config, log);
+			return;
+		case "smb_message_echoes":
+			await processSmbMessageEchoesChange(change, config, log);
+			return;
+		case "account_update":
+			await processAccountUpdateChange(change, config, log);
+			return;
+		case "account_offboarded":
+			await processAccountOffboardedChange(change, config, log);
+			return;
+		case "account_reconnected":
+			await processAccountReconnectedChange(change, config, log);
+			return;
+		default:
+			log.debug("webhook.unknown_field_ignored", { field: change.field });
+			return;
+	}
+}
+/** Routes ordinary messages, statuses, and errors to the existing handlers. */
+async function processMessagesChange(change, config, log) {
+	const value = change.value;
+	const messageClassification = classifyCoexistenceMessages(value.messages);
+	if (messageClassification === "edit") {
+		await processMessageEditChange(change, config, log);
+		return;
+	}
+	if (messageClassification === "revoke") {
+		await processMessageRevokeChange(change, config, log);
+		return;
+	}
+	if (messageClassification === "unsupported") {
+		await processUnsupportedMessagesChange(change, config, log);
+		return;
+	}
+	if (value.messages && value.messages.length > 0) for (const message of value.messages) await processIncomingMessage(message, resolveContact(value.contacts, message), config, log);
+	if (value.statuses && value.statuses.length > 0) for (const status of value.statuses) await processStatusUpdate(status, config, log);
+	if (value.errors && value.errors.length > 0) {
+		const errorHandler = config.hooks.onError ?? ((err) => {
+			log.error("webhook.meta_error", { error: err });
+		});
+		for (const error of value.errors) try {
+			errorHandler(error);
+		} catch (hookError) {
+			log.error("webhook.on_error_hook_failed", {
+				metaError: error,
+				hookError: serializeError(hookError)
+			});
+		}
+	}
+}
+async function processHistoryChange(change, config, log) {
+	const value = change.value;
+	const requestId = value.request_id;
+	let importedMessages = 0;
+	let duplicateMessages = 0;
+	let hasHistoryErrors = (value.errors?.length ?? 0) > 0;
+	if (requestId && config.database?.coexistence) await config.database.coexistence.updateSyncJobByRequestId(requestId, {
+		status: "processing",
+		metadata: { field: "history" }
+	});
+	if (value.errors && value.errors.length > 0) await processCoexistenceErrors(change, value, config, log);
+	for (const chunk of value.history ?? []) {
+		if (chunk.errors && chunk.errors.length > 0) {
+			hasHistoryErrors = true;
+			await processCoexistenceErrors(change, {
+				...value,
+				errors: chunk.errors
+			}, config, log);
+		}
+		for (const message of chunk.messages ?? []) {
+			if (message.revoked || message.type === "revoked") {
+				await runOptionalHook(() => config.hooks.onCoexistenceMessageRevoke?.({
+					value: {
+						...value,
+						messages: [message]
+					},
+					change,
+					revokedMessages: 1
+				}), "webhook.on_coexistence_message_revoke_hook_failed", log);
+				continue;
+			}
+			if (message.edited || message.type === "message_edit") {
+				await runOptionalHook(() => config.hooks.onCoexistenceMessageEdit?.({
+					value: {
+						...value,
+						messages: [message]
+					},
+					change,
+					editedMessages: 1
+				}), "webhook.on_coexistence_message_edit_hook_failed", log);
+				continue;
+			}
+			if (message.unsupported || message.type === "unsupported" || (message.errors?.length ?? 0) > 0) {
+				await processCoexistenceErrors(change, {
+					...value,
+					unsupported: true,
+					errors: (message.errors ?? []).map(toWebhookError)
+				}, config, log);
+				continue;
+			}
+			const result = await importCoexistenceMessage({
+				message,
+				contacts: value.contacts,
+				metadata: value.metadata,
+				requestId,
+				source: "history",
+				config
+			});
+			if (result === "created") importedMessages += 1;
+			else if (result === "duplicate") duplicateMessages += 1;
+		}
+		for (const status of chunk.statuses ?? []) await processStatusUpdate(status, config, log);
+	}
+	if (requestId && config.database?.coexistence) {
+		const updatedAt = /* @__PURE__ */ new Date();
+		await config.database.coexistence.updateSyncJobByRequestId(requestId, {
+			status: hasHistoryErrors ? "failed" : "completed",
+			...hasHistoryErrors ? { failedAt: updatedAt } : { completedAt: updatedAt },
+			updatedAt,
+			metadata: {
+				field: "history",
+				importedMessages,
+				duplicateMessages
+			}
+		});
+	}
+	await runOptionalHook(() => config.hooks.onCoexistenceHistory?.({
+		value,
+		change,
+		importedMessages,
+		duplicateMessages
+	}), "webhook.on_coexistence_history_hook_failed", log);
+}
+async function processSmbAppStateSyncChange(change, config, log) {
+	const value = change.value;
+	let upsertedContacts = 0;
+	let removedContacts = 0;
+	const hasSyncErrors = (value.errors?.length ?? 0) > 0;
+	if (value.request_id && config.database?.coexistence) await config.database.coexistence.updateSyncJobByRequestId(value.request_id, {
+		status: "processing",
+		metadata: { field: "smb_app_state_sync" }
+	});
+	if (hasSyncErrors) await processCoexistenceErrors(change, value, config, log);
+	if (!hasSyncErrors && config.database?.coexistence) for (const contact of value.contacts ?? []) {
+		if (contact.removed) {
+			await config.database.coexistence.removeContact({
+				waId: contact.wa_id,
+				phoneNumberId: value.metadata?.phone_number_id
+			});
+			removedContacts += 1;
+			continue;
+		}
+		await config.database.coexistence.upsertContact({
+			waId: contact.wa_id,
+			phoneNumberId: value.metadata?.phone_number_id,
+			displayName: contact.profile?.name,
+			removed: false,
+			updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+			metadata: contact
+		});
+		upsertedContacts += 1;
+	}
+	if (value.request_id && config.database?.coexistence) {
+		const updatedAt = /* @__PURE__ */ new Date();
+		await config.database.coexistence.updateSyncJobByRequestId(value.request_id, {
+			status: hasSyncErrors ? "failed" : "completed",
+			...hasSyncErrors ? { failedAt: updatedAt } : { completedAt: updatedAt },
+			updatedAt,
+			metadata: {
+				field: "smb_app_state_sync",
+				upsertedContacts,
+				removedContacts,
+				errors: value.errors
+			}
+		});
+	}
+	await runOptionalHook(() => config.hooks.onSmbAppStateSync?.({
+		value,
+		change,
+		upsertedContacts,
+		removedContacts
+	}), "webhook.on_smb_app_state_sync_hook_failed", log);
+}
+async function processMessageEditChange(change, config, log) {
+	const value = change.value;
+	const editedMessages = value.messages.length;
+	await runOptionalHook(() => config.hooks.onCoexistenceMessageEdit?.({
+		value,
+		change,
+		editedMessages
+	}), "webhook.on_coexistence_message_edit_hook_failed", log);
+}
+async function processMessageRevokeChange(change, config, log) {
+	const value = change.value;
+	const revokedMessages = value.messages.length;
+	await runOptionalHook(() => config.hooks.onCoexistenceMessageRevoke?.({
+		value,
+		change,
+		revokedMessages
+	}), "webhook.on_coexistence_message_revoke_hook_failed", log);
+}
+async function processUnsupportedMessagesChange(change, config, log) {
+	const value = change.value;
+	const errors = [...value.errors ?? [], ...(value.messages ?? []).flatMap((message) => (message.errors ?? []).map(toWebhookError))];
+	await runOptionalHook(() => config.hooks.onCoexistenceUnsupportedMessage?.({
+		value,
+		change,
+		errors
+	}), "webhook.on_coexistence_unsupported_hook_failed", log);
+}
+async function processSmbMessageEchoesChange(change, config, log) {
+	const value = change.value;
+	let importedMessages = 0;
+	let duplicateMessages = 0;
+	for (const message of value.messages ?? []) {
+		const result = await importCoexistenceMessage({
+			message,
+			contacts: value.contacts,
+			metadata: value.metadata,
+			source: "smb_message_echoes",
+			forceDirection: "outgoing",
+			config
+		});
+		if (result === "created") importedMessages += 1;
+		else if (result === "duplicate") duplicateMessages += 1;
+	}
+	await runOptionalHook(() => config.hooks.onSmbMessageEcho?.({
+		value,
+		change,
+		importedMessages,
+		duplicateMessages
+	}), "webhook.on_smb_message_echo_hook_failed", log);
+}
+async function processAccountUpdateChange(change, config, log) {
+	const value = change.value;
+	if (config.database?.coexistence) await config.database.coexistence.recordLifecycleEvent({
+		wabaId: value.waba_info?.waba_id,
+		phoneNumberId: value.phone_number_id,
+		accountId: value.waba_info?.owner_business_id,
+		event: value.event ?? "account_update",
+		payload: value,
+		createdAt: (/* @__PURE__ */ new Date()).toISOString()
+	});
+	await runOptionalHook(() => config.hooks.onCoexistenceAccountUpdate?.({
+		value,
+		change
+	}), "webhook.on_coexistence_account_update_hook_failed", log);
+}
+async function processAccountOffboardedChange(change, config, log) {
+	const value = change.value;
+	const now = (/* @__PURE__ */ new Date()).toISOString();
+	if (config.database?.coexistence) {
+		await config.database.coexistence.recordLifecycleEvent({
+			wabaId: value.waba_info?.waba_id,
+			phoneNumberId: value.phone_number_id ?? value.metadata?.phone_number_id,
+			accountId: value.waba_info?.owner_business_id,
+			event: value.event ?? "ACCOUNT_OFFBOARDED",
+			payload: value,
+			createdAt: now
+		});
+		await upsertLifecycleAccountState(value, config, {
+			status: "offboarded",
+			usable: false,
+			offboardedAt: now,
+			updatedAt: now,
+			metadata: {
+				lifecycleEvent: "account_offboarded",
+				reason: value.reason,
+				raw: value
+			}
+		});
+	}
+	await runOptionalHook(() => config.hooks.onCoexistenceAccountOffboarded?.({
+		value,
+		change
+	}), "webhook.on_coexistence_account_offboarded_hook_failed", log);
+}
+async function processAccountReconnectedChange(change, config, log) {
+	const value = change.value;
+	const now = (/* @__PURE__ */ new Date()).toISOString();
+	if (config.database?.coexistence) {
+		await config.database.coexistence.recordLifecycleEvent({
+			wabaId: value.waba_info?.waba_id,
+			phoneNumberId: value.phone_number_id ?? value.metadata?.phone_number_id,
+			accountId: value.waba_info?.owner_business_id,
+			event: value.event ?? "ACCOUNT_RECONNECTED",
+			payload: value,
+			createdAt: now
+		});
+		await upsertLifecycleAccountState(value, config, {
+			status: "reconnected",
+			usable: true,
+			reconnectedAt: now,
+			updatedAt: now,
+			metadata: {
+				lifecycleEvent: "account_reconnected",
+				reconnectReason: value.reconnect_reason,
+				cloudApiProducts: value.cloud_api_products,
+				raw: value
+			}
+		});
+	}
+	await runOptionalHook(() => config.hooks.onCoexistenceAccountReconnected?.({
+		value,
+		change
+	}), "webhook.on_coexistence_account_reconnected_hook_failed", log);
+}
+async function processCoexistenceErrors(change, value, config, log) {
+	const errors = value.errors ?? [];
+	const requestId = "request_id" in value && typeof value.request_id === "string" ? value.request_id : void 0;
+	if (requestId && config.database?.coexistence) await config.database.coexistence.updateSyncJobByRequestId(requestId, {
+		status: "failed",
+		metadata: {
+			field: change.field,
+			errors,
+			isHistoryOptOut: errors.some((error) => error.code === 2593109)
+		}
+	});
+	await runOptionalHook(() => config.hooks.onCoexistenceUnsupportedMessage?.({
+		value,
+		change,
+		errors
+	}), "webhook.on_coexistence_unsupported_hook_failed", log);
+}
+async function upsertLifecycleAccountState(value, config, patch) {
+	const store = config.database?.coexistence;
+	const phoneNumberId = value.phone_number_id ?? value.metadata?.phone_number_id;
+	const wabaId = value.waba_info?.waba_id;
+	if (!store || !phoneNumberId || !wabaId) return;
+	const existing = await store.getConnectedAccountByPhoneNumberId(phoneNumberId) ?? await store.getConnectedAccountByWabaId(wabaId);
+	await store.upsertConnectedAccount({
+		wabaId,
+		phoneNumberId,
+		accountId: value.waba_info?.owner_business_id ?? existing?.accountId,
+		businessId: existing?.businessId,
+		displayPhoneNumber: value.metadata?.display_phone_number ?? existing?.displayPhoneNumber,
+		...existing,
+		...patch,
+		metadata: {
+			...existing?.metadata,
+			...patch.metadata
+		}
+	});
+}
+async function importCoexistenceMessage(input) {
+	if (!input.config.database?.coexistence) return "skipped";
+	const direction = input.forceDirection ?? resolveMessageDirection(input.message, input.metadata?.display_phone_number);
+	const contact = resolveCoexistenceContact(input.contacts, input.message);
+	const phone = resolveConversationPhone(input.message, direction, contact);
+	const resolveMessageContent = input.config.resolveMessageContent ?? getMessageContent;
+	return await input.config.logger.logImportedMessage({
+		phone,
+		waMessageId: input.message.id,
+		direction,
+		content: resolveMessageContent(input.message),
+		sentAt: parseWebhookTimestamp(input.message.timestamp),
+		senderName: contact?.profile?.name,
+		metadata: {
+			source: input.source,
+			requestId: input.requestId,
+			phoneNumberId: input.metadata?.phone_number_id,
+			raw: input.message
+		}
+	}) ? "created" : "duplicate";
+}
+function resolveMessageDirection(message, businessDisplayPhoneNumber) {
+	if (!businessDisplayPhoneNumber) return "incoming";
+	return formatPhone(message.from) === formatPhone(businessDisplayPhoneNumber) ? "outgoing" : "incoming";
+}
+function resolveConversationPhone(message, direction, contact) {
+	if (direction === "incoming") return message.from;
+	const messageWithRecipient = message;
+	return messageWithRecipient.to ?? messageWithRecipient.recipient_id ?? contact?.wa_id ?? message.from;
+}
+function parseWebhookTimestamp(timestamp) {
+	const sentAt = /* @__PURE__ */ new Date(parseInt(timestamp, 10) * 1e3);
+	return Number.isNaN(sentAt.getTime()) ? (/* @__PURE__ */ new Date()).toISOString() : sentAt.toISOString();
+}
+async function runOptionalHook(run, logEvent, log) {
+	try {
+		await run();
+	} catch (error) {
+		log.error(logEvent, serializeError(error));
+	}
+}
+/**
+* Processes a single incoming message:
+* 1. Extracts human-readable content
+* 2. Atomically logs and deduplicates by waMessageId
+* 3. Calls {@link WebhookProcessorHooks.onMessage}
+*/
+async function processIncomingMessage(message, contact, config, log) {
+	const phone = message.from;
+	log.info("webhook.message_received", {
+		waMessageId: message.id,
+		phone,
+		messageType: message.type
+	});
+	const content = (config.resolveMessageContent ?? getMessageContent)(message);
+	const sentAt = /* @__PURE__ */ new Date(parseInt(message.timestamp, 10) * 1e3);
+	const normalizedSentAt = Number.isNaN(sentAt.getTime()) ? (/* @__PURE__ */ new Date()).toISOString() : sentAt.toISOString();
+	const { id, type, text, from, timestamp, ...rawMetadata } = message;
+	if (!await config.logger.logIncoming({
+		phone,
+		waMessageId: message.id,
+		content,
+		sentAt: normalizedSentAt,
+		senderName: contact?.profile?.name,
+		metadata: Object.keys(rawMetadata).length > 0 ? rawMetadata : void 0
+	})) {
+		log.info("webhook.duplicate_ignored", {
+			waMessageId: message.id,
+			phone
+		});
+		return;
+	}
+	const ctx = {
+		message,
+		contact,
+		content,
+		phone
+	};
+	try {
+		await config.hooks.onMessage(ctx);
+	} catch (error) {
+		log.error("webhook.on_message_hook_failed", {
+			waMessageId: message.id,
+			phone,
+			...serializeError(error)
+		});
+	}
+}
+/**
+* Processes a single delivery status update:
+* 1. Parses Unix timestamp to ISO-8601
+* 2. Extracts first error (if any)
+* 3. Atomically updates status only if it advances the lifecycle
+* 4. Calls {@link WebhookProcessorHooks.onStatusUpdate} only if the update was applied
+*/
+async function processStatusUpdate(status, config, log) {
+	const firstError = status.errors?.[0];
+	const timestamp = (/* @__PURE__ */ new Date(parseInt(status.timestamp) * 1e3)).toISOString();
+	const errorMessage = firstError?.message;
+	const errorCode = firstError?.code;
+	if (!await config.logger.updateStatus(status.id, status.status, timestamp, errorMessage)) return;
+	log.info("webhook.status_updated", {
+		waMessageId: status.id,
+		status: status.status
+	});
+	const ctx = {
+		status,
+		timestamp,
+		errorMessage,
+		errorCode
+	};
+	try {
+		await config.hooks.onStatusUpdate(ctx);
+	} catch (error) {
+		log.error("webhook.on_status_update_hook_failed", {
+			waMessageId: status.id,
+			...serializeError(error)
+		});
+	}
+}
+/** Matches a contact to a message by `wa_id`, falling back to the first contact. */
+function resolveContact(contacts, message) {
+	if (!contacts || contacts.length === 0) return;
+	return contacts.find((c) => c.wa_id === message.from) ?? contacts[0];
+}
+function resolveCoexistenceContact(contacts, message) {
+	if (!contacts || contacts.length === 0) return;
+	return contacts.find((c) => c.wa_id === message.from) ?? contacts[0];
+}
+function classifyCoexistenceMessages(messages) {
+	if (!messages || messages.length === 0) return "ordinary";
+	if (messages.some((message) => message.revoked || message.type === "revoked")) return "revoke";
+	if (messages.some((message) => message.edited || message.type === "message_edit")) return "edit";
+	if (messages.some((message) => message.unsupported || message.type === "unsupported" || (message.errors?.length ?? 0) > 0)) return "unsupported";
+	return "ordinary";
+}
+function toWebhookError(error) {
+	return {
+		...error,
+		error_data: error.error_data ?? { details: error.message }
+	};
+}
+//#endregion
+export { BetterZapClientError, CoexistenceService, EMPTY_TEMPLATE_REGISTRY, FREEFORM_MESSAGE_WINDOW_MS, InMemoryCoexistenceStore, MessageLoggerService, WHATSAPP_MESSAGE_TYPES, WhatsAppService, apiKeyTransport, createCoexistenceEmbeddedSignupConfig, createFreeformMessageWindow, createLogger, createWebhookProcessor, createZapClient, defineTemplates, delay, formatPhone, getLatestIncomingMessageAt, getMessageContent, getTemplateNames, hasConfiguredTemplates, launchCoexistenceEmbeddedSignup, noopLogger, normalizeCoexistenceSessionEvent, normalizeCoexistenceSessionPayload, normalizeConversationRecord, normalizeConversationRecords, resolveConversationFreeformMessageWindow, serializeError, serializeTemplateFromRegistry, sessionTransport, toLegacyCoexistenceSessionEvent };
