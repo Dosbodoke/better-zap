@@ -151,6 +151,9 @@ importers:
 
   packages/better-zap:
     devDependencies:
+      '@better-zap/fixtures':
+        specifier: workspace:*
+        version: link:../fixtures
       '@types/node':
         specifier: ^25.4.0
         version: 25.4.0
@@ -207,6 +210,9 @@ importers:
         specifier: ^4.12.25
         version: 4.12.27
     devDependencies:
+      '@better-zap/fixtures':
+        specifier: workspace:*
+        version: link:../fixtures
       '@cloudflare/workers-types':
         specifier: ^4.20240117.0
         version: 4.20260331.1

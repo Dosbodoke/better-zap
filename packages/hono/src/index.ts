@@ -3,15 +3,6 @@ export type { BetterZap, BetterZapConfig } from "./better-zap.types";
 
 export {
   createWebhookHandler,
-  type CoexistenceAccountOffboardedContext,
-  type CoexistenceAccountReconnectedContext,
-  type CoexistenceAccountUpdateContext,
-  type CoexistenceHistoryContext,
-  type CoexistenceMessageEditContext,
-  type CoexistenceMessageRevokeContext,
-  type CoexistenceUnsupportedMessageContext,
-  type SmbAppStateSyncContext,
-  type SmbMessageEchoContext,
   type WebhookConfig,
 } from "./webhook/create-webhook-handler";
 export { verifyMetaWebhookSignature } from "./webhook/signature-verification";
@@ -32,4 +23,13 @@ export type {
   InferBetterZapPluginServices,
   MessageContext,
   StatusContext,
+  CoexistenceAccountOffboardedContext,
+  CoexistenceAccountReconnectedContext,
+  CoexistenceAccountUpdateContext,
+  CoexistenceHistoryContext,
+  CoexistenceMessageEditContext,
+  CoexistenceMessageRevokeContext,
+  CoexistenceUnsupportedMessageContext,
+  SmbAppStateSyncContext,
+  SmbMessageEchoContext,
 } from "better-zap";
