@@ -1,5 +1,15 @@
 # @better-zap/cli
 
+## 25.0.0
+
+### Migration
+
+- Align package releases with Meta Graph API v25.0. All five public packages
+  use the coordinated 25.0.x line, and future package patch releases increment
+  the third number. Move consumers from the previous 0.x versions to 25.0.0 and
+  update dependency ranges to ^25.0.0. The runtime Meta API defaults and
+  behavior are unchanged.
+
 ## 0.1.3
 
 ### Patch Changes

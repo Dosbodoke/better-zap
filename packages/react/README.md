@@ -523,9 +523,5 @@ remain public — nothing described below removes an export.
 
 ### Versioning
 
-`@better-zap/react` is `0.x`; per SemVer, minor releases in this range may
-include breaking changes. This wave, however, removes **no** high-level
-export: `MessageBubble`, `MessageInput`, `MessageList`, `ConversationList`,
-`MessageView`, and `WhatsappDashboard` all remain public. The composable
-primitives (`Bubble*`, `Message*` layout parts, `Composer*`, `DateDivider`)
-are additive — they sit alongside the adapters, not in place of them.
+See the [package release policy](../../README.md#releases) and the
+[maintainer release runbook](../../.changeset/README.md).
