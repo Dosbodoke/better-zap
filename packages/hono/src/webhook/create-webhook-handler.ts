@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context, type ExecutionContext } from "hono";
 import { createWebhookProcessor, serializeError } from "better-zap";
 import type {
   BetterZapDatabase,
@@ -151,10 +151,11 @@ export function createWebhookHandler(
       }
 
       // Respond immediately — Meta enforces a 20s timeout.
+      const executionCtx = getExecutionContext(c);
       if (config.runInBackground) {
         await config.runInBackground(processor.process(payload));
-      } else if (c.executionCtx) {
-        c.executionCtx.waitUntil(processor.process(payload));
+      } else if (executionCtx) {
+        executionCtx.waitUntil(processor.process(payload));
       } else {
         // Fallback for environments where executionCtx is missing (e.g. some Next.js route simulations)
         await processor.process(payload);
@@ -167,4 +168,13 @@ export function createWebhookHandler(
   });
 
   return webhook;
+}
+
+/** Hono's `executionCtx` getter throws outside Workers-style runtimes. */
+function getExecutionContext(c: Context): ExecutionContext | undefined {
+  try {
+    return c.executionCtx;
+  } catch {
+    return undefined;
+  }
 }

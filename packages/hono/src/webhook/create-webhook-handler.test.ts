@@ -244,7 +244,7 @@ describe("createWebhookHandler", () => {
       expect(mockOnMessage).toHaveBeenCalledOnce();
     });
 
-    it("returns 500 when no executionCtx is supplied (pre-existing Hono getter behavior)", async () => {
+    it("processes inline when the runtime provides no execution context", async () => {
       const rawBody = JSON.stringify(makeTextMessage());
       const req = new Request("http://localhost/webhook", {
         method: "POST",
@@ -256,21 +256,12 @@ describe("createWebhookHandler", () => {
       });
 
       // No third `executionCtx` argument. Hono's `c.executionCtx` getter throws
-      // when no ExecutionContext was supplied to `fetch()` (pre-existing Hono
-      // behavior, unchanged by this refactor), so this exercises the outer
-      // catch → 500 path rather than the `await work` fallback line — the
-      // same as before this move (see git show a599f9b, same `if (c.executionCtx)`
-      // shape). Dispatch must not have run: `processor.process(payload)` is
-      // constructed inside the `else if (c.executionCtx)` branch, so reading
-      // the throwing getter happens before dispatch is ever invoked.
+      // here, so the handler must fall back to awaiting the processor.
       const res = await app.fetch(req, {});
 
-      expect(res.status).toBe(500);
-      expect(mockLog.error).toHaveBeenCalledWith(
-        "webhook.request_error",
-        expect.anything(),
-      );
-      expect(mockOnMessage).not.toHaveBeenCalled();
+      expect(res.status).toBe(200);
+      expect(mockLogger.logIncoming).toHaveBeenCalledOnce();
+      expect(mockOnMessage).toHaveBeenCalledOnce();
     });
   });
 });
