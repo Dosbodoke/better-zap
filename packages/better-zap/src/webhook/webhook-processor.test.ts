@@ -12,6 +12,17 @@ import {
   createWebhookProcessor,
   type WebhookProcessorConfig,
 } from "./webhook-processor";
+import {
+  BUSINESS_PHONE_NUMBER_ID,
+  documentedEditFixture,
+  documentedRevokeFixture,
+  historyDeclinedFixture,
+  historyFinalChunkFixture,
+  historyMediaAssetFixture,
+  historyThreadsChunkFixture,
+  messageEchoesFixture,
+  stateSyncFixture,
+} from "./__fixtures__/coexistence-documented";
 
 const mockOnMessage = vi.fn();
 const mockOnStatusUpdate = vi.fn();
@@ -559,5 +570,436 @@ describe("createWebhookProcessor", () => {
     });
     expect(mockOnMessage).not.toHaveBeenCalled();
     expect(mockLogger.logIncoming).not.toHaveBeenCalled();
+  });
+
+  describe("documented coexistence webhook shapes", () => {
+    const isoFromUnix = (seconds: number) => new Date(seconds * 1000).toISOString();
+
+    const createStoreProcessor = (store: Record<string, unknown> = {}) =>
+      createTestProcessor({
+        database: {
+          whatsappLog: {},
+          coexistence: { ...mockCoexistenceStore, ...store },
+        } as any,
+      });
+
+    const inFlightJob = (requestId: string, syncType: string) =>
+      vi.fn().mockResolvedValue({
+        requestId,
+        syncType,
+        phoneNumberId: BUSINESS_PHONE_NUMBER_ID,
+        status: "requested",
+      });
+
+    const syncJobStatuses = (requestId: string) =>
+      mockCoexistenceStore.updateSyncJobByRequestId.mock.calls
+        .filter(([id]) => id === requestId)
+        .map(([, patch]) => patch.status);
+
+    it("imports history threads with direction, identity, and timestamps", async () => {
+      const getInFlightSyncJob = inFlightJob("req_fake_history", "history");
+      processor = createStoreProcessor({ getInFlightSyncJob });
+
+      await processor.process(historyThreadsChunkFixture as any);
+      expect(getInFlightSyncJob).toHaveBeenCalledWith({
+        phoneNumberId: BUSINESS_PHONE_NUMBER_ID,
+        syncType: "history",
+      });
+      expect(mockLogger.logImportedMessage).toHaveBeenCalledTimes(4);
+      expect(mockLogger.logImportedMessage).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          phone: "15550002222",
+          waMessageId: "wamid.fake.thread.out.1",
+          direction: "outgoing",
+          content: "Here is the info you requested",
+          sentAt: isoFromUnix(1739230955),
+          senderName: "ada_fake",
+          metadata: expect.objectContaining({
+            source: "history",
+            requestId: "req_fake_history",
+            phoneNumberId: BUSINESS_PHONE_NUMBER_ID,
+            historyStatus: "read",
+            userId: "BSUID.fake.ada",
+          }),
+        }),
+      );
+      expect(mockLogger.logImportedMessage).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          waMessageId: "wamid.fake.thread.media.1",
+          direction: "outgoing",
+          content: "[media_placeholder]",
+        }),
+      );
+      expect(mockLogger.logImportedMessage).toHaveBeenNthCalledWith(
+        3,
+        expect.objectContaining({
+          phone: "15550002222",
+          waMessageId: "wamid.fake.thread.in.1",
+          direction: "incoming",
+          sentAt: isoFromUnix(1739230980),
+        }),
+      );
+      expect(mockLogger.logImportedMessage).toHaveBeenNthCalledWith(
+        4,
+        expect.objectContaining({
+          phone: "BSUID.fake.hidden",
+          waMessageId: "wamid.fake.thread.in.hidden",
+          direction: "incoming",
+          metadata: expect.objectContaining({ userId: "BSUID.fake.hidden" }),
+        }),
+      );
+      expect(syncJobStatuses("req_fake_history")).toEqual([
+        "processing",
+        "processing",
+      ]);
+      expect(mockCoexistenceStore.updateSyncJobByRequestId).toHaveBeenLastCalledWith(
+        "req_fake_history",
+        expect.objectContaining({
+          status: "processing",
+          metadata: expect.objectContaining({
+            progress: 55,
+            phase: 0,
+            chunkOrder: 1,
+            importedMessages: 4,
+            failedMessages: 0,
+          }),
+        }),
+      );
+      expect(mockOnCoexistenceHistory).toHaveBeenCalledWith(
+        expect.objectContaining({
+          importedMessages: 4,
+          duplicateMessages: 0,
+          failedMessages: 0,
+          progress: 55,
+          requestId: "req_fake_history",
+        }),
+      );
+      expect(mockOnMessage).not.toHaveBeenCalled();
+    });
+
+    it("marks the history sync completed only when progress reaches 100", async () => {
+      processor = createStoreProcessor({
+        getInFlightSyncJob: inFlightJob("req_fake_history", "history"),
+      });
+
+      await processor.process(historyFinalChunkFixture as any);
+
+      expect(syncJobStatuses("req_fake_history")).toEqual([
+        "processing",
+        "completed",
+      ]);
+      expect(mockCoexistenceStore.updateSyncJobByRequestId).toHaveBeenLastCalledWith(
+        "req_fake_history",
+        expect.objectContaining({
+          completedAt: expect.any(Date),
+          metadata: expect.objectContaining({ progress: 100, phase: 2 }),
+        }),
+      );
+    });
+
+    it("imports a message once when thread and legacy shapes both carry it", async () => {
+      processor = createStoreProcessor();
+      const chunk = (historyFinalChunkFixture.entry[0]!.changes[0]!.value as any)
+        .history[0];
+      const payload = makeWebhookPayload(
+        {
+          request_id: "req_both_shapes",
+          history: [
+            {
+              ...chunk,
+              messages: chunk.threads[0]!.messages,
+            },
+          ],
+        },
+        "history",
+      );
+
+      await processor.process(payload as any);
+
+      expect(mockLogger.logImportedMessage).toHaveBeenCalledOnce();
+      expect(mockOnCoexistenceHistory).toHaveBeenCalledWith(
+        expect.objectContaining({ importedMessages: 1, duplicateMessages: 1 }),
+      );
+    });
+
+    it("processes media asset deliveries without completing the sync", async () => {
+      processor = createStoreProcessor({
+        getInFlightSyncJob: inFlightJob("req_fake_history", "history"),
+      });
+      mockLogger.logImportedMessage.mockResolvedValueOnce(false);
+
+      await processor.process(historyMediaAssetFixture as any);
+
+      expect(mockLogger.logImportedMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          waMessageId: "wamid.fake.thread.media.1",
+          direction: "incoming",
+          content: "[imagem: fake caption]",
+        }),
+      );
+      expect(syncJobStatuses("req_fake_history")).not.toContain("completed");
+      expect(mockOnCoexistenceHistory).toHaveBeenCalledWith(
+        expect.objectContaining({ duplicateMessages: 1 }),
+      );
+    });
+
+    it("records a declined history share as a failed sync without request_id", async () => {
+      processor = createStoreProcessor({
+        getInFlightSyncJob: inFlightJob("req_fake_history", "history"),
+      });
+
+      await processor.process(historyDeclinedFixture as any);
+
+      expect(mockCoexistenceStore.updateSyncJobByRequestId).toHaveBeenCalledWith(
+        "req_fake_history",
+        expect.objectContaining({
+          status: "failed",
+          metadata: expect.objectContaining({ isHistoryOptOut: true }),
+        }),
+      );
+      expect(syncJobStatuses("req_fake_history")).not.toContain("completed");
+      expect(mockOnCoexistenceUnsupportedMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          errors: [expect.objectContaining({ code: 2593109 })],
+        }),
+      );
+    });
+
+    it("never reports success when a history import fails", async () => {
+      processor = createStoreProcessor({
+        getInFlightSyncJob: inFlightJob("req_fake_history", "history"),
+      });
+      mockLogger.logImportedMessage
+        .mockResolvedValueOnce(true)
+        .mockRejectedValueOnce(new Error("storage unavailable"));
+
+      await processor.process(historyThreadsChunkFixture as any);
+      expect(mockLog.error).toHaveBeenCalledWith(
+        "webhook.coexistence_import_failed",
+        expect.objectContaining({
+          field: "history",
+          waMessageId: "wamid.fake.thread.media.1",
+        }),
+      );
+      expect(syncJobStatuses("req_fake_history")).not.toContain("completed");
+      expect(mockCoexistenceStore.updateSyncJobByRequestId).toHaveBeenLastCalledWith(
+        "req_fake_history",
+        expect.objectContaining({
+          status: "failed",
+          failedAt: expect.any(Date),
+          failureReason: "import_failed",
+          metadata: expect.objectContaining({
+            importedMessages: 3,
+            failedMessages: 1,
+          }),
+        }),
+      );
+      expect(mockOnCoexistenceHistory).toHaveBeenLastCalledWith(
+        expect.objectContaining({ importedMessages: 3, failedMessages: 1 }),
+      );
+    });
+
+    it("keeps history messages with invalid timestamps but flags them", async () => {
+      processor = createStoreProcessor();
+
+      await processor.process(
+        makeWebhookPayload(
+          {
+            history: [
+              {
+                metadata: { phase: 0, chunk_order: 1, progress: 10 },
+                threads: [
+                  {
+                    id: "15550002222",
+                    messages: [
+                      {
+                        from: "15550002222",
+                        id: "wamid.fake.bad-ts",
+                        timestamp: "not-a-time",
+                        type: "text",
+                        text: { body: "x" },
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+          "history",
+        ) as any,
+      );
+
+      expect(mockLogger.logImportedMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          waMessageId: "wamid.fake.bad-ts",
+          metadata: expect.objectContaining({ invalidTimestamp: true }),
+        }),
+      );
+      expect(mockLog.warn).toHaveBeenCalledWith(
+        "webhook.coexistence_invalid_timestamp",
+        expect.objectContaining({ waMessageId: "wamid.fake.bad-ts" }),
+      );
+    });
+
+    it("applies state_sync contact adds and removes", async () => {
+      const getInFlightSyncJob = inFlightJob("req_fake_contacts", "smb_app_state_sync");
+      processor = createStoreProcessor({ getInFlightSyncJob });
+
+      await processor.process(stateSyncFixture as any);
+
+      expect(getInFlightSyncJob).toHaveBeenCalledWith({
+        phoneNumberId: BUSINESS_PHONE_NUMBER_ID,
+        syncType: "smb_app_state_sync",
+      });
+      expect(mockCoexistenceStore.upsertContact).toHaveBeenCalledTimes(2);
+      expect(mockCoexistenceStore.upsertContact).toHaveBeenCalledWith(
+        expect.objectContaining({
+          waId: "15550002222",
+          phoneNumberId: BUSINESS_PHONE_NUMBER_ID,
+          displayName: "Ada Fake",
+          firstName: "Ada",
+          userId: "BSUID.fake.ada",
+          username: "ada_fake",
+          removed: false,
+          updatedAt: isoFromUnix(1738346006),
+        }),
+      );
+      expect(mockCoexistenceStore.upsertContact).toHaveBeenCalledWith(
+        expect.objectContaining({
+          waId: "BSUID.fake.hidden",
+          userId: "BSUID.fake.hidden",
+          displayName: "Hidden Fake",
+        }),
+      );
+      expect(mockCoexistenceStore.removeContact).toHaveBeenCalledOnce();
+      expect(mockCoexistenceStore.removeContact).toHaveBeenCalledWith({
+        waId: "15550004444",
+        phoneNumberId: BUSINESS_PHONE_NUMBER_ID,
+      });
+      expect(mockOnSmbAppStateSync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          upsertedContacts: 2,
+          removedContacts: 1,
+          skippedContacts: 2,
+          failedContacts: 0,
+        }),
+      );
+      expect(syncJobStatuses("req_fake_contacts")).toEqual([
+        "processing",
+        "completed",
+      ]);
+    });
+
+    it("applies a contact once when state_sync and legacy contacts both carry it", async () => {
+      processor = createStoreProcessor();
+      const [first] = (stateSyncFixture.entry[0]!.changes[0]!.value as any).state_sync;
+
+      await processor.process(
+        makeWebhookPayload(
+          {
+            state_sync: [first],
+            contacts: [{ wa_id: "15550002222", profile: { name: "Ada Legacy" } }],
+          },
+          "smb_app_state_sync",
+        ) as any,
+      );
+
+      expect(mockCoexistenceStore.upsertContact).toHaveBeenCalledOnce();
+      expect(mockCoexistenceStore.upsertContact).toHaveBeenCalledWith(
+        expect.objectContaining({ displayName: "Ada Fake" }),
+      );
+    });
+
+    it("never reports success when contact storage fails", async () => {
+      processor = createStoreProcessor({
+        getInFlightSyncJob: inFlightJob("req_fake_contacts", "smb_app_state_sync"),
+      });
+      mockCoexistenceStore.upsertContact.mockRejectedValueOnce(new Error("db down"));
+
+      await processor.process(stateSyncFixture as any);
+
+      expect(mockLog.error).toHaveBeenCalledWith(
+        "webhook.coexistence_contact_failed",
+        expect.objectContaining({ action: "add" }),
+      );
+      expect(syncJobStatuses("req_fake_contacts")).toEqual(["processing", "failed"]);
+      expect(mockOnSmbAppStateSync).toHaveBeenCalledWith(
+        expect.objectContaining({ upsertedContacts: 1, failedContacts: 1 }),
+      );
+    });
+
+    it("imports documented message_echoes as outgoing messages", async () => {
+      processor = createStoreProcessor();
+      const echoes = (messageEchoesFixture.entry[0]!.changes[0]!.value as any)
+        .message_echoes;
+      const payload = structuredClone(messageEchoesFixture) as any;
+      payload.entry[0].changes[0].value.messages = [echoes[0]];
+
+      await processor.process(payload as any);
+
+      expect(mockLogger.logImportedMessage).toHaveBeenCalledTimes(2);
+      expect(mockLogger.logImportedMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          phone: "15550002222",
+          waMessageId: "wamid.fake.echo.1",
+          direction: "outgoing",
+          content: "Sent from the app",
+          sentAt: isoFromUnix(1739321024),
+        }),
+      );
+      expect(mockLogger.logImportedMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          phone: "BSUID.fake.hidden",
+          waMessageId: "wamid.fake.echo.hidden",
+          direction: "outgoing",
+        }),
+      );
+      expect(mockOnSmbMessageEcho).toHaveBeenCalledWith(
+        expect.objectContaining({
+          importedMessages: 2,
+          failedMessages: 0,
+          value: expect.objectContaining({
+            messages: [
+              expect.objectContaining({ id: "wamid.fake.echo.1" }),
+              expect.objectContaining({ id: "wamid.fake.echo.hidden" }),
+            ],
+          }),
+        }),
+      );
+    });
+
+    it("counts and logs failed echo imports", async () => {
+      processor = createStoreProcessor();
+      mockLogger.logImportedMessage.mockRejectedValueOnce(new Error("db down"));
+
+      await processor.process(messageEchoesFixture as any);
+
+      expect(mockLog.error).toHaveBeenCalledWith(
+        "webhook.coexistence_import_failed",
+        expect.objectContaining({
+          field: "smb_message_echoes",
+          waMessageId: "wamid.fake.echo.1",
+        }),
+      );
+      expect(mockOnSmbMessageEcho).toHaveBeenCalledWith(
+        expect.objectContaining({ importedMessages: 1, failedMessages: 1 }),
+      );
+    });
+
+    it("routes documented edit and revoke message types to their hooks", async () => {
+      await processor.process(documentedEditFixture as any);
+      await processor.process(documentedRevokeFixture as any);
+
+      expect(mockOnCoexistenceMessageEdit).toHaveBeenCalledWith(
+        expect.objectContaining({ editedMessages: 1 }),
+      );
+      expect(mockOnCoexistenceMessageRevoke).toHaveBeenCalledWith(
+        expect.objectContaining({ revokedMessages: 1 }),
+      );
+      expect(mockOnMessage).not.toHaveBeenCalled();
+      expect(mockLogger.logIncoming).not.toHaveBeenCalled();
+    });
   });
 });

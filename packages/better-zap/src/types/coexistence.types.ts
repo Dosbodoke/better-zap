@@ -233,14 +233,63 @@ export interface CoexistenceWebhookValueBase {
   errors?: WebhookError[];
 }
 
+/**
+ * Message fields Meta adds for coexistence webhooks. `from` is omitted when the
+ * user's phone number is unavailable; `from_user_id` / `to_user_id` carry the
+ * business-scoped user ID (BSUID) instead.
+ */
+export type CoexistenceWebhookMessage = IncomingMessage & {
+  from_user_id?: string;
+  from_parent_user_id?: string;
+  to?: string;
+  to_user_id?: string;
+  to_parent_user_id?: string;
+  history_context?: {
+    status?: string;
+    [key: string]: unknown;
+  };
+};
+
+export interface CoexistenceHistoryThread {
+  /** The WhatsApp user's phone number. Omitted when unavailable. */
+  id?: string;
+  context?: {
+    wa_id?: string;
+    user_id?: string;
+    parent_user_id?: string;
+    username?: string;
+    [key: string]: unknown;
+  };
+  messages?: CoexistenceWebhookMessage[];
+  [key: string]: unknown;
+}
+
+export interface CoexistenceHistoryChunkMetadata {
+  /** 0: day 0-1, 1: day 1-90, 2: day 90-180. Does not mean the phase finished. */
+  phase?: number;
+  /** Chunks can arrive out of order; use this to sequence them. */
+  chunk_order?: number;
+  /** Overall sync progress, 0-100. 100 means the history sync is complete. */
+  progress?: number;
+  [key: string]: unknown;
+}
+
+export interface CoexistenceHistoryChunk {
+  metadata?: CoexistenceHistoryChunkMetadata;
+  /** Documented shape: messages grouped per WhatsApp user thread. */
+  threads?: CoexistenceHistoryThread[];
+  /** Legacy flat shape. Still accepted; duplicates of thread messages are skipped. */
+  messages?: CoexistenceWebhookMessage[];
+  statuses?: MessageStatus[];
+  errors?: WebhookError[];
+  [key: string]: unknown;
+}
+
 export interface CoexistenceHistoryValue extends CoexistenceWebhookValueBase {
   request_id?: string;
-  history?: Array<{
-    messages?: IncomingMessage[];
-    statuses?: MessageStatus[];
-    errors?: WebhookError[];
-    [key: string]: unknown;
-  }>;
+  history?: CoexistenceHistoryChunk[];
+  /** Media asset deliveries for earlier `media_placeholder` history messages. */
+  messages?: CoexistenceWebhookMessage[];
 }
 
 export type CoexistenceHistoryWebhook = CoexistenceWebhookBase<
@@ -248,9 +297,35 @@ export type CoexistenceHistoryWebhook = CoexistenceWebhookBase<
   CoexistenceHistoryValue
 >;
 
+export interface CoexistenceStateSyncContact {
+  full_name?: string;
+  first_name?: string;
+  /** Omitted when the user's phone number is unavailable. */
+  phone_number?: string;
+  user_id?: string;
+  parent_user_id?: string;
+  username?: string;
+  [key: string]: unknown;
+}
+
+export interface CoexistenceStateSyncItem {
+  type?: "contact" | (string & {});
+  contact?: CoexistenceStateSyncContact;
+  /** `add` covers adds and edits; `remove` deletes the contact. */
+  action?: "add" | "remove" | (string & {});
+  metadata?: {
+    timestamp?: string;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
+
 export interface CoexistenceSmbAppStateSyncValue extends CoexistenceWebhookValueBase {
   request_id?: string;
   sync_type?: "smb_app_state_sync";
+  /** Documented contact sync shape. */
+  state_sync?: CoexistenceStateSyncItem[];
+  /** Legacy contact shape. Still accepted; contacts already in `state_sync` are skipped. */
   contacts?: Array<{
     wa_id: string;
     profile?: { name?: string };
@@ -266,7 +341,12 @@ export type CoexistenceSmbAppStateSyncWebhook = CoexistenceWebhookBase<
 >;
 
 export interface CoexistenceSmbMessageEchoesValue extends CoexistenceWebhookValueBase {
+  /**
+   * Echoed messages. Meta's documented payload uses `message_echoes`; the Hono
+   * webhook handler merges both arrays into `messages` before calling hooks.
+   */
   messages: IncomingMessage[];
+  message_echoes?: CoexistenceWebhookMessage[];
 }
 
 export type CoexistenceSmbMessageEchoesWebhook = CoexistenceWebhookBase<
@@ -434,9 +514,14 @@ export interface CoexistenceSyncJobRecord {
 }
 
 export interface CoexistenceContactRecord {
+  /** The contact's phone number, or its business-scoped user ID when Meta omits the phone. */
   waId: string;
   phoneNumberId?: string;
   displayName?: string;
+  firstName?: string;
+  userId?: string;
+  parentUserId?: string;
+  username?: string;
   removed?: boolean;
   updatedAt?: Date | string;
   metadata?: Record<string, unknown>;
