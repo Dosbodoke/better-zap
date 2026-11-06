@@ -459,6 +459,19 @@ var WhatsAppService = class {
 //#region src/services/coexistence.service.ts
 const META_API_VERSION = "v25.0";
 const META_BASE_URL = "https://graph.facebook.com";
+const REDACTED = "[REDACTED]";
+const TRANSIENT_GRAPH_ERROR_CODES = new Set([
+	1,
+	2,
+	4,
+	17,
+	32,
+	341,
+	613,
+	80007,
+	130429,
+	131056
+]);
 var CoexistenceService = class {
 	accessToken;
 	appId;
@@ -487,12 +500,20 @@ var CoexistenceService = class {
 		} catch (error) {
 			return {
 				success: false,
-				error: error instanceof Error ? error.message : "Token exchange failed"
+				error: redactSecrets(error instanceof Error ? error.message : "Token exchange failed", [input.code]),
+				diagnostics: {
+					kind: "credential_provider_error",
+					retryable: false
+				}
 			};
 		}
 		if (!this.appId || !this.appSecret) return {
 			success: false,
-			error: "appId and appSecret are required when no credentialProvider is configured"
+			error: "appId and appSecret are required when no credentialProvider is configured",
+			diagnostics: {
+				kind: "configuration_error",
+				retryable: false
+			}
 		};
 		const params = new URLSearchParams({
 			client_id: this.appId,
@@ -504,14 +525,20 @@ var CoexistenceService = class {
 			path: "/oauth/access_token",
 			method: "GET",
 			query: params,
-			token: null
+			token: null,
+			secrets: [this.appSecret, input.code],
+			includeHttpStatus: true
 		});
-		if (!result.success || !result.data) return {
+		if (!result.success) return result;
+		if (typeof result.data?.access_token !== "string" || result.data.access_token.length === 0) return {
 			success: false,
-			error: result.error,
-			errorCode: result.errorCode,
+			error: "Token exchange response did not include an access token",
 			httpStatus: result.httpStatus,
-			details: result.details
+			diagnostics: {
+				kind: "malformed_response",
+				httpStatus: result.httpStatus,
+				retryable: false
+			}
 		};
 		return {
 			success: true,
@@ -556,7 +583,10 @@ var CoexistenceService = class {
 		return this.request({
 			path: `/${input.phoneNumberId}/smb_app_data`,
 			method: "POST",
-			body: { sync_type: input.syncType },
+			body: {
+				messaging_product: "whatsapp",
+				sync_type: input.syncType
+			},
 			token: input.accessToken ?? await this.resolveAccessToken({ phoneNumberId: input.phoneNumberId })
 		});
 	}
@@ -567,7 +597,11 @@ var CoexistenceService = class {
 	async request(input) {
 		if (input.token === void 0) return {
 			success: false,
-			error: "Missing Meta access token"
+			error: "Missing Meta access token",
+			diagnostics: {
+				kind: "configuration_error",
+				retryable: false
+			}
 		};
 		const url = new URL(`${this.graphBaseUrl}/${this.graphApiVersion}${input.path}`);
 		if (input.query) input.query.forEach((value, key) => url.searchParams.set(key, value));
@@ -587,27 +621,69 @@ var CoexistenceService = class {
 				data = null;
 			}
 			if (!response.ok) {
-				const errorData = data;
+				const graphError = readGraphError(data);
+				const diagnostics = buildFailureDiagnostics(response.status, graphError);
 				return {
 					success: false,
-					error: errorData?.error?.message ?? `HTTP ${response.status}`,
-					errorCode: errorData?.error?.code,
+					error: graphError?.message ?? `HTTP ${response.status}`,
+					errorCode: graphError?.code,
+					...graphError?.subcode !== void 0 ? { errorSubcode: graphError.subcode } : {},
 					httpStatus: response.status,
-					details: data
+					details: data,
+					diagnostics
 				};
 			}
 			return {
 				success: true,
-				data
+				data,
+				...input.includeHttpStatus ? { httpStatus: response.status } : {}
 			};
 		} catch (error) {
 			return {
 				success: false,
-				error: error instanceof Error ? error.message : "Network error"
+				error: redactSecrets(error instanceof Error ? error.message : "Network error", [input.token ?? void 0, ...input.secrets ?? []]),
+				diagnostics: {
+					kind: "network_error",
+					retryable: true
+				}
 			};
 		}
 	}
 };
+function readGraphError(data) {
+	if (typeof data !== "object" || data === null) return null;
+	const error = data.error;
+	if (typeof error !== "object" || error === null) return null;
+	const fields = error;
+	return {
+		message: typeof fields.message === "string" ? fields.message : void 0,
+		code: typeof fields.code === "number" ? fields.code : void 0,
+		subcode: typeof fields.error_subcode === "number" ? fields.error_subcode : void 0,
+		type: typeof fields.type === "string" ? fields.type : void 0,
+		fbtraceId: typeof fields.fbtrace_id === "string" ? fields.fbtrace_id : void 0,
+		isTransient: typeof fields.is_transient === "boolean" ? fields.is_transient : void 0
+	};
+}
+function buildFailureDiagnostics(httpStatus, graphError) {
+	const retryable = httpStatus === 429 || httpStatus >= 500 || graphError?.isTransient === true || graphError?.code !== void 0 && TRANSIENT_GRAPH_ERROR_CODES.has(graphError.code);
+	if (!graphError) return {
+		kind: "http_error",
+		httpStatus,
+		retryable
+	};
+	return {
+		kind: "graph_error",
+		httpStatus,
+		...graphError.code !== void 0 ? { code: graphError.code } : {},
+		...graphError.subcode !== void 0 ? { subcode: graphError.subcode } : {},
+		...graphError.type !== void 0 ? { type: graphError.type } : {},
+		...graphError.fbtraceId !== void 0 ? { fbtraceId: graphError.fbtraceId } : {},
+		retryable
+	};
+}
+function redactSecrets(message, secrets) {
+	return secrets.reduce((redacted, secret) => secret ? redacted.split(secret).join(REDACTED) : redacted, message);
+}
 //#endregion
 //#region src/coexistence/config.ts
 function createCoexistenceEmbeddedSignupConfig(input) {
@@ -654,15 +730,32 @@ function normalizeCoexistenceSessionPayload(payload) {
 //#endregion
 //#region src/coexistence/embedded-signup.ts
 const DEFAULT_ALLOWED_ORIGINS = ["https://www.facebook.com", "https://web.facebook.com"];
+const DEFAULT_JOIN_TIMEOUT_MS = 5e3;
+const SUPPORTED_SESSION_VERSIONS = new Set([
+	void 0,
+	3,
+	"3"
+]);
+const SESSION_IDENTIFIER_FIELDS = [
+	"waba_id",
+	"business_id",
+	"phone_number_id"
+];
 function parseEmbeddedSignupMessage(data) {
 	const payload = typeof data === "string" ? parseJson(data) : data;
-	if (typeof payload !== "object" || payload === null) return null;
-	const candidate = payload;
-	if (candidate.type !== "WA_EMBEDDED_SIGNUP" || candidate.version !== 3 || typeof candidate.event !== "string") return null;
+	if (!isPlainObject(payload)) return null;
+	if (payload.type !== "WA_EMBEDDED_SIGNUP" || !SUPPORTED_SESSION_VERSIONS.has(payload.version) || typeof payload.event !== "string" || payload.event.length === 0) return null;
+	if (payload.data !== void 0 && !isPlainObject(payload.data)) return null;
+	const sessionData = payload.data;
+	if (SESSION_IDENTIFIER_FIELDS.some((field) => sessionData?.[field] !== void 0 && typeof sessionData[field] !== "string")) return null;
+	if (normalizeCoexistenceSessionEvent(payload.event) === "FINISH" && typeof sessionData?.waba_id !== "string") return null;
 	return {
-		event: candidate.event,
-		data: typeof candidate.data === "object" && candidate.data !== null ? candidate.data : void 0
+		event: payload.event,
+		data: sessionData
 	};
+}
+function isPlainObject(value) {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function parseJson(value) {
 	try {
@@ -671,56 +764,119 @@ function parseJson(value) {
 		return null;
 	}
 }
+function resolveJoinTimeoutMs(value) {
+	return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : DEFAULT_JOIN_TIMEOUT_MS;
+}
+function resolveStatus(input) {
+	if (input.tornDown) return "torn_down";
+	if (input.terminalSession) {
+		const event = normalizeCoexistenceSessionEvent(input.terminalSession.event);
+		if (event === "CANCEL") return "cancelled";
+		if (event === "ERROR") return "error";
+		return input.code ? "completed" : "finished_without_code";
+	}
+	return input.code ? "missing_session" : "no_authorization";
+}
 function launchCoexistenceEmbeddedSignup(input) {
 	const allowedOrigins = new Set([
 		...DEFAULT_ALLOWED_ORIGINS,
 		...input.origin ? [input.origin] : [],
 		...input.allowedOrigins ?? []
 	]);
+	const joinTimeoutMs = resolveJoinTimeoutMs(input.joinTimeoutMs);
 	let latestSession = null;
-	let latestCode = null;
+	let terminalSession = null;
+	let loginResponse = null;
+	let code = null;
+	let settled = false;
+	let joinTimer;
+	let resolveResult;
+	let rejectResult;
+	const result = new Promise((resolve, reject) => {
+		resolveResult = resolve;
+		rejectResult = reject;
+	});
+	const detach = () => {
+		input.target.removeEventListener("message", listener);
+		if (joinTimer !== void 0) {
+			clearTimeout(joinTimer);
+			joinTimer = void 0;
+		}
+	};
+	const settle = (options = {}) => {
+		if (settled) return;
+		settled = true;
+		detach();
+		const status = resolveStatus({
+			terminalSession,
+			code,
+			tornDown: options.tornDown ?? false
+		});
+		resolveResult({
+			status,
+			code,
+			session: terminalSession ?? latestSession,
+			loginResponse: loginResponse ?? {},
+			loginCallbackReceived: loginResponse !== null
+		});
+		if (terminalSession && (status === "completed" || status === "finished_without_code")) input.onFinish?.({
+			code,
+			session: terminalSession
+		});
+	};
+	const startJoinTimer = () => {
+		if (joinTimer === void 0) joinTimer = setTimeout(() => {
+			joinTimer = void 0;
+			settle();
+		}, joinTimeoutMs);
+	};
+	const advance = () => {
+		if (loginResponse && terminalSession) {
+			settle();
+			return;
+		}
+		const terminalEvent = terminalSession ? normalizeCoexistenceSessionEvent(terminalSession.event) : null;
+		if (loginResponse || terminalEvent === "FINISH" || terminalEvent === "CANCEL") startJoinTimer();
+	};
 	const listener = (event) => {
-		if (!allowedOrigins.has(event.origin)) return;
+		if (settled || !allowedOrigins.has(event.origin)) return;
 		const session = parseEmbeddedSignupMessage(event.data);
 		if (!session) return;
 		latestSession = session;
 		const normalizedEvent = normalizeCoexistenceSessionEvent(session.event);
-		if (normalizedEvent === "FINISH") {
-			input.onFinish?.({
-				code: latestCode,
-				session
-			});
+		if (normalizedEvent === "PROGRESS") {
+			input.onProgress?.({ session });
 			return;
 		}
-		if (normalizedEvent === "CANCEL") {
-			input.onCancel?.({ session });
-			return;
-		}
-		if (normalizedEvent === "ERROR") {
-			input.onError?.({ session });
-			return;
-		}
-		input.onProgress?.({ session });
+		const isRepeat = terminalSession !== null && normalizeCoexistenceSessionEvent(terminalSession.event) === normalizedEvent;
+		terminalSession = session;
+		advance();
+		if (isRepeat) return;
+		if (normalizedEvent === "CANCEL") input.onCancel?.({ session });
+		else if (normalizedEvent === "ERROR") input.onError?.({ session });
 	};
-	input.target.addEventListener("message", listener);
 	input.fb.init?.(input.fbInit ?? {});
+	input.target.addEventListener("message", listener);
+	try {
+		input.fb.login((response) => {
+			if (settled || loginResponse) return;
+			loginResponse = response ?? {};
+			code = typeof response?.authResponse?.code === "string" && response.authResponse.code.length > 0 ? response.authResponse.code : null;
+			advance();
+		}, createCoexistenceEmbeddedSignupConfig(input));
+	} catch (error) {
+		settled = true;
+		detach();
+		rejectResult(error);
+	}
 	return {
-		result: new Promise((resolve) => {
-			input.fb.login((response) => {
-				latestCode = typeof response.authResponse?.code === "string" ? response.authResponse.code : null;
-				if (latestSession && normalizeCoexistenceSessionEvent(latestSession.event) === "FINISH") input.onFinish?.({
-					code: latestCode,
-					session: latestSession
-				});
-				resolve({
-					code: latestCode,
-					session: latestSession,
-					loginResponse: response
-				});
-			}, createCoexistenceEmbeddedSignupConfig(input));
-		}),
+		result,
 		teardown() {
-			input.target.removeEventListener("message", listener);
+			if (settled) {
+				detach();
+				return;
+			}
+			settle({ tornDown: true });
 		}
 	};
 }
@@ -1162,126 +1318,210 @@ async function processMessagesChange(change, config, log) {
 }
 async function processHistoryChange(change, config, log) {
 	const value = change.value;
-	const requestId = value.request_id;
-	let importedMessages = 0;
-	let duplicateMessages = 0;
-	let hasHistoryErrors = (value.errors?.length ?? 0) > 0;
-	if (requestId && config.database?.coexistence) await config.database.coexistence.updateSyncJobByRequestId(requestId, {
+	const store = config.database?.coexistence;
+	const chunks = value.history ?? [];
+	const requestId = await resolveSyncRequestId(value, "history", config);
+	const progress = readHistoryProgress(chunks);
+	const tally = {
+		importedMessages: 0,
+		duplicateMessages: 0,
+		failedMessages: 0
+	};
+	const threadMessageIds = /* @__PURE__ */ new Set();
+	const historyErrors = [...value.errors ?? []];
+	if (requestId && store) await store.updateSyncJobByRequestId(requestId, {
 		status: "processing",
 		metadata: { field: "history" }
 	});
-	if (value.errors && value.errors.length > 0) await processCoexistenceErrors(change, value, config, log);
-	for (const chunk of value.history ?? []) {
+	if (historyErrors.length > 0) await processCoexistenceErrors(change, value, config, log, requestId);
+	const importHistoryMessage = (message, thread) => processHistoryMessage({
+		message,
+		thread,
+		value,
+		change,
+		requestId,
+		tally,
+		config,
+		log
+	});
+	for (const chunk of chunks) {
 		if (chunk.errors && chunk.errors.length > 0) {
-			hasHistoryErrors = true;
+			historyErrors.push(...chunk.errors);
 			await processCoexistenceErrors(change, {
 				...value,
 				errors: chunk.errors
-			}, config, log);
+			}, config, log, requestId);
+		}
+		for (const thread of chunk.threads ?? []) for (const message of thread.messages ?? []) {
+			if (isNonEmptyString(message?.id)) threadMessageIds.add(message.id);
+			await importHistoryMessage(message, thread);
 		}
 		for (const message of chunk.messages ?? []) {
-			if (message.revoked || message.type === "revoked") {
-				await runOptionalHook(() => config.hooks.onCoexistenceMessageRevoke?.({
-					value: {
-						...value,
-						messages: [message]
-					},
-					change,
-					revokedMessages: 1
-				}), "webhook.on_coexistence_message_revoke_hook_failed", log);
+			if (isNonEmptyString(message?.id) && threadMessageIds.has(message.id)) {
+				tally.duplicateMessages += 1;
 				continue;
 			}
-			if (message.edited || message.type === "message_edit") {
-				await runOptionalHook(() => config.hooks.onCoexistenceMessageEdit?.({
-					value: {
-						...value,
-						messages: [message]
-					},
-					change,
-					editedMessages: 1
-				}), "webhook.on_coexistence_message_edit_hook_failed", log);
-				continue;
-			}
-			if (message.unsupported || message.type === "unsupported" || (message.errors?.length ?? 0) > 0) {
-				await processCoexistenceErrors(change, {
-					...value,
-					unsupported: true,
-					errors: (message.errors ?? []).map(toWebhookError)
-				}, config, log);
-				continue;
-			}
-			const result = await importCoexistenceMessage({
-				message,
-				contacts: value.contacts,
-				metadata: value.metadata,
-				requestId,
-				source: "history",
-				config
-			});
-			if (result === "created") importedMessages += 1;
-			else if (result === "duplicate") duplicateMessages += 1;
+			await importHistoryMessage(message);
 		}
-		for (const status of chunk.statuses ?? []) await processStatusUpdate(status, config, log);
+		for (const status of chunk.statuses ?? []) try {
+			await processStatusUpdate(status, config, log);
+		} catch (error) {
+			tally.failedMessages += 1;
+			log.error("webhook.coexistence_import_failed", {
+				field: "history",
+				waMessageId: status.id,
+				requestId,
+				...serializeError(error)
+			});
+		}
 	}
-	if (requestId && config.database?.coexistence) {
+	for (const message of value.messages ?? []) await importHistoryMessage(message);
+	if (requestId && store) {
+		const hasHistoryErrors = historyErrors.length > 0;
+		const failed = hasHistoryErrors || tally.failedMessages > 0;
+		const isLegacyShape = chunks.length > 0 && chunks.every((chunk) => chunk.metadata === void 0 && chunk.threads === void 0);
+		const completed = !failed && (progress.progress === 100 || progress.progress === void 0 && isLegacyShape);
 		const updatedAt = /* @__PURE__ */ new Date();
-		await config.database.coexistence.updateSyncJobByRequestId(requestId, {
-			status: hasHistoryErrors ? "failed" : "completed",
-			...hasHistoryErrors ? { failedAt: updatedAt } : { completedAt: updatedAt },
+		await store.updateSyncJobByRequestId(requestId, {
+			status: failed ? "failed" : completed ? "completed" : "processing",
+			...failed ? {
+				failedAt: updatedAt,
+				failureReason: hasHistoryErrors ? "history_errors" : "import_failed"
+			} : completed ? { completedAt: updatedAt } : {},
 			updatedAt,
 			metadata: {
 				field: "history",
-				importedMessages,
-				duplicateMessages
+				...tally,
+				...progress,
+				...hasHistoryErrors ? {
+					errors: historyErrors,
+					isHistoryOptOut: historyErrors.some((error) => error.code === 2593109)
+				} : {}
 			}
 		});
 	}
 	await runOptionalHook(() => config.hooks.onCoexistenceHistory?.({
 		value,
 		change,
-		importedMessages,
-		duplicateMessages
+		...tally,
+		requestId,
+		...progress
 	}), "webhook.on_coexistence_history_hook_failed", log);
+}
+async function processHistoryMessage(input) {
+	const { message, value, change, config, log, tally } = input;
+	if (!isNonEmptyString(message?.id)) {
+		tally.failedMessages += 1;
+		log.warn("webhook.coexistence_message_missing_id", { field: "history" });
+		return;
+	}
+	if (isRevokeMessage(message)) {
+		await runOptionalHook(() => config.hooks.onCoexistenceMessageRevoke?.({
+			value: {
+				...value,
+				messages: [message]
+			},
+			change,
+			revokedMessages: 1
+		}), "webhook.on_coexistence_message_revoke_hook_failed", log);
+		return;
+	}
+	if (isEditMessage(message)) {
+		await runOptionalHook(() => config.hooks.onCoexistenceMessageEdit?.({
+			value: {
+				...value,
+				messages: [message]
+			},
+			change,
+			editedMessages: 1
+		}), "webhook.on_coexistence_message_edit_hook_failed", log);
+		return;
+	}
+	if (isUnsupportedMessage(message)) {
+		await runOptionalHook(() => config.hooks.onCoexistenceUnsupportedMessage?.({
+			value: {
+				...value,
+				unsupported: true,
+				errors: (message.errors ?? []).map(toWebhookError)
+			},
+			change,
+			errors: (message.errors ?? []).map(toWebhookError)
+		}), "webhook.on_coexistence_unsupported_hook_failed", log);
+		return;
+	}
+	countImportOutcome(tally, await importCoexistenceMessage({
+		message,
+		thread: input.thread,
+		contacts: value.contacts,
+		metadata: value.metadata,
+		requestId: input.requestId,
+		source: "history",
+		config,
+		log
+	}));
 }
 async function processSmbAppStateSyncChange(change, config, log) {
 	const value = change.value;
+	const store = config.database?.coexistence;
+	const requestId = await resolveSyncRequestId(value, "smb_app_state_sync", config);
+	const phoneNumberId = value.metadata?.phone_number_id;
 	let upsertedContacts = 0;
 	let removedContacts = 0;
+	let skippedContacts = 0;
+	let failedContacts = 0;
 	const hasSyncErrors = (value.errors?.length ?? 0) > 0;
-	if (value.request_id && config.database?.coexistence) await config.database.coexistence.updateSyncJobByRequestId(value.request_id, {
+	if (requestId && store) await store.updateSyncJobByRequestId(requestId, {
 		status: "processing",
 		metadata: { field: "smb_app_state_sync" }
 	});
-	if (hasSyncErrors) await processCoexistenceErrors(change, value, config, log);
-	if (!hasSyncErrors && config.database?.coexistence) for (const contact of value.contacts ?? []) {
-		if (contact.removed) {
-			await config.database.coexistence.removeContact({
-				waId: contact.wa_id,
-				phoneNumberId: value.metadata?.phone_number_id
+	if (hasSyncErrors) await processCoexistenceErrors(change, value, config, log, requestId);
+	if (!hasSyncErrors && store) for (const contactChange of listContactChanges(value, phoneNumberId)) {
+		if (contactChange.kind === "skip") {
+			skippedContacts += 1;
+			log.warn("webhook.coexistence_contact_skipped", {
+				reason: contactChange.reason,
+				type: contactChange.type,
+				action: contactChange.action
 			});
-			removedContacts += 1;
 			continue;
 		}
-		await config.database.coexistence.upsertContact({
-			waId: contact.wa_id,
-			phoneNumberId: value.metadata?.phone_number_id,
-			displayName: contact.profile?.name,
-			removed: false,
-			updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
-			metadata: contact
-		});
-		upsertedContacts += 1;
+		try {
+			if (contactChange.kind === "remove") {
+				await store.removeContact({
+					waId: contactChange.waId,
+					phoneNumberId
+				});
+				removedContacts += 1;
+			} else {
+				await store.upsertContact(contactChange.record);
+				upsertedContacts += 1;
+			}
+		} catch (error) {
+			failedContacts += 1;
+			log.error("webhook.coexistence_contact_failed", {
+				field: "smb_app_state_sync",
+				action: contactChange.kind === "remove" ? "remove" : "add",
+				requestId,
+				...serializeError(error)
+			});
+		}
 	}
-	if (value.request_id && config.database?.coexistence) {
+	if (requestId && store) {
+		const failed = hasSyncErrors || failedContacts > 0;
 		const updatedAt = /* @__PURE__ */ new Date();
-		await config.database.coexistence.updateSyncJobByRequestId(value.request_id, {
-			status: hasSyncErrors ? "failed" : "completed",
-			...hasSyncErrors ? { failedAt: updatedAt } : { completedAt: updatedAt },
+		await store.updateSyncJobByRequestId(requestId, {
+			status: failed ? "failed" : "completed",
+			...failed ? {
+				failedAt: updatedAt,
+				failureReason: hasSyncErrors ? "sync_errors" : "contact_storage_failed"
+			} : { completedAt: updatedAt },
 			updatedAt,
 			metadata: {
 				field: "smb_app_state_sync",
 				upsertedContacts,
 				removedContacts,
+				skippedContacts,
+				failedContacts,
 				errors: value.errors
 			}
 		});
@@ -1290,8 +1530,80 @@ async function processSmbAppStateSyncChange(change, config, log) {
 		value,
 		change,
 		upsertedContacts,
-		removedContacts
+		removedContacts,
+		skippedContacts,
+		failedContacts
 	}), "webhook.on_smb_app_state_sync_hook_failed", log);
+}
+/** Documented `state_sync` items first; legacy `contacts` only fill gaps. */
+function listContactChanges(value, phoneNumberId) {
+	const stateSyncChanges = (value.state_sync ?? []).map((item) => toStateSyncContactChange(item, phoneNumberId));
+	const stateSyncIds = new Set(stateSyncChanges.flatMap((contactChange) => contactChange.kind === "upsert" ? [contactChange.record.waId] : contactChange.kind === "remove" ? [contactChange.waId] : []));
+	const legacyChanges = (value.contacts ?? []).filter((contact) => !stateSyncIds.has(contact.wa_id)).map((contact) => {
+		if (!isNonEmptyString(contact.wa_id)) return {
+			kind: "skip",
+			reason: "missing_identity"
+		};
+		if (contact.removed) return {
+			kind: "remove",
+			waId: contact.wa_id
+		};
+		return {
+			kind: "upsert",
+			record: {
+				waId: contact.wa_id,
+				phoneNumberId,
+				displayName: contact.profile?.name,
+				removed: false,
+				updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+				metadata: contact
+			}
+		};
+	});
+	return [...stateSyncChanges, ...legacyChanges];
+}
+function toStateSyncContactChange(item, phoneNumberId) {
+	const type = typeof item?.type === "string" ? item.type : void 0;
+	const action = typeof item?.action === "string" ? item.action : void 0;
+	if (type !== "contact") return {
+		kind: "skip",
+		reason: "unsupported_type",
+		type,
+		action
+	};
+	if (action !== "add" && action !== "remove") return {
+		kind: "skip",
+		reason: "unsupported_action",
+		type,
+		action
+	};
+	const contact = item.contact ?? {};
+	const waId = [contact.phone_number, contact.user_id].find(isNonEmptyString);
+	if (!waId) return {
+		kind: "skip",
+		reason: "missing_identity",
+		type,
+		action
+	};
+	if (action === "remove") return {
+		kind: "remove",
+		waId
+	};
+	return {
+		kind: "upsert",
+		record: {
+			waId,
+			phoneNumberId,
+			displayName: contact.full_name ?? contact.first_name ?? contact.username,
+			firstName: contact.first_name,
+			userId: contact.user_id,
+			parentUserId: contact.parent_user_id,
+			username: contact.username,
+			removed: false,
+			updatedAt: parseWebhookTimestamp(item.metadata?.timestamp) ?? (/* @__PURE__ */ new Date()).toISOString(),
+			metadata: item
+		}
+	};
 }
 async function processMessageEditChange(change, config, log) {
 	const value = change.value;
@@ -1321,26 +1633,39 @@ async function processUnsupportedMessagesChange(change, config, log) {
 	}), "webhook.on_coexistence_unsupported_hook_failed", log);
 }
 async function processSmbMessageEchoesChange(change, config, log) {
-	const value = change.value;
-	let importedMessages = 0;
-	let duplicateMessages = 0;
-	for (const message of value.messages ?? []) {
-		const result = await importCoexistenceMessage({
-			message,
-			contacts: value.contacts,
-			metadata: value.metadata,
-			source: "smb_message_echoes",
-			forceDirection: "outgoing",
-			config
-		});
-		if (result === "created") importedMessages += 1;
-		else if (result === "duplicate") duplicateMessages += 1;
+	const rawValue = change.value;
+	const tally = {
+		importedMessages: 0,
+		duplicateMessages: 0,
+		failedMessages: 0
+	};
+	const echoes = rawValue.message_echoes ?? [];
+	const echoIds = new Set(echoes.map((message) => message?.id).filter(isNonEmptyString));
+	const messages = [...echoes];
+	for (const message of rawValue.messages ?? []) {
+		if (isNonEmptyString(message?.id) && echoIds.has(message.id)) {
+			tally.duplicateMessages += 1;
+			continue;
+		}
+		messages.push(message);
 	}
+	const value = {
+		...rawValue,
+		messages
+	};
+	for (const message of messages) countImportOutcome(tally, await importCoexistenceMessage({
+		message,
+		contacts: value.contacts,
+		metadata: value.metadata,
+		source: "smb_message_echoes",
+		forceDirection: "outgoing",
+		config,
+		log
+	}));
 	await runOptionalHook(() => config.hooks.onSmbMessageEcho?.({
 		value,
 		change,
-		importedMessages,
-		duplicateMessages
+		...tally
 	}), "webhook.on_smb_message_echo_hook_failed", log);
 }
 async function processAccountUpdateChange(change, config, log) {
@@ -1417,9 +1742,9 @@ async function processAccountReconnectedChange(change, config, log) {
 		change
 	}), "webhook.on_coexistence_account_reconnected_hook_failed", log);
 }
-async function processCoexistenceErrors(change, value, config, log) {
+async function processCoexistenceErrors(change, value, config, log, resolvedRequestId) {
 	const errors = value.errors ?? [];
-	const requestId = "request_id" in value && typeof value.request_id === "string" ? value.request_id : void 0;
+	const requestId = resolvedRequestId ?? ("request_id" in value && typeof value.request_id === "string" ? value.request_id : void 0);
 	if (requestId && config.database?.coexistence) await config.database.coexistence.updateSyncJobByRequestId(requestId, {
 		status: "failed",
 		metadata: {
@@ -1454,39 +1779,114 @@ async function upsertLifecycleAccountState(value, config, patch) {
 		}
 	});
 }
+/**
+* Meta's history and state sync webhooks do not carry `request_id`, so fall
+* back to the store's in-flight job for this phone number and sync type.
+*/
+async function resolveSyncRequestId(value, syncType, config) {
+	if (isNonEmptyString(value.request_id)) return value.request_id;
+	const store = config.database?.coexistence;
+	const phoneNumberId = value.metadata?.phone_number_id;
+	if (!store?.getInFlightSyncJob || !phoneNumberId) return;
+	return (await store.getInFlightSyncJob({
+		phoneNumberId,
+		syncType
+	}))?.requestId;
+}
+function readHistoryProgress(chunks) {
+	let latest = {};
+	for (const chunk of chunks) {
+		const metadata = chunk.metadata;
+		if (typeof metadata?.progress !== "number") continue;
+		if (latest.progress === void 0 || metadata.progress >= latest.progress) latest = {
+			progress: metadata.progress,
+			...typeof metadata.phase === "number" ? { phase: metadata.phase } : {},
+			...typeof metadata.chunk_order === "number" ? { chunkOrder: metadata.chunk_order } : {}
+		};
+	}
+	return latest;
+}
+function countImportOutcome(tally, outcome) {
+	if (outcome === "created") tally.importedMessages += 1;
+	else if (outcome === "duplicate") tally.duplicateMessages += 1;
+	else if (outcome === "failed") tally.failedMessages += 1;
+}
 async function importCoexistenceMessage(input) {
 	if (!input.config.database?.coexistence) return "skipped";
-	const direction = input.forceDirection ?? resolveMessageDirection(input.message, input.metadata?.display_phone_number);
-	const contact = resolveCoexistenceContact(input.contacts, input.message);
-	const phone = resolveConversationPhone(input.message, direction, contact);
-	const resolveMessageContent = input.config.resolveMessageContent ?? getMessageContent;
-	return await input.config.logger.logImportedMessage({
-		phone,
-		waMessageId: input.message.id,
-		direction,
-		content: resolveMessageContent(input.message),
-		sentAt: parseWebhookTimestamp(input.message.timestamp),
-		senderName: contact?.profile?.name,
-		metadata: {
-			source: input.source,
+	const { message, thread, log } = input;
+	try {
+		const direction = input.forceDirection ?? resolveMessageDirection(message, input.metadata?.display_phone_number);
+		const contact = resolveCoexistenceContact(input.contacts, message);
+		const phone = resolveConversationPhone(message, direction, contact, thread);
+		if (!phone) throw new Error("Coexistence message has no conversation identity");
+		const resolveMessageContent = input.config.resolveMessageContent ?? getMessageContent;
+		const sentAt = parseWebhookTimestamp(message.timestamp);
+		if (!sentAt) log.warn("webhook.coexistence_invalid_timestamp", {
+			field: input.source,
+			waMessageId: message.id
+		});
+		const userId = [
+			message.from_user_id,
+			message.to_user_id,
+			thread?.context?.user_id
+		].find(isNonEmptyString);
+		return await input.config.logger.logImportedMessage({
+			phone,
+			waMessageId: message.id,
+			direction,
+			content: resolveMessageContent(message),
+			sentAt: sentAt ?? (/* @__PURE__ */ new Date()).toISOString(),
+			senderName: contact?.profile?.name ?? contact?.profile?.username ?? thread?.context?.username,
+			metadata: {
+				source: input.source,
+				requestId: input.requestId,
+				phoneNumberId: input.metadata?.phone_number_id,
+				...userId ? { userId } : {},
+				...message.history_context?.status ? { historyStatus: message.history_context.status } : {},
+				...sentAt ? {} : { invalidTimestamp: true },
+				raw: message
+			}
+		}) ? "created" : "duplicate";
+	} catch (error) {
+		log.error("webhook.coexistence_import_failed", {
+			field: input.source,
+			waMessageId: message.id,
 			requestId: input.requestId,
-			phoneNumberId: input.metadata?.phone_number_id,
-			raw: input.message
-		}
-	}) ? "created" : "duplicate";
+			...serializeError(error)
+		});
+		return "failed";
+	}
 }
 function resolveMessageDirection(message, businessDisplayPhoneNumber) {
-	if (!businessDisplayPhoneNumber) return "incoming";
+	if (isNonEmptyString(message.from_user_id)) return "incoming";
+	if (!isNonEmptyString(message.from) || !businessDisplayPhoneNumber) return "incoming";
 	return formatPhone(message.from) === formatPhone(businessDisplayPhoneNumber) ? "outgoing" : "incoming";
 }
-function resolveConversationPhone(message, direction, contact) {
-	if (direction === "incoming") return message.from;
-	const messageWithRecipient = message;
-	return messageWithRecipient.to ?? messageWithRecipient.recipient_id ?? contact?.wa_id ?? message.from;
+/** Phone numbers first, then business-scoped user IDs when Meta hides the phone. */
+function resolveConversationPhone(message, direction, contact, thread) {
+	return (direction === "incoming" ? [
+		message.from,
+		thread?.context?.wa_id,
+		thread?.id,
+		message.from_user_id,
+		thread?.context?.user_id
+	] : [
+		message.to,
+		message.recipient_id,
+		thread?.id,
+		thread?.context?.wa_id,
+		message.to_user_id,
+		thread?.context?.user_id,
+		contact?.wa_id
+	]).find(isNonEmptyString);
 }
 function parseWebhookTimestamp(timestamp) {
-	const sentAt = /* @__PURE__ */ new Date(parseInt(timestamp, 10) * 1e3);
-	return Number.isNaN(sentAt.getTime()) ? (/* @__PURE__ */ new Date()).toISOString() : sentAt.toISOString();
+	if (typeof timestamp !== "string" || !/^\d+$/.test(timestamp)) return null;
+	const sentAt = /* @__PURE__ */ new Date(Number(timestamp) * 1e3);
+	return Number.isNaN(sentAt.getTime()) ? null : sentAt.toISOString();
+}
+function isNonEmptyString(value) {
+	return typeof value === "string" && value.length > 0;
 }
 async function runOptionalHook(run, logEvent, log) {
 	try {
@@ -1581,13 +1981,30 @@ function resolveContact(contacts, message) {
 }
 function resolveCoexistenceContact(contacts, message) {
 	if (!contacts || contacts.length === 0) return;
-	return contacts.find((c) => c.wa_id === message.from) ?? contacts[0];
+	const identities = [
+		message.from,
+		message.to,
+		message.from_user_id,
+		message.to_user_id
+	].filter(isNonEmptyString);
+	const match = contacts.find((contact) => contact.wa_id !== void 0 && identities.includes(contact.wa_id) || contact.user_id !== void 0 && identities.includes(contact.user_id));
+	if (match) return match;
+	return isNonEmptyString(message.from_user_id) || isNonEmptyString(message.to_user_id) ? void 0 : contacts[0];
+}
+function isRevokeMessage(message) {
+	return message.revoked === true || message.type === "revoke" || message.type === "revoked";
+}
+function isEditMessage(message) {
+	return message.edited === true || message.type === "edit" || message.type === "message_edit";
+}
+function isUnsupportedMessage(message) {
+	return message.unsupported === true || message.type === "unsupported" || (message.errors?.length ?? 0) > 0;
 }
 function classifyCoexistenceMessages(messages) {
 	if (!messages || messages.length === 0) return "ordinary";
-	if (messages.some((message) => message.revoked || message.type === "revoked")) return "revoke";
-	if (messages.some((message) => message.edited || message.type === "message_edit")) return "edit";
-	if (messages.some((message) => message.unsupported || message.type === "unsupported" || (message.errors?.length ?? 0) > 0)) return "unsupported";
+	if (messages.some(isRevokeMessage)) return "revoke";
+	if (messages.some(isEditMessage)) return "edit";
+	if (messages.some(isUnsupportedMessage)) return "unsupported";
 	return "ordinary";
 }
 function toWebhookError(error) {

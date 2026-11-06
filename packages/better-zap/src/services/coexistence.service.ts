@@ -1,5 +1,6 @@
 import type {
   CoexistenceCredentialProvider,
+  CoexistenceGraphErrorDiagnostics,
   CoexistenceGraphResult,
   CoexistencePhoneStatusResponse,
   CoexistenceSyncResponse,
@@ -10,6 +11,12 @@ import type {
 
 const META_API_VERSION = "v25.0";
 const META_BASE_URL = "https://graph.facebook.com";
+const REDACTED = "[REDACTED]";
+
+// Graph error codes Meta documents as temporary or rate limiting.
+const TRANSIENT_GRAPH_ERROR_CODES = new Set([
+  1, 2, 4, 17, 32, 341, 613, 80007, 130429, 131056,
+]);
 
 export interface CoexistenceServiceConfig {
   accessToken?: string;
@@ -54,7 +61,11 @@ export class CoexistenceService {
       } catch (error) {
         return {
           success: false,
-          error: error instanceof Error ? error.message : "Token exchange failed",
+          error: redactSecrets(
+            error instanceof Error ? error.message : "Token exchange failed",
+            [input.code],
+          ),
+          diagnostics: { kind: "credential_provider_error", retryable: false },
         };
       }
     }
@@ -64,6 +75,7 @@ export class CoexistenceService {
         success: false,
         error:
           "appId and appSecret are required when no credentialProvider is configured",
+        diagnostics: { kind: "configuration_error", retryable: false },
       };
     }
 
@@ -86,15 +98,27 @@ export class CoexistenceService {
       method: "GET",
       query: params,
       token: null,
+      secrets: [this.appSecret, input.code],
+      includeHttpStatus: true,
     });
 
-    if (!result.success || !result.data) {
+    if (!result.success) {
+      return result as CoexistenceGraphResult<never>;
+    }
+
+    if (
+      typeof result.data?.access_token !== "string" ||
+      result.data.access_token.length === 0
+    ) {
       return {
         success: false,
-        error: result.error,
-        errorCode: result.errorCode,
+        error: "Token exchange response did not include an access token",
         httpStatus: result.httpStatus,
-        details: result.details,
+        diagnostics: {
+          kind: "malformed_response",
+          httpStatus: result.httpStatus,
+          retryable: false,
+        },
       };
     }
 
@@ -166,7 +190,7 @@ export class CoexistenceService {
     return this.request({
       path: `/${input.phoneNumberId}/smb_app_data`,
       method: "POST",
-      body: { sync_type: input.syncType },
+      body: { messaging_product: "whatsapp", sync_type: input.syncType },
       token:
         input.accessToken ??
         (await this.resolveAccessToken({ phoneNumberId: input.phoneNumberId })),
@@ -191,9 +215,16 @@ export class CoexistenceService {
     query?: URLSearchParams;
     body?: unknown;
     token?: string | null;
+    /** Values that must never appear in a returned error string. */
+    secrets?: Array<string | undefined>;
+    includeHttpStatus?: boolean;
   }): Promise<CoexistenceGraphResult<TData>> {
     if (input.token === undefined) {
-      return { success: false, error: "Missing Meta access token" };
+      return {
+        success: false,
+        error: "Missing Meta access token",
+        diagnostics: { kind: "configuration_error", retryable: false },
+      };
     }
 
     const url = new URL(
@@ -222,22 +253,104 @@ export class CoexistenceService {
       }
 
       if (!response.ok) {
-        const errorData = data as Partial<MetaGraphApiErrorBody> | null;
+        const graphError = readGraphError(data);
+        const diagnostics = buildFailureDiagnostics(response.status, graphError);
         return {
           success: false,
-          error: errorData?.error?.message ?? `HTTP ${response.status}`,
-          errorCode: errorData?.error?.code,
+          error: graphError?.message ?? `HTTP ${response.status}`,
+          errorCode: graphError?.code,
+          ...(graphError?.subcode !== undefined
+            ? { errorSubcode: graphError.subcode }
+            : {}),
           httpStatus: response.status,
           details: data,
+          diagnostics,
         };
       }
 
-      return { success: true, data: data as TData };
+      return {
+        success: true,
+        data: data as TData,
+        ...(input.includeHttpStatus ? { httpStatus: response.status } : {}),
+      };
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : "Network error",
+        error: redactSecrets(
+          error instanceof Error ? error.message : "Network error",
+          [input.token ?? undefined, ...(input.secrets ?? [])],
+        ),
+        diagnostics: { kind: "network_error", retryable: true },
       };
     }
   }
+}
+
+type GraphErrorFields = {
+  message?: string;
+  code?: number;
+  subcode?: number;
+  type?: string;
+  fbtraceId?: string;
+  isTransient?: boolean;
+};
+
+function readGraphError(data: unknown): GraphErrorFields | null {
+  if (typeof data !== "object" || data === null) {
+    return null;
+  }
+
+  const error = (data as { error?: unknown }).error;
+  if (typeof error !== "object" || error === null) {
+    return null;
+  }
+
+  const fields = error as Record<string, unknown>;
+  return {
+    message: typeof fields.message === "string" ? fields.message : undefined,
+    code: typeof fields.code === "number" ? fields.code : undefined,
+    subcode:
+      typeof fields.error_subcode === "number" ? fields.error_subcode : undefined,
+    type: typeof fields.type === "string" ? fields.type : undefined,
+    fbtraceId:
+      typeof fields.fbtrace_id === "string" ? fields.fbtrace_id : undefined,
+    isTransient:
+      typeof fields.is_transient === "boolean" ? fields.is_transient : undefined,
+  };
+}
+
+function buildFailureDiagnostics(
+  httpStatus: number,
+  graphError: GraphErrorFields | null,
+): CoexistenceGraphErrorDiagnostics {
+  const retryable =
+    httpStatus === 429 ||
+    httpStatus >= 500 ||
+    graphError?.isTransient === true ||
+    (graphError?.code !== undefined &&
+      TRANSIENT_GRAPH_ERROR_CODES.has(graphError.code));
+
+  if (!graphError) {
+    return { kind: "http_error", httpStatus, retryable };
+  }
+
+  return {
+    kind: "graph_error",
+    httpStatus,
+    ...(graphError.code !== undefined ? { code: graphError.code } : {}),
+    ...(graphError.subcode !== undefined ? { subcode: graphError.subcode } : {}),
+    ...(graphError.type !== undefined ? { type: graphError.type } : {}),
+    ...(graphError.fbtraceId !== undefined
+      ? { fbtraceId: graphError.fbtraceId }
+      : {}),
+    retryable,
+  };
+}
+
+function redactSecrets(message: string, secrets: Array<string | undefined>) {
+  return secrets.reduce<string>(
+    (redacted, secret) =>
+      secret ? redacted.split(secret).join(REDACTED) : redacted,
+    message,
+  );
 }

@@ -1551,7 +1551,10 @@ describe("betterZap plugins", () => {
         }),
       }),
     );
-    expect(graphRequestBody).toEqual({ sync_type: "smb_app_state_sync" });
+    expect(graphRequestBody).toEqual({
+      messaging_product: "whatsapp",
+      sync_type: "smb_app_state_sync",
+    });
     expect(coexistenceStore.createSyncJob).toHaveBeenCalledWith(
       expect.objectContaining({
         requestId: "contacts_request_123",
@@ -1612,7 +1615,10 @@ describe("betterZap plugins", () => {
       success: true,
       request_id: "history_request_123",
     });
-    expect(graphRequestBody).toEqual({ sync_type: "history" });
+    expect(graphRequestBody).toEqual({
+      messaging_product: "whatsapp",
+      sync_type: "history",
+    });
     expect(job).toMatchObject({
       requestId: "history_request_123",
       syncType: "history",
@@ -1779,7 +1785,10 @@ describe("betterZap plugins", () => {
         }),
       }),
     );
-    expect(graphRequestBody).toEqual({ sync_type: "history" });
+    expect(graphRequestBody).toEqual({
+      messaging_product: "whatsapp",
+      sync_type: "history",
+    });
     expect(coexistenceStore.createSyncJob).not.toHaveBeenCalled();
   });
 
