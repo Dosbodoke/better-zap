@@ -214,4 +214,187 @@ describe("CoexistenceService", () => {
       }),
     );
   });
+
+  describe("token exchange diagnostics", () => {
+    const PLANTED_APP_SECRET = "planted_app_secret_value";
+    const PLANTED_CODE = "planted_authorization_code";
+    const PLANTED_TOKEN = "planted_access_token_value";
+
+    const createExchangeService = (fetchMock: typeof fetch) =>
+      new CoexistenceService({
+        appId: "app_fake",
+        appSecret: PLANTED_APP_SECRET,
+        fetch: fetchMock,
+      });
+
+    const expectNoSecrets = (value: unknown) => {
+      const serialized = JSON.stringify(value);
+      expect(serialized).not.toContain(PLANTED_APP_SECRET);
+      expect(serialized).not.toContain(PLANTED_CODE);
+      expect(serialized).not.toContain(PLANTED_TOKEN);
+    };
+
+    it("omits redirect_uri unless the caller passes one", async () => {
+      const fetchMock = vi.fn(async (_url: string | URL | Request) =>
+        jsonResponse({ access_token: PLANTED_TOKEN }),
+      );
+      const service = createExchangeService(fetchMock);
+
+      await service.exchangeEmbeddedSignupCode({ code: PLANTED_CODE });
+
+      const calledUrl = new URL(String(fetchMock.mock.calls[0]?.[0]));
+      expect(calledUrl.pathname).toBe("/v25.0/oauth/access_token");
+      expect([...calledUrl.searchParams.keys()]).toEqual([
+        "client_id",
+        "client_secret",
+        "code",
+      ]);
+    });
+
+    it("returns safe structured diagnostics for Graph OAuth errors", async () => {
+      const graphBody = {
+        error: {
+          message: "Error validating verification code.",
+          type: "OAuthException",
+          code: 100,
+          error_subcode: 36008,
+          fbtrace_id: "fake_trace",
+        },
+      };
+      const service = createExchangeService(vi.fn(async () => jsonResponse(graphBody, 400)));
+
+      const result = await service.exchangeEmbeddedSignupCode({ code: PLANTED_CODE });
+
+      expect(result).toMatchObject({
+        success: false,
+        httpStatus: 400,
+        errorCode: 100,
+        errorSubcode: 36008,
+        details: graphBody,
+        diagnostics: {
+          kind: "graph_error",
+          httpStatus: 400,
+          code: 100,
+          subcode: 36008,
+          type: "OAuthException",
+          fbtraceId: "fake_trace",
+          retryable: false,
+        },
+      });
+      expect(JSON.stringify(result.diagnostics)).not.toContain("verification code");
+      expectNoSecrets(result);
+    });
+
+    it("marks throttling, transient, and server failures as retryable", async () => {
+      const cases = [
+        jsonResponse({ error: { message: "x", code: 4, type: "OAuthException" } }, 400),
+        jsonResponse({ error: { message: "x", code: 190, is_transient: true } }, 400),
+        jsonResponse({ error: { message: "x" } }, 500),
+        new Response("rate limited", { status: 429 }),
+      ];
+
+      for (const response of cases) {
+        const service = createExchangeService(vi.fn(async () => response));
+        const result = await service.exchangeEmbeddedSignupCode({ code: PLANTED_CODE });
+        expect(result.success).toBe(false);
+        expect(result.diagnostics?.retryable).toBe(true);
+      }
+    });
+
+    it("classifies non-JSON error bodies as http_error without echoing the body", async () => {
+      const service = createExchangeService(
+        vi.fn(async () => new Response(`<html>${PLANTED_CODE}</html>`, { status: 502 })),
+      );
+
+      const result = await service.exchangeEmbeddedSignupCode({ code: PLANTED_CODE });
+
+      expect(result).toMatchObject({
+        success: false,
+        error: "HTTP 502",
+        httpStatus: 502,
+        diagnostics: { kind: "http_error", httpStatus: 502, retryable: true },
+      });
+      expectNoSecrets(result);
+    });
+
+    it("fails closed when a 200 response has no access token", async () => {
+      for (const body of [{}, { access_token: "" }, { access_token: 42 }, null]) {
+        const service = createExchangeService(
+          vi.fn(async () =>
+            body === null
+              ? new Response("not json", { status: 200 })
+              : jsonResponse(body),
+          ),
+        );
+
+        const result = await service.exchangeEmbeddedSignupCode({ code: PLANTED_CODE });
+
+        expect(result).toEqual({
+          success: false,
+          error: "Token exchange response did not include an access token",
+          httpStatus: 200,
+          diagnostics: {
+            kind: "malformed_response",
+            httpStatus: 200,
+            retryable: false,
+          },
+        });
+      }
+    });
+
+    it("redacts the secret and code from network error messages", async () => {
+      const service = createExchangeService(
+        vi.fn(async (url: string | URL | Request) => {
+          throw new TypeError(`request to ${String(url)} failed`);
+        }),
+      );
+
+      const result = await service.exchangeEmbeddedSignupCode({ code: PLANTED_CODE });
+
+      expect(result).toMatchObject({
+        success: false,
+        diagnostics: { kind: "network_error", retryable: true },
+      });
+      expect(result.error).toContain("[REDACTED]");
+      expectNoSecrets(result);
+    });
+
+    it("keeps caller-defined network error messages that carry no secrets", async () => {
+      const service = createExchangeService(
+        vi.fn(async () => {
+          throw new Error("graph request timed out");
+        }),
+      );
+
+      const result = await service.exchangeEmbeddedSignupCode({ code: PLANTED_CODE });
+
+      expect(result.error).toBe("graph request timed out");
+    });
+
+    it("reports missing configuration and credential provider failures", async () => {
+      const unconfigured = new CoexistenceService({ fetch: vi.fn() });
+      await expect(
+        unconfigured.exchangeEmbeddedSignupCode({ code: PLANTED_CODE }),
+      ).resolves.toMatchObject({
+        success: false,
+        diagnostics: { kind: "configuration_error", retryable: false },
+      });
+
+      const provider = new CoexistenceService({
+        credentialProvider: {
+          getAccessToken: async () => PLANTED_TOKEN,
+          exchangeEmbeddedSignupCode: async () => {
+            throw new Error("vault unavailable");
+          },
+        },
+      });
+      await expect(
+        provider.exchangeEmbeddedSignupCode({ code: PLANTED_CODE }),
+      ).resolves.toEqual({
+        success: false,
+        error: "vault unavailable",
+        diagnostics: { kind: "credential_provider_error", retryable: false },
+      });
+    });
+  });
 });

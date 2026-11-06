@@ -124,8 +124,36 @@ export interface MetaGraphApiErrorBody {
     code?: number;
     error_subcode?: number;
     fbtrace_id?: string;
+    is_transient?: boolean;
     error_data?: Record<string, unknown>;
   };
+}
+
+export type CoexistenceGraphFailureKind =
+  | "graph_error"
+  | "http_error"
+  | "network_error"
+  | "malformed_response"
+  | "configuration_error"
+  | "credential_provider_error";
+
+/**
+ * Log-safe failure summary. It never contains tokens, the app secret, the
+ * authorization code, request URLs, or Meta's free-text error message.
+ */
+export interface CoexistenceGraphErrorDiagnostics {
+  kind: CoexistenceGraphFailureKind;
+  httpStatus?: number;
+  code?: number;
+  subcode?: number;
+  type?: string;
+  fbtraceId?: string;
+  /**
+   * The failure class is usually transient (network, 5xx, 429, throttling or
+   * `is_transient`). An Embedded Signup code is single-use and short-lived, so
+   * retrying an exchange may still need a new code.
+   */
+  retryable: boolean;
 }
 
 export interface CoexistenceGraphResult<TData> {
@@ -133,8 +161,11 @@ export interface CoexistenceGraphResult<TData> {
   data?: TData;
   error?: string;
   errorCode?: number;
+  errorSubcode?: number;
   httpStatus?: number;
+  /** Raw response body. May contain untrusted text; do not log it verbatim. */
   details?: unknown;
+  diagnostics?: CoexistenceGraphErrorDiagnostics;
 }
 
 export interface MetaAccessTokenProvider {
