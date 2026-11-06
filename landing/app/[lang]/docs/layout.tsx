@@ -1,4 +1,4 @@
-import { RootProvider } from "fumadocs-ui/provider";
+import { RootProvider } from "fumadocs-ui/provider/next";
 import { source } from "#lib/source";
 import { i18n } from "#lib/i18n";
 import { DocsLayout } from "fumadocs-ui/layouts/docs";

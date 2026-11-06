@@ -197,9 +197,9 @@ function getPageDescription(page: DocPage): string {
 }
 
 function getPageContent(page: DocPage): string {
-  const data = page.data as { content?: string };
+  const content = page.data._exports.content;
 
-  return typeof data.content === "string" ? data.content : "";
+  return typeof content === "string" ? content : "";
 }
 
 function stripFrontmatter(content: string): string {
