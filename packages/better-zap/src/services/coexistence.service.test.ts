@@ -65,7 +65,10 @@ describe("CoexistenceService", () => {
           Authorization: "Bearer token_123",
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ sync_type: "smb_app_state_sync" }),
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          sync_type: "smb_app_state_sync",
+        }),
       },
     );
   });
@@ -85,7 +88,10 @@ describe("CoexistenceService", () => {
       "https://graph.facebook.com/v25.0/phone_123/smb_app_data",
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ sync_type: "history" }),
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          sync_type: "history",
+        }),
       }),
     );
   });
@@ -395,6 +401,160 @@ describe("CoexistenceService", () => {
         error: "vault unavailable",
         diagnostics: { kind: "credential_provider_error", retryable: false },
       });
+    });
+  });
+  describe("SMB App Data sync request contract", () => {
+    type SyncType = "smb_app_state_sync" | "history";
+
+    // Mirrors Meta's documented request: both fields are required, and Graph
+    // rejects anything else with an OAuthException code 100.
+    const createStrictGraph = () => {
+      const requests: { url: string; authorization?: string; body: unknown }[] =
+        [];
+      const fetchMock = vi.fn(
+        async (url: string | URL | Request, init?: RequestInit) => {
+          const body = JSON.parse(String(init?.body ?? "{}"));
+          const headers = (init?.headers ?? {}) as Record<string, string>;
+          requests.push({ url: String(url), authorization: headers.Authorization, body });
+
+          const keys = Object.keys(body).sort();
+          const isDocumented =
+            keys.join(",") === "messaging_product,sync_type" &&
+            body.messaging_product === "whatsapp" &&
+            (body.sync_type === "smb_app_state_sync" || body.sync_type === "history");
+
+          if (!isDocumented) {
+            return jsonResponse(
+              {
+                error: {
+                  message: "(#100) The parameter messaging_product is required.",
+                  type: "OAuthException",
+                  code: 100,
+                  fbtrace_id: "trace_fake_sync",
+                },
+              },
+              400,
+            );
+          }
+
+          return jsonResponse({
+            messaging_product: "whatsapp",
+            request_id: `req_${body.sync_type}`,
+          });
+        },
+      );
+      return { fetchMock, requests };
+    };
+
+    const documentedBody = (syncType: SyncType) => ({
+      messaging_product: "whatsapp",
+      sync_type: syncType,
+    });
+
+    it("sends the documented contacts and history requests", async () => {
+      const { fetchMock, requests } = createStrictGraph();
+      const service = new CoexistenceService({
+        accessToken: "token_static",
+        fetch: fetchMock,
+      });
+
+      const contacts = await service.startContactsSync({
+        phoneNumberId: "phone_123",
+      });
+      const history = await service.startHistorySync({
+        phoneNumberId: "phone_123",
+      });
+
+      expect(contacts).toEqual({
+        success: true,
+        data: { messaging_product: "whatsapp", request_id: "req_smb_app_state_sync" },
+      });
+      expect(history).toEqual({
+        success: true,
+        data: { messaging_product: "whatsapp", request_id: "req_history" },
+      });
+      expect(requests).toEqual([
+        {
+          url: "https://graph.facebook.com/v25.0/phone_123/smb_app_data",
+          authorization: "Bearer token_static",
+          body: documentedBody("smb_app_state_sync"),
+        },
+        {
+          url: "https://graph.facebook.com/v25.0/phone_123/smb_app_data",
+          authorization: "Bearer token_static",
+          body: documentedBody("history"),
+        },
+      ]);
+    });
+
+    it("sends the documented requests with provider and per-call tokens", async () => {
+      const { fetchMock, requests } = createStrictGraph();
+      const credentialService = new CoexistenceService({
+        fetch: fetchMock,
+        credentialProvider: {
+          getAccessToken: async ({ phoneNumberId }) => `token_for_${phoneNumberId}`,
+          exchangeEmbeddedSignupCode: async () => ({ accessToken: "unused" }),
+        },
+      });
+      const tokenService = new CoexistenceService({
+        fetch: fetchMock,
+        tokenProvider: {
+          getAccessToken: async ({ phoneNumberId }) => `provided_${phoneNumberId}`,
+        },
+      });
+
+      const results = [
+        await credentialService.startContactsSync({ phoneNumberId: "phone_a" }),
+        await tokenService.startHistorySync({ phoneNumberId: "phone_b" }),
+        await tokenService.startContactsSync({
+          phoneNumberId: "phone_c",
+          accessToken: "token_explicit",
+        }),
+      ];
+
+      expect(results.map((result) => result.success)).toEqual([true, true, true]);
+      expect(requests.map(({ authorization, body }) => ({ authorization, body }))).toEqual([
+        { authorization: "Bearer token_for_phone_a", body: documentedBody("smb_app_state_sync") },
+        { authorization: "Bearer provided_phone_b", body: documentedBody("history") },
+        { authorization: "Bearer token_explicit", body: documentedBody("smb_app_state_sync") },
+      ]);
+    });
+
+    it("still reports Graph rejections with safe diagnostics", async () => {
+      const fetchMock = vi.fn(async () =>
+        jsonResponse(
+          {
+            error: {
+              message: "(#100) Invalid parameter",
+              type: "OAuthException",
+              code: 100,
+              fbtrace_id: "trace_fake_reject",
+            },
+          },
+          400,
+        ),
+      );
+      const service = new CoexistenceService({
+        accessToken: "token_static",
+        fetch: fetchMock,
+      });
+
+      const result = await service.startContactsSync({ phoneNumberId: "phone_123" });
+
+      expect(result).toMatchObject({
+        success: false,
+        errorCode: 100,
+        httpStatus: 400,
+        diagnostics: {
+          kind: "graph_error",
+          httpStatus: 400,
+          code: 100,
+          type: "OAuthException",
+          fbtraceId: "trace_fake_reject",
+          retryable: false,
+        },
+      });
+      expect(JSON.stringify(result.diagnostics)).not.toContain("token_static");
     });
   });
 });

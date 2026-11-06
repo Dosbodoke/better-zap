@@ -190,7 +190,7 @@ export class CoexistenceService {
     return this.request({
       path: `/${input.phoneNumberId}/smb_app_data`,
       method: "POST",
-      body: { sync_type: input.syncType },
+      body: { messaging_product: "whatsapp", sync_type: input.syncType },
       token:
         input.accessToken ??
         (await this.resolveAccessToken({ phoneNumberId: input.phoneNumberId })),
