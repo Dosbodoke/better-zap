@@ -7,6 +7,7 @@ import gsap from "gsap";
 import * as THREE from "three";
 import { useTranslations, useLocale } from "next-intl";
 import { GitHub as GitHubIcon } from "../icons/github";
+import { signalHeroIntroStart } from "./heroIntro";
 
 gsap.registerPlugin(useGSAP);
 
@@ -244,75 +245,88 @@ export default function HeroGeometric() {
       const mm = gsap.matchMedia();
 
       mm.add("(prefers-reduced-motion: reduce)", () => {
-        gsap.set([...heroElements, ...actions], {
-          autoAlpha: 1,
-          y: 0,
-          clearProps: "transform",
-        });
         if (background) {
-          gsap.set(background, { autoAlpha: 1, scale: 1 });
+          gsap.set(background, { autoAlpha: 1 });
         }
         if (chip) {
-          gsap.set(chip, { autoAlpha: 1, rotation: -3, scale: 1, y: 0 });
+          gsap.set(chip, { autoAlpha: 1, rotation: -3, scale: 1 });
         }
+        // Collapse the wave: no movement or delays, one shared fade.
+        gsap.fromTo(
+          [...heroElements, ...actions],
+          { autoAlpha: 0 },
+          { autoAlpha: 1, duration: 0.3, ease: "power1.out" },
+        );
       });
 
       mm.add("(prefers-reduced-motion: no-preference)", () => {
         const tl = gsap.timeline({
-          defaults: { ease: "power3.out", duration: 0.78 },
-          delay: 0.12,
+          defaults: { ease: "power3.out" },
         });
 
+        // Crossfades with the CSS fallback in HeroGeometricClient (700ms ease-out).
         if (background) {
           tl.fromTo(
             background,
-            { autoAlpha: 0, scale: 1.025 },
-            { autoAlpha: 1, scale: 1, duration: 1.1, ease: "power2.out" },
+            { autoAlpha: 0 },
+            { autoAlpha: 1, duration: 0.7, ease: "power1.out" },
             0,
           );
         }
 
-        tl.addLabel("copy", 0.14).fromTo(
-          heroElements,
-          { autoAlpha: 0, y: 24 },
-          {
-            autoAlpha: 1,
-            y: 0,
-            stagger: 0.1,
-            clearProps: "transform",
-          },
-          "copy",
-        );
+        // Headline lines lead and travel furthest; the description follows
+        // with less. Gaps shrink so the group reads as one wave.
+        const [line1, line2, description] = heroElements;
+        const copyBeats = [
+          { target: line1, at: 0.08, y: 24, duration: 0.6 },
+          { target: line2, at: 0.2, y: 20, duration: 0.6 },
+          { target: description, at: 0.3, y: 12, duration: 0.5 },
+        ];
 
+        for (const { target, at, y, duration } of copyBeats) {
+          if (!target) {
+            continue;
+          }
+
+          tl.fromTo(
+            target,
+            { autoAlpha: 0, y },
+            { autoAlpha: 1, y: 0, duration, clearProps: "transform" },
+            at,
+          );
+        }
+
+        // Accent inside line 1: pops in place and lands as the line settles.
         if (chip) {
           tl.fromTo(
             chip,
-            { autoAlpha: 0, scale: 0.82, rotation: -8, y: 12 },
+            { autoAlpha: 0, scale: 0.88, rotation: -7 },
             {
               autoAlpha: 1,
               scale: 1,
               rotation: -3,
-              y: 0,
-              duration: 0.65,
-              ease: "back.out(1.8)",
+              duration: 0.45,
+              ease: "back.out(1.6)",
             },
-            "copy+=0.16",
+            0.26,
           );
         }
 
+        // Side-by-side CTAs are one beat, so they arrive together.
         tl.fromTo(
           actions,
-          { autoAlpha: 0, y: 12, scale: 0.97 },
+          { autoAlpha: 0, y: 8, scale: 0.98 },
           {
             autoAlpha: 1,
             y: 0,
             scale: 1,
-            duration: 0.5,
-            stagger: 0.08,
+            duration: 0.45,
             clearProps: "transform",
           },
-          "copy+=0.42",
+          0.38,
         );
+
+        signalHeroIntroStart();
       });
 
       return () => mm.revert();

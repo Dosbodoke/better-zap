@@ -4,6 +4,7 @@ import { useRef, type ReactNode } from "react";
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { onHeroIntroStart } from "./heroIntro";
 
 gsap.registerPlugin(useGSAP, ScrollTrigger);
 
@@ -53,56 +54,81 @@ export function LandingAnimations({ children }: { children: ReactNode }) {
             return;
           }
 
-          if (isDesktop) {
-            const introTimeline = gsap.timeline({
-              defaults: { duration: 0.7, ease: "power3.out" },
-            });
+          // Support for the hero: the right column picks up as the hero's
+          // CTAs land. Gaps shrink and travel drops item by item.
+          const introTimeline = gsap.timeline({
+            paused: true,
+            defaults: { ease: "power3.out" },
+          });
+          const [header, bullets, installation] = desktopIntro;
+          const introBeats = [
+            { target: header, at: 0, y: 20, duration: 0.6 },
+            { target: bullets, at: 0.1, y: 14, duration: 0.5 },
+            { target: installation, at: 0.18, y: 10, duration: 0.5 },
+          ];
 
-            if (desktopIntro.length > 0) {
-              introTimeline
-                .addLabel("content", 0.34)
-                .fromTo(
-                  desktopIntro,
-                  { autoAlpha: 0, y: 22 },
-                  {
-                    autoAlpha: 1,
-                    y: 0,
-                    stagger: 0.1,
-                    clearProps: "transform",
-                  },
-                  "content",
-                );
+          introTimeline.addLabel("content", 0.46);
+
+          for (const { target, at, y, duration } of introBeats) {
+            if (!target) {
+              continue;
             }
+
+            introTimeline.fromTo(
+              target,
+              { autoAlpha: 0, y },
+              { autoAlpha: 1, y: 0, duration, clearProps: "transform" },
+              `content+=${at}`,
+            );
           }
+
+          // Reveals already in view at load join the end of the intro wave
+          // instead of jumping ahead of it.
+          introTimeline.addLabel("introTail", "content+=0.26");
+          const introTail = introTimeline.labels.introTail;
+
+          const stopWaitingForHero = onHeroIntroStart((fromFallback) => {
+            // Without the hero there's nothing to follow, so skip the lead-in.
+            introTimeline.play(fromFallback ? "content" : 0);
+          });
 
           if (revealTargets.length > 0) {
             gsap.set(revealTargets, {
               autoAlpha: 0,
-              y: isDesktop ? 28 : 18,
-              scale: isDesktop ? 0.985 : 1,
+              y: 28,
+              scale: 0.985,
               transformOrigin: "50% 20%",
             });
 
             ScrollTrigger.batch(revealTargets, {
-              scroller: isDesktop ? (scrollContainer ?? undefined) : undefined,
+              scroller: scrollContainer ?? undefined,
               start: "clamp(top 88%)",
               once: true,
               interval: 0.08,
-              batchMax: isDesktop ? 2 : 1,
+              batchMax: 2,
               onEnter: (batch) => {
-                gsap.to(batch, {
+                const reveal = {
                   autoAlpha: 1,
                   y: 0,
                   scale: 1,
                   duration: 0.68,
                   stagger: 0.1,
                   ease: "power3.out",
-                  overwrite: "auto",
+                  overwrite: "auto" as const,
                   clearProps: "transform",
-                });
+                };
+
+                if (introTimeline.time() < introTail) {
+                  introTimeline.to(batch, reveal, introTail);
+                  return;
+                }
+
+                gsap.to(batch, reveal);
               },
             });
           }
+
+          return stopWaitingForHero;
         },
       );
 

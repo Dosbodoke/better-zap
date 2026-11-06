@@ -1,19 +1,6 @@
 @import "tailwindcss";
 @import "fumadocs-ui/style.css";
 
-@keyframes fade-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@utility animate-fade-in {
-  animation: fade-in 0.7s ease-out forwards;
-}
-
 [data-desktop-intro],
 [data-scroll-reveal],
 [data-hero-item],
