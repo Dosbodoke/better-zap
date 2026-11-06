@@ -5,6 +5,7 @@ import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
 import Image from "next/image";
 import { useTranslations } from "next-intl";
+import { onHeroIntroStart } from "./heroIntro";
 
 gsap.registerPlugin(useGSAP);
 
@@ -20,33 +21,29 @@ export function BotAssistant() {
       const balloon = rootRef.current?.querySelector<HTMLElement>(
         "[data-assistant-balloon]",
       );
-      const tail =
-        rootRef.current?.querySelector<HTMLElement>("[data-assistant-tail]");
       const mm = gsap.matchMedia();
 
-      if (!robot || !balloon || !tail) {
+      if (!robot || !balloon) {
         return;
       }
 
       mm.add("(prefers-reduced-motion: reduce)", () => {
-        gsap.set([robot, balloon, tail], {
-          autoAlpha: 1,
-          x: 0,
-          y: 0,
-          scale: 1,
-          rotation: 0,
-          clearProps: "transform",
-        });
+        gsap.fromTo(
+          [robot, balloon],
+          { autoAlpha: 0 },
+          { autoAlpha: 1, duration: 0.3, ease: "power1.out" },
+        );
       });
 
       mm.add("(prefers-reduced-motion: no-preference)", () => {
+        // Decoration: arrives once the hero and content wave have settled.
         const intro = gsap.timeline({
+          paused: true,
           defaults: { ease: "power3.out" },
-          delay: 0.8,
         });
 
         intro
-          .addLabel("arrive")
+          .addLabel("arrive", 1.15)
           .fromTo(
             robot,
             { autoAlpha: 0, y: 34, scale: 0.84, rotation: 4 },
@@ -55,12 +52,13 @@ export function BotAssistant() {
               y: 0,
               scale: 1,
               rotation: 0,
-              duration: 0.85,
+              duration: 0.7,
               ease: "back.out(1.35)",
             },
             "arrive",
           )
-          .addLabel("speak", "arrive+=0.32")
+          // The robot speaks once it has mostly landed; the tail is part of
+          // the balloon and comes with it.
           .fromTo(
             balloon,
             { autoAlpha: 0, y: 16, x: 10, scale: 0.86 },
@@ -69,26 +67,15 @@ export function BotAssistant() {
               y: 0,
               x: 0,
               scale: 1,
-              duration: 0.55,
+              duration: 0.5,
               ease: "back.out(1.7)",
             },
-            "speak",
-          )
-          .fromTo(
-            tail,
-            { autoAlpha: 0, scale: 0.35 },
-            {
-              autoAlpha: 1,
-              scale: 1,
-              duration: 0.28,
-              transformOrigin: "80% 100%",
-            },
-            "speak+=0.16",
+            "arrive+=0.3",
           );
 
         const idle = gsap
           .timeline({
-            delay: intro.delay() + intro.duration() + 0.15,
+            paused: true,
             repeat: -1,
             yoyo: true,
             defaults: { duration: 2.4, ease: "sine.inOut" },
@@ -103,7 +90,12 @@ export function BotAssistant() {
             0.08,
           );
 
+        intro.eventCallback("onComplete", () => idle.play());
+
+        const stopWaitingForHero = onHeroIntroStart(() => intro.play(0));
+
         return () => {
+          stopWaitingForHero();
           intro.kill();
           idle.kill();
         };
@@ -125,10 +117,7 @@ export function BotAssistant() {
         className="relative mb-16 max-w-[11.5rem] rounded-[1.35rem] border border-zinc-900/10 bg-white px-4 py-3 text-sm font-semibold leading-snug text-zinc-900 opacity-0 shadow-[0_18px_48px_rgba(15,23,42,0.16)] sm:mb-20 sm:max-w-[13.5rem]"
       >
         <span>{t("message")}</span>
-        <span
-          data-assistant-tail
-          className="absolute -bottom-2 right-7 h-5 w-5 rotate-45 rounded-[0.25rem] border-b border-r border-zinc-900/10 bg-white opacity-0"
-        />
+        <span className="absolute -bottom-2 right-7 h-5 w-5 rotate-45 rounded-[0.25rem] border-b border-r border-zinc-900/10 bg-white" />
       </div>
 
       <div

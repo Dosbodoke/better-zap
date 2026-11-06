@@ -23,8 +23,9 @@ export default function HeroGeometricClient() {
             "linear-gradient(135deg, #fff 0%, #E8FFF0 30%, #6ee7a0 60%, #25D366 100%)",
         }}
       />
+      {/* No wrapper fade: HeroGeometric runs its own entrance. */}
       {HeroGeometric ? (
-        <div className="absolute -inset-1 animate-fade-in">
+        <div className="absolute -inset-1">
           <HeroGeometric />
         </div>
       ) : null}
