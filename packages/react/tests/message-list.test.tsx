@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DateDivider,
@@ -7,9 +7,11 @@ import {
 } from "@better-zap/react";
 import type {
   DateDividerRenderContext,
+  LinkPreview,
   MessageGroupPosition,
   MessageListProps,
   MessageRenderContext,
+  UIMessage,
 } from "@better-zap/react";
 import {
   createMessage,
@@ -552,5 +554,132 @@ describe("MessageList (published surface)", () => {
     render(<DateDivider data-testid="public-divider">CUSTOM</DateDivider>);
     expect(screen.getByTestId("public-divider")).toBeTruthy();
     expect(screen.getByText("CUSTOM")).toBeTruthy();
+  });
+});
+
+describe("MessageList resolveLinkPreview", () => {
+  const preview: LinkPreview = {
+    url: "https://www.amazon.com.br/dp/B07XQM4PH3",
+    title: "Oferta: Whiskey Jameson Caskmates IPA, 750 ml",
+    image: "https://m.media-amazon.com/images/I/51x2X2mg+9L.jpg",
+  };
+
+  const messages = [
+    createMessage({
+      id: "with-link",
+      content: "Olha https://www.amazon.com.br/dp/B07XQM4PH3",
+      direction: "incoming",
+      sentAt: "2026-04-04T10:00:00.000Z",
+    }),
+    createMessage({
+      id: "plain",
+      content: "sem link",
+      direction: "outgoing",
+      status: "sent",
+      sentAt: "2026-04-04T11:00:00.000Z",
+    }),
+  ];
+
+  function cards(): HTMLElement[] {
+    return Array.from(
+      document.querySelectorAll<HTMLElement>('[data-slot="link-preview"]'),
+    );
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date("2026-04-04T15:00:00.000Z"));
+    mockMatchMedia(false);
+    stubLegendListLayout(800, 400);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("adds cards to the default bubbles the resolver returns a preview for", async () => {
+    const resolveLinkPreview = vi.fn((message: UIMessage) =>
+      message.id === "with-link" ? preview : null,
+    );
+
+    renderList({ messages, resolveLinkPreview });
+
+    await waitFor(() => {
+      expect(screen.getByText(preview.title)).toBeTruthy();
+      expect(screen.getByText("sem link")).toBeTruthy();
+    });
+    expect(cards()).toHaveLength(1);
+    expect(resolveLinkPreview).toHaveBeenCalledWith(messages[0]);
+    expect(resolveLinkPreview).toHaveBeenCalledWith(messages[1]);
+  });
+
+  it("passes the resolved preview to renderMessage", async () => {
+    const seen = new Map<string, MessageRenderContext["linkPreview"]>();
+
+    renderList({
+      messages,
+      resolveLinkPreview: (message) =>
+        message.id === "with-link" ? preview : undefined,
+      renderMessage: (ctx) => {
+        seen.set(ctx.id, ctx.linkPreview);
+        return <div data-testid={`row-${ctx.id}`}>{ctx.message.content}</div>;
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("row-with-link")).toBeTruthy();
+      expect(screen.getByTestId("row-plain")).toBeTruthy();
+    });
+    expect(seen.get("with-link")).toBe(preview);
+    expect(seen.has("plain")).toBe(true);
+    expect(seen.get("plain")).toBeUndefined();
+  });
+
+  it("re-renders rows when a new resolver arrives with a fetched preview", async () => {
+    const { rerender } = renderList({
+      messages,
+      resolveLinkPreview: () => null,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("sem link")).toBeTruthy();
+    });
+    expect(cards()).toHaveLength(0);
+
+    rerender(
+      <div style={{ height: 800, width: 400 }}>
+        <MessageList
+          messages={messages}
+          resolveLinkPreview={(message) =>
+            message.id === "with-link" ? { ...preview } : null
+          }
+        />
+      </div>,
+    );
+
+    await waitFor(() => {
+      expect(cards()).toHaveLength(1);
+    });
+    expect(screen.getByText(preview.title)).toBeTruthy();
+  });
+
+  it("renders the same bubbles as before without a resolver", async () => {
+    const { container: withResolver } = renderList({
+      messages: [messages[1]!],
+      resolveLinkPreview: () => null,
+    });
+    await waitFor(() => {
+      expect(screen.getByText("sem link")).toBeTruthy();
+    });
+    const resolvedHtml = withResolver.querySelector("[data-variant]")!.outerHTML;
+    cleanup();
+
+    const { container: without } = renderList({ messages: [messages[1]!] });
+    await waitFor(() => {
+      expect(screen.getByText("sem link")).toBeTruthy();
+    });
+    expect(without.querySelector("[data-variant]")!.outerHTML).toBe(resolvedHtml);
+    expect(cards()).toHaveLength(0);
   });
 });

@@ -1,11 +1,12 @@
 import {
   memo,
   useCallback,
+  useEffect,
   useMemo,
   useState,
   useSyncExternalStore,
 } from "react";
-import type { UIMessage } from "better-zap";
+import { firstLinkIn, type LinkPreview, type UIMessage } from "better-zap";
 import {
   WhatsappDashboard,
   ConversationList,
@@ -21,6 +22,44 @@ import {
 } from "./mock-client";
 
 const NO_MESSAGES: UIMessage[] = [];
+
+function linkIn(message: UIMessage): string | null {
+  return message.templateName ? null : firstLinkIn(message.content);
+}
+
+/**
+ * Loads previews for the links in `messages` and returns a resolver for
+ * MessageList. The resolver changes when a preview arrives, which re-renders
+ * the list rows.
+ */
+function useLinkPreviews(client: MockWhatsappClient, messages: UIMessage[]) {
+  const [previews, setPreviews] = useState<Record<string, LinkPreview>>({});
+
+  useEffect(() => {
+    let active = true;
+    for (const url of new Set(messages.map(linkIn))) {
+      if (!url) continue;
+      void client.fetchLinkPreview(url).then((preview) => {
+        if (active && preview) {
+          setPreviews((current) =>
+            current[url] ? current : { ...current, [url]: preview },
+          );
+        }
+      });
+    }
+    return () => {
+      active = false;
+    };
+  }, [client, messages]);
+
+  return useCallback(
+    (message: UIMessage) => {
+      const url = linkIn(message);
+      return url ? previews[url] : undefined;
+    },
+    [previews],
+  );
+}
 
 /**
  * Subscribes to the conversations slice only: message-level updates (status
@@ -69,6 +108,8 @@ const ChatPane = memo(function ChatPane({
       : NO_MESSAGES,
   );
 
+  const resolveLinkPreview = useLinkPreviews(client, messages);
+
   const handleSend = useCallback(
     (text: string) => {
       if (!selectedId) return;
@@ -83,7 +124,10 @@ const ChatPane = memo(function ChatPane({
         <>
           <MessageViewHeader conversation={conversation} onInfoClick={() => {}} />
           <MessageViewContent>
-            <MessageList messages={messages} />
+            <MessageList
+              messages={messages}
+              resolveLinkPreview={resolveLinkPreview}
+            />
           </MessageViewContent>
           <MessageInput
             conversation={conversation}

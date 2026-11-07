@@ -105,7 +105,7 @@ dependency, and Better Zap **adapters** that map domain data onto those primitiv
 | --- | --- | --- |
 | Data mapping (domain → presentation) | None — you pass `align`/`variant` directly | Own it — map `Conversation`/`UIMessage` fields (`sender`/`status`/`direction`) to presentational props |
 | Row layout | `Message`, `MessageAvatar`, `MessageContent`, `MessageHeader`, `MessageFooter` | Composed internally by `MessageBubble` / `MessageList`'s default renderer |
-| Bubble surface | `Bubble`, `BubbleContent`, `BubbleReactions` | Composed internally; still swappable via `renderMessage` (see [MessageList](#messagelist)) |
+| Bubble surface | `Bubble`, `BubbleContent`, `BubbleReactions`, `LinkPreviewCard` | Composed internally; still swappable via `renderMessage` (see [MessageList](#messagelist)) |
 | Metadata / timestamps | You render them (`MessageFooter`, etc.) | Own default formatting (`formatDate`/`formatTime`), overridable via props |
 | Actions | `ComposerButton`, `ComposerSend`, etc. — you wire callbacks | `MessageInput` gates action buttons on callbacks being provided (see [Actions and failures](#actions-and-failures)) |
 | Responsive orchestration | None | `WhatsappDashboard` owns mobile list/chat navigation; `ConversationList`/`MessageView` read it optionally |
@@ -123,7 +123,8 @@ The root entry (`@better-zap/react`) re-exports the full public surface and is a
 | `@better-zap/react` | client | Full barrel |
 | `@better-zap/react/bubble` | server-safe | Presentational bubble primitives |
 | `@better-zap/react/message` | server-safe | Row layout primitives |
-| `@better-zap/react/message-bubble` | server-safe | Domain `MessageBubble` adapter |
+| `@better-zap/react/message-bubble` | server-safe | Domain `MessageBubble` adapter (renders the client `LinkPreviewCard` when given a preview) |
+| `@better-zap/react/link-preview-card` | client | Open Graph card (hides its image if it fails to load) |
 | `@better-zap/react/utils` | server-safe | `cn`, `getDisplayDate`, `renderSlot` |
 | `@better-zap/react/composer` | client | Draft/send orchestration |
 | `@better-zap/react/message-input` | client | Domain input + freeform window |
@@ -423,6 +424,85 @@ prepends *duplicate-label* groups (accepted).
 
 Also available: `formatTime(iso)` for the **default** bubble timestamp only
 (custom `renderMessage` owns its own time formatting).
+
+## Link previews
+
+WhatsApp shows an Open Graph card (image, title, description, domain) at the
+top of a bubble that contains a link. You supply the preview data; the
+components only render it.
+
+- `MessageList` `resolveLinkPreview(message)` returns a `LinkPreview` (or
+  `null`/`undefined`) for each message. The default renderer shows the card,
+  and custom `renderMessage` functions receive it as `linkPreview`.
+- `MessageBubble` `linkPreview` renders the card inside the bubble, above the
+  text. The bubble takes WhatsApp's fixed 330px preview width (still capped at
+  65% of the chat). Without a preview the bubble renders exactly as before.
+- `LinkPreviewCard` is the card on its own, for `Bubble` compositions. Pass the
+  bubble's `variant` so the card gets the matching tint.
+
+```ts
+interface LinkPreview {
+  url: string;
+  title: string;
+  description?: string;
+  image?: string; // absolute http(s) URL
+  siteName?: string;
+}
+```
+
+`resolveLinkPreview` is synchronous. Fetch previews elsewhere, keep them in
+state, and pass a new resolver when they change: rows re-render when the
+function's identity changes, so wrap it in `useCallback` keyed on that state.
+`firstLinkIn` from `better-zap` picks the same link `FormattedMessage` renders
+as an anchor:
+
+```tsx
+import { useCallback } from "react";
+import { MessageList } from "@better-zap/react";
+import type { LinkPreview, UIMessage } from "@better-zap/react";
+import { firstLinkIn } from "better-zap";
+
+function ChatWithPreviews({
+  messages,
+  previews,
+}: {
+  messages: UIMessage[];
+  previews: Record<string, LinkPreview>;
+}) {
+  const resolveLinkPreview = useCallback(
+    (message: UIMessage) => {
+      const url = message.templateName ? null : firstLinkIn(message.content);
+      return url ? previews[url] : undefined;
+    },
+    [previews],
+  );
+
+  return (
+    <MessageList messages={messages} resolveLinkPreview={resolveLinkPreview} />
+  );
+}
+```
+
+In your own `Bubble` composition:
+
+```tsx
+import { Bubble, BubbleContent, LinkPreviewCard } from "@better-zap/react";
+
+<Bubble variant="primary" align="end" className="w-[330px]">
+  <BubbleContent>
+    <LinkPreviewCard preview={preview} variant="primary" />
+    {text}
+  </BubbleContent>
+</Bubble>
+```
+
+Fetching stays in your app because it needs SSRF guards, timeouts, size limits
+and caching. Do it on the server, never from the browser. `better-zap` ships
+`parseOpenGraph(html, pageUrl)` to turn the fetched page into a `LinkPreview`.
+Some sites (Amazon, for example) return full Open Graph tags only to known
+unfurler user agents such as `WhatsApp/2.23.20.0`. The
+[link previews guide](https://github.com/Dosbodoke/better-zap/blob/main/landing/content/docs/guides/link-previews.mdx) has a
+complete server fetcher and client hook.
 
 ## MessageView
 

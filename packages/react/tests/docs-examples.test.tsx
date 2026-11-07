@@ -1,8 +1,11 @@
 import { render, screen } from "@testing-library/react";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  Bubble as RootBubble,
+  BubbleContent as RootBubbleContent,
   ConversationList,
+  LinkPreviewCard,
   MessageInput,
   MessageList,
   MessageView,
@@ -10,11 +13,17 @@ import {
   MessageViewHeader,
   WhatsappDashboard,
 } from "@better-zap/react";
-import type { Conversation, UIMessage } from "@better-zap/react";
+import type { Conversation, LinkPreview, UIMessage } from "@better-zap/react";
+import { firstLinkIn } from "better-zap";
 // Documented subpath import — proves `@better-zap/react/bubble` resolves
 // (see README "Subpath imports").
 import { Bubble, BubbleContent } from "@better-zap/react/bubble";
-import { createConversation, mockMatchMedia, stubLegendListLayout } from "./helpers";
+import {
+  createConversation,
+  createMessage,
+  mockMatchMedia,
+  stubLegendListLayout,
+} from "./helpers";
 
 /**
  * These tests render the README examples verbatim so documentation can't
@@ -59,6 +68,45 @@ function Dashboard({
   );
 }
 
+// Mirrors "## Link previews" — verbatim copy of ChatWithPreviews.
+function ChatWithPreviews({
+  messages,
+  previews,
+}: {
+  messages: UIMessage[];
+  previews: Record<string, LinkPreview>;
+}) {
+  const resolveLinkPreview = useCallback(
+    (message: UIMessage) => {
+      const url = message.templateName ? null : firstLinkIn(message.content);
+      return url ? previews[url] : undefined;
+    },
+    [previews],
+  );
+
+  return (
+    <MessageList messages={messages} resolveLinkPreview={resolveLinkPreview} />
+  );
+}
+
+// Mirrors the "## Link previews" Bubble composition block.
+function LinkPreviewComposition({
+  preview,
+  text,
+}: {
+  preview: LinkPreview;
+  text: string;
+}) {
+  return (
+    <RootBubble variant="primary" align="end" className="w-[330px]">
+      <RootBubbleContent>
+        <LinkPreviewCard preview={preview} variant="primary" />
+        {text}
+      </RootBubbleContent>
+    </RootBubble>
+  );
+}
+
 describe("README examples", () => {
   beforeEach(() => {
     mockMatchMedia(false);
@@ -89,6 +137,41 @@ describe("README examples", () => {
   // Not a new README block — included to prove the documented subpath import
   // (`@better-zap/react/bubble`, see "## Subpath imports") resolves against
   // the published surface.
+  it("Link previews: ChatWithPreviews shows the card for the linked message", async () => {
+    const url = "https://www.amazon.com.br/dp/B07XQM4PH3";
+    const preview: LinkPreview = {
+      url,
+      title: "Oferta: Whiskey Jameson Caskmates IPA, 750 ml",
+    };
+
+    render(
+      <div style={{ height: 800, width: 400 }}>
+        <ChatWithPreviews
+          messages={[
+            createMessage({ id: "m1", content: `Olha ${url}.` }),
+            createMessage({ id: "m2", content: "sem link" }),
+          ]}
+          previews={{ [url]: preview }}
+        />
+      </div>,
+    );
+
+    expect(await screen.findByText(preview.title)).toBeTruthy();
+    expect(screen.getByText("sem link")).toBeTruthy();
+    expect(document.querySelectorAll('[data-slot="link-preview"]')).toHaveLength(1);
+  });
+
+  it("Link previews: Bubble composition renders the card above the text", () => {
+    render(
+      <LinkPreviewComposition
+        preview={{ url: "https://example.com", title: "Example" }}
+        text="Veja"
+      />,
+    );
+    expect(screen.getByText("Example")).toBeTruthy();
+    expect(screen.getByText("Veja")).toBeTruthy();
+  });
+
   it("subpath import @better-zap/react/bubble resolves and renders", () => {
     render(
       <Bubble>

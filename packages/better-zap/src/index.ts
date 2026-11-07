@@ -177,6 +177,12 @@ export type {
   TemplateRegistry,
 } from "./template-registry";
 
+export {
+  firstLinkIn,
+  parseOpenGraph,
+  type LinkPreview,
+} from "./link-preview";
+
 export { formatPhone } from "./utils/phone";
 export { delay } from "./utils/delay";
 
