@@ -16,6 +16,7 @@ import type {
   SmbMessageEchoContext,
   StatusContext,
   WebhookError,
+  WebhookMediaConfig,
   WebhookPayload,
 } from "better-zap";
 import { verifyMetaWebhookSignature } from "./signature-verification";
@@ -34,6 +35,12 @@ export type WebhookConfig = {
   log: Logger;
   /** Optional database contracts used for automatic coexistence persistence. */
   database?: BetterZapDatabase;
+  /**
+   * Download incoming media into a `MediaStore`. Covers `messages`,
+   * `smb_message_echoes` and `history`, including follow-up media that
+   * replaces a placeholder. Omit to keep only the text label and media id.
+   */
+  media?: WebhookMediaConfig;
   /** Called once per incoming message, after SDK pre-processing. */
   onMessage: (ctx: MessageContext) => Promise<void>;
   /** Called once per delivery status update (sent → delivered → read → failed). */
@@ -105,6 +112,7 @@ export function createWebhookHandler(
     logger: config.logger,
     log: config.log,
     database: config.database,
+    media: config.media,
     hooks: config,
   });
 

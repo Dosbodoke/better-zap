@@ -105,6 +105,18 @@ export interface BetterZapConfig<
      */
     subscribeWabaAfterCodeExchange?: boolean;
   };
+  /**
+   * Media download settings. Downloads only run when `database.media` is set.
+   */
+  media?: {
+    /** Files larger than this are skipped (`metadata.media.status: "skipped"`). Defaults to 25 MiB. */
+    maxBytes?: number;
+    /**
+     * Lifetime of the presigned URL the media route redirects to, when the
+     * store has `getSignedUrl`. Capped at 7 days. Defaults to 3600 seconds.
+     */
+    signedUrlExpiresIn?: number;
+  };
   basePath?: string;
   authorizeAppRequest?: BetterZapAuthorizeAppRequest;
   logger?: LoggerConfig;

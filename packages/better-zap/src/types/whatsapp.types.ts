@@ -300,6 +300,7 @@ export interface IncomingMessage {
   audio?: MediaMessage;
   video?: MediaMessage;
   document?: MediaMessage & { filename?: string };
+  sticker?: MediaMessage & { animated?: boolean };
   location?: {
     latitude: number;
     longitude: number;

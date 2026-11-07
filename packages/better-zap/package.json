@@ -38,6 +38,16 @@
         "default": "./dist/client.cjs"
       }
     },
+    "./s3": {
+      "import": {
+        "types": "./dist/s3.d.mts",
+        "default": "./dist/s3.mjs"
+      },
+      "require": {
+        "types": "./dist/s3.d.cts",
+        "default": "./dist/s3.cjs"
+      }
+    },
     "./package.json": "./package.json"
   },
   "engines": {
@@ -54,6 +64,9 @@
     "access": "public",
     "registry": "https://registry.npmjs.org/",
     "provenance": true
+  },
+  "dependencies": {
+    "aws4fetch": "^1.0.20"
   },
   "devDependencies": {
     "@better-zap/fixtures": "workspace:*",

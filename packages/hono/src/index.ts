@@ -32,4 +32,5 @@ export type {
   CoexistenceUnsupportedMessageContext,
   SmbAppStateSyncContext,
   SmbMessageEchoContext,
+  WebhookMediaConfig,
 } from "better-zap";
