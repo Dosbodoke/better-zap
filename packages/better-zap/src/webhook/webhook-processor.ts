@@ -35,7 +35,8 @@ import type {
   WebhookPayload,
 } from "../types/whatsapp.types";
 import { getMessageContent as defaultGetMessageContent } from "./message-content";
-import { storeMessageMedia, type WebhookMediaConfig } from "../media/store-message-media";
+import type { WebhookMediaConfig } from "../media/store-message-media";
+import { createMediaQueue, type MediaQueue } from "../media/media-queue";
 
 // ============================================
 // Hook context types
@@ -198,22 +199,41 @@ export interface WebhookProcessorConfig {
    * Download incoming media into a `MediaStore`. Covers `messages`,
    * `smb_message_echoes` and `history`, including follow-up media that
    * replaces a placeholder. Omit to keep only the text label and media id.
+   *
+   * Downloads run in the background after the hooks, so they never delay
+   * `onMessage`.
    */
   media?: WebhookMediaConfig;
 }
 
 export interface WebhookProcessor {
-  /** Dispatches one Meta webhook payload. Never throws: all errors are logged. */
+  /**
+   * Dispatches one Meta webhook payload. Never throws: all errors are logged.
+   *
+   * Resolves once every hook has run and this payload's media downloads have
+   * finished, so pass it to `waitUntil` to keep the runtime alive for them.
+   */
   process(payload: WebhookPayload): Promise<void>;
 }
 
 export function createWebhookProcessor(
   config: WebhookProcessorConfig,
 ): WebhookProcessor {
+  // One queue per processor, so concurrent webhooks share the download limit.
+  const mediaQueue = config.media
+    ? createMediaQueue({ media: config.media, logger: config.logger, log: config.log })
+    : undefined;
+
   return {
-    process: (payload: WebhookPayload) => processPayload(payload, config),
+    process: (payload: WebhookPayload) => processPayload(payload, config, mediaQueue),
   };
 }
+
+/** The processor config plus the media downloads started by the current payload. */
+type ProcessorRuntime = WebhookProcessorConfig & {
+  /** Starts downloading a message's media in the background. Returns immediately. */
+  queueMedia: (message: IncomingMessage, phoneNumberId: string | undefined) => void;
+};
 
 // ============================================
 // Internal Pipeline
@@ -222,9 +242,31 @@ export function createWebhookProcessor(
 /** Top-level dispatcher — iterates entries in the webhook payload. */
 async function processPayload(
   payload: WebhookPayload,
-  config: WebhookProcessorConfig,
+  processorConfig: WebhookProcessorConfig,
+  mediaQueue: MediaQueue | undefined,
 ): Promise<void> {
+  const mediaJobs: Promise<void>[] = [];
+  const config: ProcessorRuntime = {
+    ...processorConfig,
+    queueMedia: (message, phoneNumberId) => {
+      if (!mediaQueue) return;
+      mediaJobs.push(mediaQueue.add(message, phoneNumberId));
+    },
+  };
   const log = config.log;
+
+  await dispatchPayload(payload, config, log);
+
+  // Hooks are done. Wait for the downloads they started (they never reject),
+  // so `waitUntil` keeps the runtime alive until the files are stored.
+  await Promise.all(mediaJobs);
+}
+
+async function dispatchPayload(
+  payload: WebhookPayload,
+  config: ProcessorRuntime,
+  log: Logger,
+): Promise<void> {
   try {
     if (payload.object !== "whatsapp_business_account") {
       log.debug("webhook.ignored_payload", { object: payload.object });
@@ -242,7 +284,7 @@ async function processPayload(
 /** Iterates changes within a single entry. */
 async function processEntry(
   entry: WebhookEntry,
-  config: WebhookProcessorConfig,
+  config: ProcessorRuntime,
   log: Logger,
 ): Promise<void> {
   for (const change of entry.changes) {
@@ -253,7 +295,7 @@ async function processEntry(
 /** Routes webhook changes to field-specific processors. */
 async function processChange(
   change: WebhookChange,
-  config: WebhookProcessorConfig,
+  config: ProcessorRuntime,
   log: Logger,
 ): Promise<void> {
   switch (change.field) {
@@ -287,7 +329,7 @@ async function processChange(
 /** Routes ordinary messages, statuses, and errors to the existing handlers. */
 async function processMessagesChange(
   change: WebhookChange,
-  config: WebhookProcessorConfig,
+  config: ProcessorRuntime,
   log: Logger,
 ): Promise<void> {
   const value = change.value;
@@ -346,7 +388,7 @@ async function processMessagesChange(
 
 async function processHistoryChange(
   change: WebhookChange,
-  config: WebhookProcessorConfig,
+  config: ProcessorRuntime,
   log: Logger,
 ): Promise<void> {
   const value = change.value as CoexistenceHistoryValue;
@@ -498,7 +540,7 @@ async function processHistoryMessage(input: {
   change: WebhookChange;
   requestId?: string;
   tally: ImportTally;
-  config: WebhookProcessorConfig;
+  config: ProcessorRuntime;
   log: Logger;
 }): Promise<void> {
   const { message, value, change, config, log, tally } = input;
@@ -570,7 +612,7 @@ async function processHistoryMessage(input: {
 
 async function processSmbAppStateSyncChange(
   change: WebhookChange,
-  config: WebhookProcessorConfig,
+  config: ProcessorRuntime,
   log: Logger,
 ): Promise<void> {
   const value = change.value as CoexistenceSmbAppStateSyncValue;
@@ -751,7 +793,7 @@ function toStateSyncContactChange(
 
 async function processMessageEditChange(
   change: WebhookChange,
-  config: WebhookProcessorConfig,
+  config: ProcessorRuntime,
   log: Logger,
 ): Promise<void> {
   const value = change.value as CoexistenceMessageEditValue;
@@ -767,7 +809,7 @@ async function processMessageEditChange(
 
 async function processMessageRevokeChange(
   change: WebhookChange,
-  config: WebhookProcessorConfig,
+  config: ProcessorRuntime,
   log: Logger,
 ): Promise<void> {
   const value = change.value as CoexistenceMessageRevokeValue;
@@ -787,7 +829,7 @@ async function processMessageRevokeChange(
 
 async function processUnsupportedMessagesChange(
   change: WebhookChange,
-  config: WebhookProcessorConfig,
+  config: ProcessorRuntime,
   log: Logger,
 ): Promise<void> {
   const value = change.value as CoexistenceUnsupportedValue;
@@ -812,7 +854,7 @@ async function processUnsupportedMessagesChange(
 
 async function processSmbMessageEchoesChange(
   change: WebhookChange,
-  config: WebhookProcessorConfig,
+  config: ProcessorRuntime,
   log: Logger,
 ): Promise<void> {
   const rawValue = change.value as CoexistenceSmbMessageEchoesValue;
@@ -859,7 +901,7 @@ async function processSmbMessageEchoesChange(
 
 async function processAccountUpdateChange(
   change: WebhookChange,
-  config: WebhookProcessorConfig,
+  config: ProcessorRuntime,
   log: Logger,
 ): Promise<void> {
   const value = change.value as CoexistenceAccountUpdateValue;
@@ -884,7 +926,7 @@ async function processAccountUpdateChange(
 
 async function processAccountOffboardedChange(
   change: WebhookChange,
-  config: WebhookProcessorConfig,
+  config: ProcessorRuntime,
   log: Logger,
 ): Promise<void> {
   const value = change.value as CoexistenceAccountOffboardedValue;
@@ -921,7 +963,7 @@ async function processAccountOffboardedChange(
 
 async function processAccountReconnectedChange(
   change: WebhookChange,
-  config: WebhookProcessorConfig,
+  config: ProcessorRuntime,
   log: Logger,
 ): Promise<void> {
   const value = change.value as CoexistenceAccountReconnectedValue;
@@ -963,7 +1005,7 @@ async function processCoexistenceErrors(
     | CoexistenceHistoryValue
     | CoexistenceSmbAppStateSyncValue
     | CoexistenceUnsupportedValue,
-  config: WebhookProcessorConfig,
+  config: ProcessorRuntime,
   log: Logger,
   resolvedRequestId?: string,
 ): Promise<void> {
@@ -999,7 +1041,7 @@ async function processCoexistenceErrors(
 
 async function upsertLifecycleAccountState(
   value: CoexistenceAccountOffboardedValue | CoexistenceAccountReconnectedValue,
-  config: WebhookProcessorConfig,
+  config: ProcessorRuntime,
   patch: {
     status: "offboarded" | "reconnected";
     usable: boolean;
@@ -1044,7 +1086,7 @@ async function upsertLifecycleAccountState(
 async function resolveSyncRequestId(
   value: { request_id?: string; metadata?: { phone_number_id?: string } },
   syncType: CoexistenceSyncType,
-  config: WebhookProcessorConfig,
+  config: ProcessorRuntime,
 ): Promise<string | undefined> {
   if (isNonEmptyString(value.request_id)) {
     return value.request_id;
@@ -1106,7 +1148,7 @@ async function importCoexistenceMessage(input: {
   requestId?: string;
   source: "history" | "smb_message_echoes";
   forceDirection?: WhatsAppDirection;
-  config: WebhookProcessorConfig;
+  config: ProcessorRuntime;
   log: Logger;
 }): Promise<ImportOutcome> {
   if (!input.config.database?.coexistence) {
@@ -1164,16 +1206,10 @@ async function importCoexistenceMessage(input: {
       },
     });
 
-    // New rows and upgraded placeholders get their media. Duplicates are
-    // skipped so a replayed webhook never downloads twice.
+    // New rows and upgraded placeholders get their media, in the background.
+    // Duplicates are skipped so a replayed webhook never downloads twice.
     if (result === "created" || result === "upgraded") {
-      await storeMessageMedia({
-        message,
-        phoneNumberId: input.metadata?.phone_number_id,
-        media: input.config.media,
-        logger: input.config.logger,
-        log,
-      });
+      input.config.queueMedia(message, input.metadata?.phone_number_id);
     }
     return result;
   } catch (error) {
@@ -1263,14 +1299,15 @@ async function runOptionalHook(
  * Processes a single incoming message:
  * 1. Extracts human-readable content
  * 2. Atomically logs and deduplicates by waMessageId
- * 3. Downloads its media when a `MediaStore` is configured
- * 4. Calls {@link WebhookProcessorHooks.onMessage}
+ * 3. Calls {@link WebhookProcessorHooks.onMessage}
+ * 4. Queues its media download when a `MediaStore` is configured. The hook
+ *    runs first so the bot's reply is never held up by a slow file.
  */
 async function processIncomingMessage(
   message: IncomingMessage,
   contact: WebhookContact | undefined,
   phoneNumberId: string | undefined,
-  config: WebhookProcessorConfig,
+  config: ProcessorRuntime,
   log: Logger,
 ): Promise<void> {
   const phone = message.from;
@@ -1307,14 +1344,6 @@ async function processIncomingMessage(
     return;
   }
 
-  await storeMessageMedia({
-    message,
-    phoneNumberId,
-    media: config.media,
-    logger: config.logger,
-    log,
-  });
-
   const ctx: MessageContext = {
     message,
     contact,
@@ -1331,6 +1360,8 @@ async function processIncomingMessage(
       ...serializeError(error),
     });
   }
+
+  config.queueMedia(message, phoneNumberId);
 }
 
 /**
@@ -1342,7 +1373,7 @@ async function processIncomingMessage(
  */
 async function processStatusUpdate(
   status: MessageStatus,
-  config: WebhookProcessorConfig,
+  config: ProcessorRuntime,
   log: Logger,
 ): Promise<void> {
   const firstError = status.errors?.[0];

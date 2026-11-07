@@ -32,6 +32,20 @@ describe("fetchWithRetry", () => {
     expect(error?.message).toBe("offline");
     expect(send).toHaveBeenCalledTimes(2);
   });
+  it("stops retrying once the signal aborts", async () => {
+    const controller = new AbortController();
+    const send = vi.fn(async () => {
+      controller.abort(new Error("timed out"));
+      return new Response(null, { status: 503 });
+    });
+    const [response, error] = await fetchWithRetry(send, {
+      retries: 2,
+      signal: controller.signal,
+    });
+    expect(response).toBeNull();
+    expect(error?.message).toBe("timed out");
+    expect(send).toHaveBeenCalledOnce();
+  });
 });
 
 describe("toNumber", () => {

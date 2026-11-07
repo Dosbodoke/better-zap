@@ -205,7 +205,9 @@ export { delay } from "./utils/delay";
 export { tryCatch, toError, type Result } from "./utils/result";
 
 export {
+  DEFAULT_MEDIA_CONCURRENCY,
   DEFAULT_MEDIA_MAX_BYTES,
+  DEFAULT_MEDIA_TIMEOUT_MS,
   MAX_SIGNED_URL_EXPIRES_IN,
   STORABLE_MEDIA_TYPES,
   clampSignedUrlExpiry,

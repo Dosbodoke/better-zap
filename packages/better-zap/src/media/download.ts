@@ -14,6 +14,7 @@ type DownloadContext = {
   maxBytes: number;
   retries: number;
   expectedSha256?: string;
+  signal?: AbortSignal;
   fetch: typeof fetch;
 };
 
@@ -59,6 +60,7 @@ async function download(
     maxBytes: input.options?.maxBytes ?? DEFAULT_MEDIA_MAX_BYTES,
     retries: input.options?.retries ?? 2,
     expectedSha256: input.options?.expectedSha256,
+    signal: input.options?.signal,
     fetch: input.fetch ?? fetch,
   };
 
@@ -74,11 +76,11 @@ async function download(
 async function downloadOnce(
   context: DownloadContext,
 ): Promise<MediaDownloadResult | typeof URL_EXPIRED> {
-  const { headers, maxBytes, retries } = context;
+  const { headers, maxBytes, retries, signal } = context;
 
   const [lookup, lookupError] = await fetchWithRetry(
-    () => context.fetch(context.lookupUrl, { method: "GET", headers }),
-    { retries },
+    () => context.fetch(context.lookupUrl, { method: "GET", headers, signal }),
+    { retries, signal },
   );
   if (lookupError) return failed(`Media lookup failed: ${lookupError.message}`);
   if (!lookup.ok) return failed(`Media lookup failed: ${await describeError(lookup)}`);
@@ -96,8 +98,8 @@ async function downloadOnce(
   }
 
   const [response, downloadError] = await fetchWithRetry(
-    () => context.fetch(fileUrl, { method: "GET", headers }),
-    { retries },
+    () => context.fetch(fileUrl, { method: "GET", headers, signal }),
+    { retries, signal },
   );
   if (downloadError) return failed(`Media download failed: ${downloadError.message}`);
 

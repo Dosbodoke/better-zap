@@ -180,6 +180,8 @@ Media download settings. Downloads only run when `database.media` is set.
 | Property | Type | Description |
 | --- | --- | --- |
 | `maxBytes` | `number?` | Files larger than this are skipped. Defaults to 25 MiB |
+| `timeoutMs` | `number?` | Time limit in milliseconds for one file's download and upload. Slower files are recorded as `failed`. Defaults to `30000` |
+| `concurrency` | `number?` | Files downloaded at the same time, in the background after `onMessage`. Defaults to `3` |
 | `signedUrlExpiresIn` | `number?` | Lifetime in seconds of the presigned URL the media route redirects to, when the store has `getSignedUrl`. Capped at 7 days. Defaults to `3600` |
 
 See [Media Storage](/docs/guides/media-storage) for details.

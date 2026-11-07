@@ -34,4 +34,11 @@ The processor does not read the job back before writing. Make your store keep
 move a finished job back to `processing`.
 
 When the runtime passes no execution context and no `runInBackground` is set,
-the handler awaits the processor before responding.
+the handler awaits the processor before responding. On a long-running Node
+server, set `webhook.runInBackground: (work) => { void work; }` in `betterZap()`
+to answer Meta first.
+
+Media downloads never delay hooks. `onMessage` runs first, then the file is
+queued in the background (`media.concurrency`, default 3, and `media.timeoutMs`,
+default 30 seconds, per file). The processor resolves once the queued files
+finish, so `waitUntil` keeps the runtime alive for them.

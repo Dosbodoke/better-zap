@@ -87,6 +87,13 @@ export interface BetterZapConfig<
       ctx: CoexistenceUnsupportedMessageContext &
         BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>,
     ) => Promise<void>;
+    /**
+     * Runs webhook processing (hooks, then media downloads) after Meta gets
+     * its `200 OK`. Defaults to `executionCtx.waitUntil` on Workers. Without
+     * an execution context the response waits for processing, so on a
+     * long-running Node server pass `(work) => { void work; }`.
+     */
+    runInBackground?: (work: Promise<void>) => void | Promise<void>;
   };
   coexistence?: {
     enabled?: boolean;
@@ -111,6 +118,13 @@ export interface BetterZapConfig<
   media?: {
     /** Files larger than this are skipped (`metadata.media.status: "skipped"`). Defaults to 25 MiB. */
     maxBytes?: number;
+    /**
+     * Time limit in milliseconds for one file's download and upload. Slower
+     * files are recorded as `failed`. Defaults to 30 seconds.
+     */
+    timeoutMs?: number;
+    /** Files downloaded at the same time. Defaults to 3. */
+    concurrency?: number;
     /**
      * Lifetime of the presigned URL the media route redirects to, when the
      * store has `getSignedUrl`. Capped at 7 days. Defaults to 3600 seconds.

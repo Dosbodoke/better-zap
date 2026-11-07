@@ -18,14 +18,25 @@ For every `image`, `audio`, `video`, `document` and `sticker` message in the `me
 
 1. Meta gets its `200 OK` right away. The rest runs inside `waitUntil`.
 2. The message is logged as usual.
-3. Better Zap calls `GET /{media-id}`, downloads the file with your token, and checks its SHA-256 when Meta sends one.
-4. The file is saved with `MediaStore.put` under `whatsapp/{phoneNumberId}/{waMessageId}`.
-5. `metadata.media` is set on the log record through `updateWhatsAppLogByWaMessageId`, and a `MESSAGE_UPDATE` [sync event](/docs/concepts/durable-objects) is sent.
-6. Your `onMessage` hook runs.
+3. Your `onMessage` hook runs. It never waits for the file, so your bot replies as fast as it would without storage.
+4. The download is queued in the background. The next message is processed right away.
+5. Better Zap calls `GET /{media-id}`, downloads the file with your token, and checks its SHA-256 when Meta sends one.
+6. The file is saved with `MediaStore.put` under `whatsapp/{phoneNumberId}/{waMessageId}`.
+7. `metadata.media` is set on the log record through `updateWhatsAppLogByWaMessageId`, and a `MESSAGE_UPDATE` [sync event](/docs/concepts/durable-objects) is sent, so the UI shows the file as soon as it's stored.
+
+Because the hook runs first, `metadata.media` isn't set yet inside `onMessage`. Read it later from the log record, or listen for `MESSAGE_UPDATE`.
 
 Coexistence history placeholders (`media_placeholder`) carry no file and are never downloaded. When Meta later sends the real media with the same message id, the placeholder is replaced and that media is downloaded. Duplicate webhooks don't download again.
 
 A failed download never fails the webhook. The error is logged and recorded in `metadata.media`.
+
+### Background downloads
+
+- **Parallel, with a limit.** Up to `media.concurrency` files (default 3) transfer at once. The rest wait their turn, so a history sync with hundreds of photos doesn't flood Meta or your bucket.
+- **Time limit.** Each file's download and upload must finish within `media.timeoutMs` (default 30 seconds). A slower file is cancelled and recorded as `failed` with `Media transfer timed out after 30000ms`, so one stuck transfer can't hold a slot forever. The `MediaStore.put` info carries an `AbortSignal`; pass it to `fetch` in a custom store to cancel the upload too.
+- **No duplicate work.** A message already in the queue isn't downloaded twice.
+- **Kept alive until done.** The processor's promise resolves only after the queued files finish, so `waitUntil` keeps a Worker running for them. On Cloudflare, `waitUntil` work gets about 30 seconds after the response.
+- **Node servers.** Without an execution context the webhook response waits for processing. Set `webhook.runInBackground: (work) => { void work; }` to answer Meta first and keep processing in the same process.
 
 ## Set up Cloudflare R2
 

@@ -147,6 +147,8 @@ export function betterZap<
     ? {
         store: database.media,
         maxBytes: options.media?.maxBytes,
+        timeoutMs: options.media?.timeoutMs,
+        concurrency: options.media?.concurrency,
         phoneNumberId: config.phoneId,
         download: async (mediaId, { phoneNumberId, ...downloadOptions }) => {
           // Media sent to another business's number needs that business's token.
@@ -169,6 +171,7 @@ export function betterZap<
     log,
     database,
     media,
+    runInBackground: options.webhook.runInBackground,
     onMessage: async (ctx) => {
       const hookContext = {
         ...ctx,

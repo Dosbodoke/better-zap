@@ -15,6 +15,8 @@ export interface MediaStorePutInfo {
   size?: number;
   /** Hex SHA-256 of the file, when known. */
   sha256?: string;
+  /** Aborts when the transfer times out. Pass it to `fetch` to cancel the upload. */
+  signal?: AbortSignal;
 }
 
 export interface MediaStoreObject {
@@ -67,6 +69,12 @@ export type StorableMediaType = (typeof STORABLE_MEDIA_TYPES)[number];
 
 /** Default `maxBytes` for media downloads: 25 MiB. */
 export const DEFAULT_MEDIA_MAX_BYTES = 25 * 1024 * 1024;
+
+/** Default time limit for one file's download and upload: 30 seconds. */
+export const DEFAULT_MEDIA_TIMEOUT_MS = 30_000;
+
+/** Default number of files downloaded at the same time. */
+export const DEFAULT_MEDIA_CONCURRENCY = 3;
 
 /** The file was downloaded and stored. */
 export interface StoredMessageMedia {
@@ -134,4 +142,6 @@ export interface MediaDownloadOptions {
   accessToken?: string;
   /** Retries for network errors, 429 and 5xx responses. Defaults to 2. */
   retries?: number;
+  /** Cancels the lookup and download, e.g. on a timeout. */
+  signal?: AbortSignal;
 }

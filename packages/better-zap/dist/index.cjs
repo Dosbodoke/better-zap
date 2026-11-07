@@ -1,6 +1,6 @@
 Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
 const require_client = require("./client.cjs");
-const require_types = require("./types-Cwy1jEF6.cjs");
+const require_types = require("./types-CITvQMYt.cjs");
 //#region src/freeform-message-window.ts
 const FREEFORM_MESSAGE_WINDOW_MS = 1440 * 60 * 1e3;
 function toTimestamp(value) {
@@ -172,6 +172,7 @@ async function download(input) {
 		maxBytes: input.options?.maxBytes ?? 26214400,
 		retries: input.options?.retries ?? 2,
 		expectedSha256: input.options?.expectedSha256,
+		signal: input.options?.signal,
 		fetch: input.fetch ?? fetch
 	};
 	const first = await downloadOnce(context);
@@ -181,11 +182,15 @@ async function download(input) {
 	return failed$1("Media download failed: HTTP 404");
 }
 async function downloadOnce(context) {
-	const { headers, maxBytes, retries } = context;
+	const { headers, maxBytes, retries, signal } = context;
 	const [lookup, lookupError] = await require_types.fetchWithRetry(() => context.fetch(context.lookupUrl, {
 		method: "GET",
-		headers
-	}), { retries });
+		headers,
+		signal
+	}), {
+		retries,
+		signal
+	});
 	if (lookupError) return failed$1(`Media lookup failed: ${lookupError.message}`);
 	if (!lookup.ok) return failed$1(`Media lookup failed: ${await describeError(lookup)}`);
 	const [json, jsonError] = await require_types.tryCatch(() => lookup.json());
@@ -201,8 +206,12 @@ async function downloadOnce(context) {
 	};
 	const [response, downloadError] = await require_types.fetchWithRetry(() => context.fetch(fileUrl, {
 		method: "GET",
-		headers
-	}), { retries });
+		headers,
+		signal
+	}), {
+		retries,
+		signal
+	});
 	if (downloadError) return failed$1(`Media download failed: ${downloadError.message}`);
 	if (response.status === 404) {
 		await require_types.discardBody(response);
@@ -1653,12 +1662,19 @@ function decodeEntities(value) {
 * Downloads a message's media, stores it, and records the result in
 * `metadata.media`. Does nothing for messages without media and for history
 * media placeholders. Never throws.
+*
+* The download and upload together must finish within `media.timeoutMs`.
+* The webhook processor runs this in the background through a media queue,
+* after `onMessage`.
 */
 async function storeMessageMedia(input) {
 	if (!input.media) return void 0;
 	const payload = getMessageMediaPayload(input.message);
 	if (!payload) return void 0;
-	const result = await downloadAndStore(input.media, input, payload);
+	const timeoutMs = input.media.timeoutMs ?? 3e4;
+	const timeout = require_types.timeoutSignal(timeoutMs, `Media transfer timed out after ${timeoutMs}ms`);
+	const result = await downloadAndStore(input.media, input, payload, timeout.signal);
+	timeout.clear();
 	const [, updateError] = await require_types.tryCatch(() => input.logger.setMessageMedia(input.message.id, result));
 	if (updateError) input.log.error("webhook.media_metadata_update_failed", {
 		waMessageId: input.message.id,
@@ -1666,7 +1682,7 @@ async function storeMessageMedia(input) {
 	});
 	return result;
 }
-async function downloadAndStore(media, input, payload) {
+async function downloadAndStore(media, input, payload, signal) {
 	const { message, log } = input;
 	const phoneNumberId = input.phoneNumberId ?? media.phoneNumberId;
 	const logContext = {
@@ -1677,8 +1693,9 @@ async function downloadAndStore(media, input, payload) {
 	const [download, downloadError] = await require_types.tryCatch(() => media.download(payload.id, {
 		maxBytes: media.maxBytes ?? 26214400,
 		expectedSha256: payload.sha256,
-		phoneNumberId
-	}));
+		phoneNumberId,
+		signal
+	}), signal);
 	if (downloadError) {
 		log.error("webhook.media_download_failed", {
 			...logContext,
@@ -1715,8 +1732,9 @@ async function downloadAndStore(media, input, payload) {
 	const [, putError] = await require_types.tryCatch(() => media.store.put(key, download.body, {
 		contentType: download.contentType,
 		size: download.size,
-		sha256: download.sha256
-	}));
+		sha256: download.sha256,
+		signal
+	}), signal);
 	if (putError) {
 		log.error("webhook.media_store_failed", {
 			...logContext,
@@ -1773,13 +1791,80 @@ function getMessageContent(message) {
 	}
 }
 //#endregion
+//#region src/utils/limit.ts
+/**
+* Returns a runner that runs at most `concurrency` tasks at a time. Extra
+* tasks wait their turn in order. Task errors come back as a {@link Result}.
+*/
+function createLimiter(concurrency) {
+	const max = Number.isNaN(concurrency) ? 1 : Math.max(1, Math.floor(concurrency));
+	const waiting = [];
+	let active = 0;
+	const acquire = () => {
+		if (active < max) {
+			active++;
+			return Promise.resolve();
+		}
+		return new Promise((resolve) => waiting.push(resolve));
+	};
+	const release = () => {
+		const next = waiting.shift();
+		if (next) return next();
+		active--;
+	};
+	return async (task) => {
+		await acquire();
+		const result = await require_types.tryCatch(task);
+		release();
+		return result;
+	};
+}
+//#endregion
+//#region src/media/media-queue.ts
+/** Runs media downloads in the background so they never delay webhook hooks. */
+function createMediaQueue(input) {
+	const run = createLimiter(input.media.concurrency ?? 3);
+	const queued = /* @__PURE__ */ new Map();
+	return { add(message, phoneNumberId) {
+		if (!getMessageMediaPayload(message)) return Promise.resolve();
+		const existing = queued.get(message.id);
+		if (existing) return existing;
+		const job = run(() => storeMessageMedia({
+			...input,
+			message,
+			phoneNumberId
+		})).then(() => {
+			queued.delete(message.id);
+		});
+		queued.set(message.id, job);
+		return job;
+	} };
+}
+//#endregion
 //#region src/webhook/webhook-processor.ts
 function createWebhookProcessor(config) {
-	return { process: (payload) => processPayload(payload, config) };
+	const mediaQueue = config.media ? createMediaQueue({
+		media: config.media,
+		logger: config.logger,
+		log: config.log
+	}) : void 0;
+	return { process: (payload) => processPayload(payload, config, mediaQueue) };
 }
 /** Top-level dispatcher — iterates entries in the webhook payload. */
-async function processPayload(payload, config) {
+async function processPayload(payload, processorConfig, mediaQueue) {
+	const mediaJobs = [];
+	const config = {
+		...processorConfig,
+		queueMedia: (message, phoneNumberId) => {
+			if (!mediaQueue) return;
+			mediaJobs.push(mediaQueue.add(message, phoneNumberId));
+		}
+	};
 	const log = config.log;
+	await dispatchPayload(payload, config, log);
+	await Promise.all(mediaJobs);
+}
+async function dispatchPayload(payload, config, log) {
 	try {
 		if (payload.object !== "whatsapp_business_account") {
 			log.debug("webhook.ignored_payload", { object: payload.object });
@@ -2394,13 +2479,7 @@ async function importCoexistenceMessage(input) {
 				raw: message
 			}
 		});
-		if (result === "created" || result === "upgraded") await storeMessageMedia({
-			message,
-			phoneNumberId: input.metadata?.phone_number_id,
-			media: input.config.media,
-			logger: input.config.logger,
-			log
-		});
+		if (result === "created" || result === "upgraded") input.config.queueMedia(message, input.metadata?.phone_number_id);
 		return result;
 	} catch (error) {
 		log.error("webhook.coexistence_import_failed", {
@@ -2454,8 +2533,9 @@ async function runOptionalHook(run, logEvent, log) {
 * Processes a single incoming message:
 * 1. Extracts human-readable content
 * 2. Atomically logs and deduplicates by waMessageId
-* 3. Downloads its media when a `MediaStore` is configured
-* 4. Calls {@link WebhookProcessorHooks.onMessage}
+* 3. Calls {@link WebhookProcessorHooks.onMessage}
+* 4. Queues its media download when a `MediaStore` is configured. The hook
+*    runs first so the bot's reply is never held up by a slow file.
 */
 async function processIncomingMessage(message, contact, phoneNumberId, config, log) {
 	const phone = message.from;
@@ -2482,13 +2562,6 @@ async function processIncomingMessage(message, contact, phoneNumberId, config, l
 		});
 		return;
 	}
-	await storeMessageMedia({
-		message,
-		phoneNumberId,
-		media: config.media,
-		logger: config.logger,
-		log
-	});
 	const ctx = {
 		message,
 		contact,
@@ -2504,6 +2577,7 @@ async function processIncomingMessage(message, contact, phoneNumberId, config, l
 			...serializeError(error)
 		});
 	}
+	config.queueMedia(message, phoneNumberId);
 }
 /**
 * Processes a single delivery status update:
@@ -2579,7 +2653,9 @@ function toWebhookError(error) {
 //#endregion
 exports.BetterZapClientError = require_client.BetterZapClientError;
 exports.CoexistenceService = CoexistenceService;
+exports.DEFAULT_MEDIA_CONCURRENCY = require_types.DEFAULT_MEDIA_CONCURRENCY;
 exports.DEFAULT_MEDIA_MAX_BYTES = require_types.DEFAULT_MEDIA_MAX_BYTES;
+exports.DEFAULT_MEDIA_TIMEOUT_MS = require_types.DEFAULT_MEDIA_TIMEOUT_MS;
 exports.EMPTY_TEMPLATE_REGISTRY = EMPTY_TEMPLATE_REGISTRY;
 exports.FREEFORM_MESSAGE_WINDOW_MS = FREEFORM_MESSAGE_WINDOW_MS;
 exports.InMemoryCoexistenceStore = InMemoryCoexistenceStore;

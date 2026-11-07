@@ -1,9 +1,11 @@
 import { delay } from "./delay";
-import { type Result, tryCatch } from "./result";
+import { abortReason, type Result, tryCatch } from "./result";
 
 export type RetryOptions = {
   /** Extra attempts after the first one. */
   retries: number;
+  /** Stops retrying once aborted. Pass the same signal to `fetch` to cancel the request too. */
+  signal?: AbortSignal;
 };
 
 /**
@@ -16,12 +18,13 @@ export type RetryOptions = {
  */
 export async function fetchWithRetry(
   send: () => Promise<Response>,
-  { retries }: RetryOptions,
+  { retries, signal }: RetryOptions,
 ): Promise<Result<Response>> {
   let lastError = new Error("Network error");
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     if (attempt > 0) await delay(200 * 2 ** (attempt - 1));
+    if (signal?.aborted) return [null, abortReason(signal)];
 
     const [response, error] = await tryCatch(send);
     if (error) {

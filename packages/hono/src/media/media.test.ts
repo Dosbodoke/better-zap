@@ -66,10 +66,15 @@ function createLogStore() {
   return { store, rows };
 }
 
-function createMediaStore(overrides: Partial<MediaStore> = {}) {
+/** `beforePut` runs at the start of every upload, e.g. to slow it down. */
+function createMediaStore(
+  overrides: Partial<MediaStore> = {},
+  beforePut?: () => Promise<void>,
+) {
   const files = new Map<string, { bytes: Uint8Array<ArrayBuffer>; info: MediaStorePutInfo }>();
   const store = {
     put: vi.fn(async (key: string, body: ReadableStream<Uint8Array> | ArrayBuffer, info: MediaStorePutInfo) => {
+      await beforePut?.();
       const bytes = new Uint8Array(
         body instanceof ArrayBuffer ? body : await new Response(body).arrayBuffer(),
       );
@@ -175,6 +180,7 @@ function createZap(input: {
   database: BetterZapDatabase;
   conversationSync?: DurableObjectNamespace;
   extra?: Pick<BetterZapConfig, "authorizeAppRequest" | "coexistence" | "media">;
+  runInBackground?: BetterZapConfig["webhook"]["runInBackground"];
 }) {
   const onMessage = vi.fn(async (_ctx: unknown) => {});
   const log = vi.fn();
@@ -191,6 +197,7 @@ function createZap(input: {
     webhook: {
       onMessage,
       onStatusUpdate: async () => {},
+      runInBackground: input.runInBackground,
     },
     ...input.extra,
   };
@@ -199,6 +206,23 @@ function createZap(input: {
 }
 
 async function postWebhook(zap: ReturnType<typeof betterZap>, payload: unknown) {
+  const { response, settled } = await sendWebhook(zap, payload);
+  await settled;
+  return response;
+}
+
+/** Posts a webhook and returns as soon as Meta would get its response. */
+async function sendWebhook(zap: ReturnType<typeof betterZap>, payload: unknown) {
+  const pending: Promise<unknown>[] = [];
+  const response = await zap.handler(
+    await signedWebhookRequest(payload),
+    {},
+    { waitUntil: (promise: Promise<unknown>) => pending.push(promise), passThroughOnException() {} },
+  );
+  return { response, settled: Promise.all(pending) };
+}
+
+async function signedWebhookRequest(payload: unknown): Promise<Request> {
   const rawBody = JSON.stringify(payload);
   const key = await crypto.subtle.importKey(
     "raw",
@@ -210,24 +234,20 @@ async function postWebhook(zap: ReturnType<typeof betterZap>, payload: unknown) 
   const signature = new Uint8Array(
     await crypto.subtle.sign("HMAC", key, textEncoder.encode(rawBody)),
   );
-  const pending: Promise<unknown>[] = [];
-  const response = await zap.handler(
-    new Request("http://localhost/api/whatsapp/webhook", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Hub-Signature-256": `sha256=${Array.from(signature, (b) => b.toString(16).padStart(2, "0")).join("")}`,
-      },
-      body: rawBody,
-    }),
-    {},
-    { waitUntil: (promise: Promise<unknown>) => pending.push(promise), passThroughOnException() {} },
-  );
-  await Promise.all(pending);
-  return response;
+  return new Request("http://localhost/api/whatsapp/webhook", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Hub-Signature-256": `sha256=${Array.from(signature, (b) => b.toString(16).padStart(2, "0")).join("")}`,
+    },
+    body: rawBody,
+  });
 }
 
-function messagesPayload(message: Record<string, unknown>, field = "messages") {
+function messagesPayload(
+  messages: Record<string, unknown> | Record<string, unknown>[],
+  field = "messages",
+) {
   return {
     object: "whatsapp_business_account",
     entry: [
@@ -240,7 +260,7 @@ function messagesPayload(message: Record<string, unknown>, field = "messages") {
               messaging_product: "whatsapp",
               metadata: { display_phone_number: "15551234567", phone_number_id: "123456" },
               contacts: [{ profile: { name: "João" }, wa_id: "5511999887766" }],
-              messages: [message],
+              messages: [messages].flat(),
             },
           },
         ],
@@ -294,6 +314,7 @@ describe("media download in the webhook pipeline", () => {
       contentType: "image/jpeg",
       size: FILE.byteLength,
       sha256: FILE_SHA256,
+      signal: expect.any(AbortSignal),
     });
 
     const row = logs.rows.get("wamid.image.1");
@@ -316,6 +337,134 @@ describe("media download in the webhook pipeline", () => {
       message: { waMessageId: "wamid.image.1", metadata: { media: { status: "stored", key } } },
     });
     expect(onMessage).toHaveBeenCalledOnce();
+  });
+
+  it("runs onMessage before downloading the media", async () => {
+    const fetchMock = stubMeta();
+    const logs = createLogStore();
+    const media = createMediaStore();
+    const { zap, onMessage } = createZap({
+      database: { whatsappLog: logs.store, media: media.store },
+    });
+
+    await postWebhook(zap, messagesPayload(imageMessage));
+
+    expect(onMessage).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalled();
+    expect(onMessage.mock.invocationCallOrder[0]).toBeLessThan(
+      fetchMock.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it("keeps processing later messages while a file uploads", async () => {
+    stubMeta();
+    const logs = createLogStore();
+    let finishUpload = () => {};
+    const media = createMediaStore(
+      {},
+      () =>
+        new Promise<void>((resolve) => {
+          finishUpload = resolve;
+        }),
+    );
+    const { zap, onMessage } = createZap({
+      database: { whatsappLog: logs.store, media: media.store },
+    });
+    const textMessage = {
+      from: "5511999887766",
+      id: "wamid.text.1",
+      timestamp: "1700000001",
+      type: "text",
+      text: { body: "oi" },
+    };
+
+    const { response, settled } = await sendWebhook(
+      zap,
+      messagesPayload([imageMessage, textMessage]),
+    );
+    expect(response.status).toBe(200);
+
+    // Both hooks ran while the image upload is still in progress.
+    await vi.waitFor(() => {
+      expect(onMessage).toHaveBeenCalledTimes(2);
+      expect(media.store.put).toHaveBeenCalledOnce();
+    });
+    expect(logs.rows.get("wamid.image.1")?.metadata.media).toBeUndefined();
+
+    finishUpload();
+    await settled;
+    expect(logs.rows.get("wamid.image.1")?.metadata.media).toMatchObject({ status: "stored" });
+  });
+
+  it("answers Meta before processing when webhook.runInBackground is set", async () => {
+    stubMeta();
+    const logs = createLogStore();
+    const media = createMediaStore();
+    const background: Promise<void>[] = [];
+    const { zap, onMessage } = createZap({
+      database: { whatsappLog: logs.store, media: media.store },
+      runInBackground: (work) => {
+        background.push(work);
+      },
+    });
+    // No execution context, like a Node server.
+    const response = await zap.handler(await signedWebhookRequest(messagesPayload(imageMessage)));
+
+    expect(response.status).toBe(200);
+    expect(background).toHaveLength(1);
+    await Promise.all(background);
+    expect(onMessage).toHaveBeenCalledOnce();
+    expect(logs.rows.get("wamid.image.1")?.metadata.media).toMatchObject({ status: "stored" });
+  });
+
+  it("downloads files in parallel up to media.concurrency", async () => {
+    stubMeta();
+    const logs = createLogStore();
+    let active = 0;
+    let peak = 0;
+    const media = createMediaStore({}, async () => {
+      active++;
+      peak = Math.max(peak, active);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      active--;
+    });
+    const { zap } = createZap({
+      database: { whatsappLog: logs.store, media: media.store },
+      extra: { media: { concurrency: 2 } },
+    });
+    const images = [1, 2, 3, 4].map((n) => ({
+      ...imageMessage,
+      id: `wamid.image.${n}`,
+      image: { ...imageMessage.image, id: `media_image_${n}` },
+    }));
+
+    await postWebhook(zap, messagesPayload(images));
+
+    expect(media.store.put).toHaveBeenCalledTimes(4);
+    expect(peak).toBe(2);
+  });
+
+  it("records a timeout when an upload takes longer than media.timeoutMs", async () => {
+    stubMeta();
+    const logs = createLogStore();
+    const media = createMediaStore({
+      // Ignores the abort signal and never settles.
+      put: vi.fn(() => new Promise<void>(() => {})),
+    });
+    const { zap, onMessage } = createZap({
+      database: { whatsappLog: logs.store, media: media.store },
+      extra: { media: { timeoutMs: 20 } },
+    });
+
+    const response = await postWebhook(zap, messagesPayload(imageMessage));
+
+    expect(response.status).toBe(200);
+    expect(onMessage).toHaveBeenCalledOnce();
+    expect(logs.rows.get("wamid.image.1")?.metadata.media).toMatchObject({
+      status: "failed",
+      error: "Media transfer timed out after 20ms",
+    });
+    expect(vi.mocked(media.store.put).mock.calls[0]?.[2].signal?.aborted).toBe(true);
   });
 
   it("keeps the document filename", async () => {

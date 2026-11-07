@@ -116,11 +116,16 @@ export function createS3MediaStore(config: S3MediaStoreConfig): MediaStore {
   /** Signs and sends a request. Throws only when every attempt hit a network error. */
   const send = async (
     url: URL,
-    init: { method: string; headers?: Record<string, string>; body?: ArrayBuffer },
+    init: {
+      method: string;
+      headers?: Record<string, string>;
+      body?: ArrayBuffer;
+      signal?: AbortSignal;
+    },
   ): Promise<Response> => {
     const [response, error] = await fetchWithRetry(
       async () => fetchImpl(await client.sign(url.toString(), init)),
-      { retries },
+      { retries, signal: init.signal },
     );
     if (error) {
       throw new S3MediaStoreError(`S3 ${init.method} failed: ${error.message}`, 0);
@@ -146,6 +151,7 @@ export function createS3MediaStore(config: S3MediaStoreConfig): MediaStore {
         method: "PUT",
         headers,
         body: bytes,
+        signal: info.signal,
       });
       if (!response.ok) {
         throw await toError("PUT", key, response);

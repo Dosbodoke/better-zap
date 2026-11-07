@@ -1,7 +1,7 @@
 import { type Logger, serializeError } from "../logger";
 import type { MessageLoggerService } from "../services/message-logger.service";
 import type { IncomingMessage } from "../types/whatsapp.types";
-import { tryCatch } from "../utils/result";
+import { timeoutSignal, tryCatch } from "../utils/result";
 import {
   getMediaStorageKey,
   getMessageMediaPayload,
@@ -9,6 +9,7 @@ import {
 } from "./message-media";
 import {
   DEFAULT_MEDIA_MAX_BYTES,
+  DEFAULT_MEDIA_TIMEOUT_MS,
   type MediaDownloadOptions,
   type MediaDownloadResult,
   type MediaStore,
@@ -25,6 +26,13 @@ export type WebhookMediaConfig = {
   ) => Promise<MediaDownloadResult>;
   /** Files larger than this are skipped. Defaults to 25 MiB. */
   maxBytes?: number;
+  /**
+   * Time limit for one file's download and upload, in milliseconds. A file
+   * that takes longer is recorded as `failed`. Defaults to 30 seconds.
+   */
+  timeoutMs?: number;
+  /** Files downloaded at the same time. Defaults to 3. */
+  concurrency?: number;
   /** Used in the storage key when the webhook has no `phone_number_id`. */
   phoneNumberId?: string;
 };
@@ -33,6 +41,10 @@ export type WebhookMediaConfig = {
  * Downloads a message's media, stores it, and records the result in
  * `metadata.media`. Does nothing for messages without media and for history
  * media placeholders. Never throws.
+ *
+ * The download and upload together must finish within `media.timeoutMs`.
+ * The webhook processor runs this in the background through a media queue,
+ * after `onMessage`.
  */
 export async function storeMessageMedia(input: {
   message: IncomingMessage;
@@ -46,7 +58,10 @@ export async function storeMessageMedia(input: {
   const payload = getMessageMediaPayload(input.message);
   if (!payload) return undefined;
 
-  const result = await downloadAndStore(input.media, input, payload);
+  const timeoutMs = input.media.timeoutMs ?? DEFAULT_MEDIA_TIMEOUT_MS;
+  const timeout = timeoutSignal(timeoutMs, `Media transfer timed out after ${timeoutMs}ms`);
+  const result = await downloadAndStore(input.media, input, payload, timeout.signal);
+  timeout.clear();
 
   const [, updateError] = await tryCatch(() =>
     input.logger.setMessageMedia(input.message.id, result),
@@ -65,6 +80,7 @@ async function downloadAndStore(
   media: WebhookMediaConfig,
   input: { message: IncomingMessage; phoneNumberId?: string; log: Logger },
   payload: MessageMediaPayload,
+  signal: AbortSignal,
 ): Promise<MessageMedia> {
   const { message, log } = input;
   const phoneNumberId = input.phoneNumberId ?? media.phoneNumberId;
@@ -74,13 +90,17 @@ async function downloadAndStore(
     mediaType: payload.type,
   };
 
-  // `download` is app-provided in custom setups, so it may throw.
-  const [download, downloadError] = await tryCatch(() =>
-    media.download(payload.id, {
-      maxBytes: media.maxBytes ?? DEFAULT_MEDIA_MAX_BYTES,
-      expectedSha256: payload.sha256,
-      phoneNumberId,
-    }),
+  // `download` and `put` are app-provided in custom setups, so they may throw
+  // or ignore the signal. `tryCatch` stops waiting once the signal aborts.
+  const [download, downloadError] = await tryCatch(
+    () =>
+      media.download(payload.id, {
+        maxBytes: media.maxBytes ?? DEFAULT_MEDIA_MAX_BYTES,
+        expectedSha256: payload.sha256,
+        phoneNumberId,
+        signal,
+      }),
+    signal,
   );
   if (downloadError) {
     log.error("webhook.media_download_failed", { ...logContext, ...serializeError(downloadError) });
@@ -109,12 +129,15 @@ async function downloadAndStore(
   }
 
   const key = getMediaStorageKey({ phoneNumberId, waMessageId: message.id });
-  const [, putError] = await tryCatch(() =>
-    media.store.put(key, download.body, {
-      contentType: download.contentType,
-      size: download.size,
-      sha256: download.sha256,
-    }),
+  const [, putError] = await tryCatch(
+    () =>
+      media.store.put(key, download.body, {
+        contentType: download.contentType,
+        size: download.size,
+        sha256: download.sha256,
+        signal,
+      }),
+    signal,
   );
   if (putError) {
     log.error("webhook.media_store_failed", { ...logContext, ...serializeError(putError) });
