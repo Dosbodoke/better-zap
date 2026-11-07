@@ -1,5 +1,7 @@
 # @better-zap/fixtures
 
+## 25.0.1
+
 ## 25.0.0
 
 ### Migration

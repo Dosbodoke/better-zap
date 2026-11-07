@@ -1,5 +1,12 @@
 # @better-zap/cli
 
+## 25.0.1
+
+### Patch Changes
+
+- Updated dependencies [078d531]
+  - better-zap@25.0.1
+
 ## 25.0.0
 
 ### Migration
