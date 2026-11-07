@@ -58,6 +58,16 @@
         "default": "./dist/message-bubble.cjs"
       }
     },
+    "./link-preview-card": {
+      "import": {
+        "types": "./dist/link-preview-card.d.mts",
+        "default": "./dist/link-preview-card.mjs"
+      },
+      "require": {
+        "types": "./dist/link-preview-card.d.cts",
+        "default": "./dist/link-preview-card.cjs"
+      }
+    },
     "./composer": {
       "import": {
         "types": "./dist/composer.d.mts",

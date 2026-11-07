@@ -1,6 +1,7 @@
 export * from "./whatsapp-dashboard";
 export * from "./message-view";
 export * from "./message-bubble";
+export * from "./link-preview-card";
 export * from "./bubble";
 export * from "./message";
 export * from "./conversation-list";
@@ -10,6 +11,7 @@ export type {
   Conversation,
   ConversationRecord,
   FreeformMessageWindow,
+  LinkPreview,
   UIMessage,
   UIMessageStatus,
 } from "better-zap";

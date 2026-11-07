@@ -1,4 +1,9 @@
-import type { Conversation, UIMessage, UIMessageStatus } from "better-zap";
+import type {
+  Conversation,
+  LinkPreview,
+  UIMessage,
+  UIMessageStatus,
+} from "better-zap";
 
 /**
  * In-memory stand-in for a Better Zap backend. Seeds realistic conversations,
@@ -19,6 +24,11 @@ export interface MockWhatsappClient {
   markConversationRead: (conversationId: string) => void;
   /** Incoming messages on the active conversation don't increment unread. */
   setActiveConversation: (conversationId: string | null) => void;
+  /**
+   * Stand-in for a server link-preview endpoint. A real app fetches the page
+   * on its server (see the link previews guide).
+   */
+  fetchLinkPreview: (url: string) => Promise<LinkPreview | null>;
 }
 
 const minutesAgo = (minutes: number) =>
@@ -64,7 +74,39 @@ interface SeedConversation {
   messages: SeedMessage[];
 }
 
+const AMAZON_LINK =
+  "https://www.amazon.com.br/dp/B07XQM4PH3?tag=promosmercado-20";
+
+/** Open Graph data the mock link-preview endpoint returns, by URL. */
+const LINK_PREVIEWS: Record<string, LinkPreview> = {
+  [AMAZON_LINK]: {
+    url: AMAZON_LINK,
+    title: "Oferta: Whiskey Jameson Caskmates IPA, 750 ml",
+    image: "https://m.media-amazon.com/images/I/51x2X2mg+9L.jpg",
+    siteName: "Amazon.com.br",
+  },
+};
+
 const SEED: SeedConversation[] = [
+  {
+    id: "conv-promo",
+    phone: "5562991234567",
+    contactName: "Promo Mercado",
+    unreadCount: 1,
+    messages: [
+      {
+        direction: "outgoing",
+        content: `Whiskey Jameson Caskmates IPA Irlandês - 750 ml\n\n*Por R$ 79,90*\n\nLoja Oficial na Amazon:\n${AMAZON_LINK}`,
+        minutesAgo: 4,
+        status: "read",
+      },
+      {
+        direction: "incoming",
+        content: `Esse ainda está com esse preço?\n${AMAZON_LINK}`,
+        minutesAgo: 1,
+      },
+    ],
+  },
   {
     id: "conv-mariana",
     phone: "5562982291123",
@@ -353,6 +395,11 @@ export function createMockWhatsappClient(): MockWhatsappClient {
 
     setActiveConversation(conversationId) {
       activeConversationId = conversationId;
+    },
+
+    async fetchLinkPreview(url) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      return LINK_PREVIEWS[url] ?? null;
     },
 
     markConversationRead(conversationId) {

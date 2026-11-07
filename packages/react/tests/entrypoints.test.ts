@@ -18,6 +18,7 @@ const distDir = path.join(pkgRoot, "dist");
 
 const CLIENT_ENTRIES = [
   "index",
+  "link-preview-card",
   "composer",
   "message-input",
   "message-view",
@@ -41,6 +42,7 @@ const REQUIRED_EXPORT_NAMES = [
   "DateDivider",
   "MessageView",
   "FormattedMessage",
+  "LinkPreviewCard",
   "useWhatsappDashboard",
   "useOptionalWhatsappDashboard",
   "Bubble",
@@ -74,6 +76,7 @@ const SUBPATH_SYMBOLS: Record<string, readonly string[]> = {
     "MessageGroup",
   ],
   "message-bubble": ["MessageBubble", "FormattedMessage"],
+  "link-preview-card": ["LinkPreviewCard"],
   composer: [
     "Composer",
     "ComposerTextarea",
@@ -179,9 +182,16 @@ describe("RSC / client directives on published entries", () => {
   );
 
   it("shared intermediate chunks are not globally tagged with \"use client\"", () => {
+    const entryFiles = new Set(
+      [...CLIENT_ENTRIES, ...SERVER_SAFE_ENTRIES].flatMap((base) => [
+        `${base}.mjs`,
+        `${base}.cjs`,
+      ]),
+    );
     const files = readdirSync(distDir).filter(
       (f) =>
         /^[a-z0-9-]+-[A-Za-z0-9_-]+\.(mjs|cjs)$/.test(f) &&
+        !entryFiles.has(f) &&
         !f.endsWith(".d.mts") &&
         !f.endsWith(".d.cts"),
     );
@@ -201,6 +211,25 @@ describe("RSC / client directives on published entries", () => {
         }
       }
     }
+  });
+
+  it("server-safe entries reach client code only through client entries", () => {
+    // A server module may import a "use client" module: that import is the
+    // client boundary. message-bubble renders LinkPreviewCard this way.
+    for (const safe of SERVER_SAFE_ENTRIES) {
+      const clientFiles = [...collectEsmGraphSources(safe)]
+        .filter(([, source]) => hasLeadingUseClient(source))
+        .map(([file]) => path.basename(file, ".mjs"));
+      for (const base of clientFiles) {
+        expect(
+          CLIENT_ENTRIES as readonly string[],
+          `server-safe ${safe} imports non-entry client chunk ${base}`,
+        ).toContain(base);
+      }
+    }
+    const messageBubble = [...collectEsmGraphSources("message-bubble").keys()]
+      .map((file) => path.basename(file));
+    expect(messageBubble).toContain("link-preview-card.mjs");
   });
 });
 
@@ -317,6 +346,7 @@ describe("packed tarball surface", () => {
           "./conversation-list",
           "./message",
           "./message-bubble",
+          "./link-preview-card",
           "./message-input",
           "./message-view",
           "./package.json",
@@ -333,6 +363,7 @@ describe("packed tarball surface", () => {
         "bubble",
         "message",
         "message-bubble",
+        "link-preview-card",
         "composer",
         "message-input",
         "message-view",

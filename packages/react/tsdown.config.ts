@@ -12,6 +12,7 @@ import { defineConfig } from "tsdown";
  */
 const CLIENT_ENTRY_BASES = new Set([
   "index",
+  "link-preview-card",
   "composer",
   "message-input",
   "message-view",
@@ -30,6 +31,7 @@ export default defineConfig({
     bubble: "./src/bubble.tsx",
     message: "./src/message.tsx",
     "message-bubble": "./src/message-bubble.tsx",
+    "link-preview-card": "./src/link-preview-card.tsx",
     composer: "./src/composer.tsx",
     "message-input": "./src/message-input.tsx",
     "message-view": "./src/message-view.tsx",

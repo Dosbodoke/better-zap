@@ -1,0 +1,289 @@
+---
+title: Link Previews
+description: Show WhatsApp-style Open Graph cards in message bubbles, with server-side fetching, SSRF guards, and caching.
+---
+
+WhatsApp shows a card with the page's image, title, description, and domain at the top of any bubble that contains a link. Better Zap splits this into two parts:
+
+- **Rendering** ships in `@better-zap/react`. `MessageList` takes a `resolveLinkPreview` prop, `MessageBubble` takes a `linkPreview` prop, and `LinkPreviewCard` is the card on its own.
+- **Fetching** stays in your app. It needs SSRF guards, timeouts, size limits, authentication, and caching, and those depend on where your app runs. `better-zap` ships two pure helpers so you don't have to write the parsing part: `firstLinkIn(text)` and `parseOpenGraph(html, pageUrl)`.
+
+```ts
+interface LinkPreview {
+  url: string;
+  title: string;
+  description?: string;
+  image?: string; // absolute http(s) URL
+  siteName?: string;
+}
+```
+
+## 1. Fetch previews on the server
+
+Never fetch the page from the browser. Fetching runs on your server and reaches whatever URL a contact sends, so treat every URL as hostile:
+
+- Allow only `http:` and `https:` on default ports, with no credentials in the URL.
+- Reject IP literals and local hostnames, resolve DNS, and reject private, loopback, link-local (cloud metadata), and multicast addresses.
+- Follow redirects by hand and check every hop again.
+- Time out, read at most a few hundred kilobytes, and stop at `</head>`.
+- Accept only `text/html` responses.
+
+Send a link-unfurler user agent. Some sites, Amazon among them, return full Open Graph tags only to known unfurlers such as `WhatsApp/2.23.20.0`. Generic bot user agents get a stripped page without `og:` tags.
+
+```ts title="src/link-preview.server.ts"
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
+import { parseOpenGraph, type LinkPreview } from "better-zap";
+
+// Amazon and some other sites send full Open Graph tags only to known
+// link unfurlers. Generic bot user agents get a stripped page.
+const USER_AGENT = "WhatsApp/2.23.20.0";
+const TIMEOUT_MS = 5_000;
+const MAX_REDIRECTS = 3;
+const MAX_BYTES = 256 * 1024;
+
+/** Fetches a page and returns its preview, or null. Never throws. */
+export async function fetchLinkPreview(rawUrl: string): Promise<LinkPreview | null> {
+  try {
+    let url = await toPublicUrl(rawUrl);
+    for (let hop = 0; url && hop <= MAX_REDIRECTS; hop++) {
+      const response = await fetch(url, {
+        // Follow redirects by hand so every hop goes through toPublicUrl.
+        redirect: "manual",
+        headers: { "user-agent": USER_AGENT, accept: "text/html" },
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+      const location = response.headers.get("location");
+      if (response.status >= 300 && response.status < 400 && location) {
+        await response.body?.cancel();
+        url = await toPublicUrl(new URL(location, url).toString());
+        continue;
+      }
+      if (!response.ok || !response.headers.get("content-type")?.includes("text/html")) {
+        await response.body?.cancel();
+        return null;
+      }
+      return parseOpenGraph(await readHead(response), url.toString());
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** Returns the URL only if it is http(s) on a default port and resolves to public addresses. */
+async function toPublicUrl(raw: string): Promise<URL | null> {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+  if (url.username || url.password || url.port) return null;
+
+  const host = url.hostname.toLowerCase();
+  // Shared links use hostnames. Reject IP literals and local names outright.
+  if (isIP(host.replace(/^\[|\]$/g, "")) || !host.includes(".")) return null;
+  if (/(^|\.)(localhost|local|internal|home\.arpa)$/.test(host)) return null;
+
+  const addresses = await lookup(host, { all: true });
+  if (addresses.length === 0 || addresses.some(({ address }) => isPrivateAddress(address))) {
+    return null;
+  }
+  return url;
+}
+
+function isPrivateAddress(address: string): boolean {
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(address)?.[1];
+  if (isIP(mapped ?? address) === 4) {
+    const [a, b] = (mapped ?? address).split(".").map(Number) as [number, number];
+    return (
+      a === 0 || a === 10 || a === 127 || a >= 224 ||
+      (a === 100 && b >= 64 && b <= 127) || // carrier-grade NAT
+      (a === 169 && b === 254) || // link-local, cloud metadata
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      (a === 198 && (b === 18 || b === 19))
+    );
+  }
+  const ip = address.toLowerCase();
+  return (
+    ip === "::" || ip === "::1" ||
+    ip.startsWith("fc") || ip.startsWith("fd") || // unique local
+    /^fe[89ab]/.test(ip) || // link-local
+    ip.startsWith("ff") // multicast
+  );
+}
+
+/** Reads at most MAX_BYTES, stopping once </head> arrives. */
+async function readHead(response: Response): Promise<string> {
+  if (!response.body) return "";
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let html = "";
+  let bytes = 0;
+  while (bytes < MAX_BYTES) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    bytes += value.byteLength;
+    html += decoder.decode(value, { stream: true });
+    if (/<\/head>/i.test(html)) break;
+  }
+  await reader.cancel();
+  return html;
+}
+```
+
+The DNS check and the request resolve the hostname separately, so a hostile DNS server can answer with a public address first and a private one second (DNS rebinding). If that matters for your deployment, send preview requests through an egress proxy that blocks private networks, or pin the checked address in your HTTP client. On Cloudflare Workers, `fetch` cannot reach your private network, and `node:dns` needs the `nodejs_compat` flag. You can also drop the DNS step there and keep the hostname checks.
+
+### Cache the results
+
+The same link usually shows up many times: in every client that opens the chat, and again after every reload. Cache by URL, cache misses too, and share in-flight requests so a burst of renders makes one fetch:
+
+```ts title="src/link-preview.server.ts"
+const HIT_TTL_MS = 24 * 60 * 60 * 1000;
+const MISS_TTL_MS = 60 * 60 * 1000;
+const MAX_ENTRIES = 5_000;
+
+const cache = new Map<string, { expiresAt: number; preview: Promise<LinkPreview | null> }>();
+
+export function getLinkPreview(url: string): Promise<LinkPreview | null> {
+  const cached = cache.get(url);
+  if (cached && cached.expiresAt > Date.now()) return cached.preview;
+
+  const preview = fetchLinkPreview(url);
+  if (cache.size >= MAX_ENTRIES) cache.delete(cache.keys().next().value!);
+  cache.set(url, { expiresAt: Date.now() + HIT_TTL_MS, preview });
+  void preview.then((result) => {
+    if (!result) cache.set(url, { expiresAt: Date.now() + MISS_TTL_MS, preview });
+  });
+  return preview;
+}
+```
+
+An in-memory map is per process. With several instances or on serverless platforms, store previews in a shared cache such as Redis, Cloudflare KV, or a database table keyed by URL.
+
+### Expose an endpoint
+
+Put the endpoint behind the same authentication as your inbox, so it does not become an open proxy for anyone on the internet. Add rate limiting if your users can send arbitrary links.
+
+```ts title="src/index.ts"
+import { Hono } from "hono";
+import { getLinkPreview } from "./link-preview.server";
+
+const app = new Hono();
+
+// requireSession: your existing auth middleware.
+app.get("/api/link-preview", requireSession, async (c) => {
+  const url = c.req.query("url");
+  const preview = url ? await getLinkPreview(url) : null;
+  c.header("cache-control", "private, max-age=3600");
+  return c.json(preview);
+});
+```
+
+## 2. Show the cards
+
+Load previews for the links in the current messages, keep them in state, and hand `MessageList` a resolver. `firstLinkIn` returns the same link that `FormattedMessage` renders as an anchor, with trailing punctuation such as `.` or `)` trimmed.
+
+`resolveLinkPreview` is synchronous, and rows re-render when the function's identity changes. Wrap it in `useCallback` keyed on the preview state:
+
+```tsx title="src/use-link-previews.ts"
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import { firstLinkIn, type LinkPreview } from "better-zap";
+import type { UIMessage } from "@better-zap/react";
+
+const requests = new Map<string, Promise<LinkPreview | null>>();
+
+function loadPreview(url: string) {
+  let request = requests.get(url);
+  if (!request) {
+    request = fetch(`/api/link-preview?url=${encodeURIComponent(url)}`)
+      .then((response) => (response.ok ? response.json() : null))
+      .catch(() => null);
+    requests.set(url, request);
+  }
+  return request;
+}
+
+function linkIn(message: UIMessage) {
+  // Template messages render their own content, not a link preview.
+  return message.templateName ? null : firstLinkIn(message.content);
+}
+
+export function useLinkPreviews(messages: UIMessage[]) {
+  const [previews, setPreviews] = useState<Record<string, LinkPreview>>({});
+
+  useEffect(() => {
+    let active = true;
+    for (const url of new Set(messages.map(linkIn))) {
+      if (!url) continue;
+      void loadPreview(url).then((preview) => {
+        if (active && preview) {
+          setPreviews((current) => (current[url] ? current : { ...current, [url]: preview }));
+        }
+      });
+    }
+    return () => {
+      active = false;
+    };
+  }, [messages]);
+
+  return useCallback(
+    (message: UIMessage) => {
+      const url = linkIn(message);
+      return url ? previews[url] : undefined;
+    },
+    [previews],
+  );
+}
+```
+
+```tsx title="src/chat.tsx"
+"use client";
+
+import { MessageList, type UIMessage } from "@better-zap/react";
+import { useLinkPreviews } from "./use-link-previews";
+
+export function Chat({ messages }: { messages: UIMessage[] }) {
+  const resolveLinkPreview = useLinkPreviews(messages);
+  return <MessageList messages={messages} resolveLinkPreview={resolveLinkPreview} />;
+}
+```
+
+Bubbles render as plain text until their preview arrives, then the card appears above the text. Bubbles without a preview render exactly as they did before.
+
+The card's image loads straight from the remote site in the viewer's browser, with `referrerPolicy="no-referrer"`. If you need to hide viewers' IP addresses from those sites, or your Content Security Policy blocks remote images, proxy the image through your server and put the proxied URL in `image`. If the image fails to load, the card hides it and keeps the text.
+
+## Custom renderers
+
+A custom `renderMessage` receives the resolved preview as `linkPreview`. Pass it to `MessageBubble`, or render `LinkPreviewCard` in your own `Bubble`:
+
+```tsx
+import { Bubble, BubbleContent, LinkPreviewCard, Message, MessageContent, MessageList } from "@better-zap/react";
+
+<MessageList
+  messages={messages}
+  resolveLinkPreview={resolveLinkPreview}
+  renderMessage={({ message, align, linkPreview }) => {
+    const variant = align === "end" ? "primary" : "default";
+    return (
+      <Message align={align}>
+        <MessageContent>
+          <Bubble variant={variant} align={align} className={linkPreview ? "w-[330px]" : undefined}>
+            <BubbleContent>
+              {linkPreview ? <LinkPreviewCard preview={linkPreview} variant={variant} /> : null}
+              {message.content}
+            </BubbleContent>
+          </Bubble>
+        </MessageContent>
+      </Message>
+    );
+  }}
+/>
+```
+
+Pass the bubble's `variant` to `LinkPreviewCard` so the card gets the matching tint: grey in incoming bubbles, green in outgoing ones.

@@ -8,8 +8,9 @@ import {
   TickDouble02Icon,
 } from "@hugeicons/core-free-icons";
 import { cn } from "./utils";
-import type { UIMessageStatus } from "better-zap";
+import type { LinkPreview, UIMessageStatus } from "better-zap";
 import { Bubble, BubbleContent } from "./bubble";
+import { LinkPreviewCard } from "./link-preview-card";
 import { Message, MessageContent } from "./message";
 
 const statusVariants = cva("flex items-center leading-none", {
@@ -40,6 +41,11 @@ export interface MessageBubbleProps extends React.HTMLAttributes<HTMLDivElement>
    * WhatsApp's grouping. @default "single"
    */
   groupPosition?: MessageBubbleGroupPosition;
+  /**
+   * Open Graph card shown inside the bubble, above the text. The bubble takes
+   * WhatsApp's fixed preview width while a card is shown.
+   */
+  linkPreview?: LinkPreview | null;
 }
 
 export function MessageBubble({
@@ -50,6 +56,7 @@ export function MessageBubble({
   templateName,
   label,
   groupPosition = "single",
+  linkPreview,
   className,
   ...props
 }: MessageBubbleProps) {
@@ -87,7 +94,12 @@ export function MessageBubble({
       {...props}
     >
       <MessageContent>
-        <Bubble variant={variant} align={align} tail={hasTail}>
+        <Bubble
+          variant={variant}
+          align={align}
+          tail={hasTail}
+          className={linkPreview ? "w-[330px]" : undefined}
+        >
           <BubbleContent>
             {label && !isIncoming && (
               <span className="mb-1 block text-xs font-medium opacity-70">
@@ -102,6 +114,10 @@ export function MessageBubble({
                   {templateName}
                 </span>
               </div>
+            )}
+
+            {linkPreview && (
+              <LinkPreviewCard preview={linkPreview} variant={variant} />
             )}
 
             <FormattedMessage text={displayContent} />

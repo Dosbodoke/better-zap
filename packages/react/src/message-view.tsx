@@ -9,9 +9,9 @@ import {
   UserIcon,
 } from "@hugeicons/core-free-icons";
 import { LegendList } from "@legendapp/list/react";
-import type { Conversation, UIMessage } from "better-zap";
+import type { Conversation, LinkPreview, UIMessage } from "better-zap";
 import { cn, getDisplayDate } from "./utils";
-import { MessageBubble } from "./message-bubble";
+import { MessageBubble, type MessageBubbleProps } from "./message-bubble";
 import { useOptionalWhatsappDashboard } from "./whatsapp-dashboard";
 
 export interface MessageViewProps extends React.ComponentProps<"div"> {
@@ -214,6 +214,8 @@ export interface MessageRenderContext {
   groupPosition: MessageGroupPosition;
   /** Result of renderMessageLabel, when provided. */
   label?: string;
+  /** Result of resolveLinkPreview, when it returned a preview. */
+  linkPreview?: LinkPreview;
 }
 
 export interface DateDividerRenderContext {
@@ -232,15 +234,26 @@ export interface MessageListProps {
   /** Formats the in-bubble timestamp used by the DEFAULT renderer. Default: pt-BR HH:mm. */
   formatTime?: (isoDate: string) => string;
   renderMessageLabel?: (message: UIMessage) => string | undefined;
+  /**
+   * Returns the Open Graph card for a message, shown by the default renderer
+   * and passed to `renderMessage` as `linkPreview`. Must be synchronous: keep
+   * fetched previews in state and pass a new function (e.g. from
+   * `useCallback`) when they change; rows re-render when its identity changes.
+   */
+  resolveLinkPreview?: (message: UIMessage) => LinkPreview | null | undefined;
   /** Direct props — context from MessageViewContent still works; these win over it. */
   autoScroll?: boolean;
   onScrollTop?: () => void;
   className?: string;
 }
 
-// Memoized default renderers: all props passed to them are primitives, so a
-// change to one message (e.g. a status tick) re-renders that bubble only.
-const MemoizedMessageBubble = React.memo(MessageBubble);
+// Memoized default renderers: a change to one message (e.g. a status tick)
+// re-renders that bubble only. Props are primitives except linkPreview, which
+// is compared by value so resolvers may return a fresh object each call.
+const MemoizedMessageBubble = React.memo(
+  MessageBubble,
+  areMessageBubblePropsEqual,
+);
 const MemoizedDateDivider = React.memo(DateDivider);
 
 type MessageListItem =
@@ -256,6 +269,30 @@ type MessageListItem =
       message: UIMessage;
       groupPosition: MessageGroupPosition;
     };
+
+function areMessageBubblePropsEqual(
+  prev: MessageBubbleProps,
+  next: MessageBubbleProps,
+): boolean {
+  const { linkPreview: prevPreview, ...prevRest } = prev;
+  const { linkPreview: nextPreview, ...nextRest } = next;
+  // null and undefined both mean "no card", so they render the same.
+  const previewsEqual =
+    prevPreview && nextPreview
+      ? shallowEqual(prevPreview, nextPreview)
+      : !prevPreview && !nextPreview;
+  return previewsEqual && shallowEqual(prevRest, nextRest);
+}
+
+function shallowEqual(a: object, b: object): boolean {
+  const left = a as Record<string, unknown>;
+  const right = b as Record<string, unknown>;
+  const keys = Object.keys(left);
+  return (
+    keys.length === Object.keys(right).length &&
+    keys.every((key) => Object.is(left[key], right[key]))
+  );
+}
 
 function defaultFormatTime(isoDate: string): string {
   return new Date(isoDate).toLocaleTimeString("pt-BR", {
@@ -300,6 +337,7 @@ export function MessageList({
   formatDate,
   formatTime,
   renderMessageLabel,
+  resolveLinkPreview,
   autoScroll: autoScrollProp,
   onScrollTop: onScrollTopProp,
   className,
@@ -356,6 +394,7 @@ export function MessageList({
       contentContainerStyle={{ paddingBottom: 16 }}
       data={items}
       estimatedItemSize={72}
+      extraData={resolveLinkPreview}
       getItemType={(item) => item.type}
       initialScrollAtEnd={resolvedAutoScroll}
       keyExtractor={(item) => item.id}
@@ -378,6 +417,7 @@ export function MessageList({
 
         const { message, groupPosition } = item;
         const label = renderMessageLabel?.(message);
+        const linkPreview = resolveLinkPreview?.(message) ?? undefined;
         const direction = message.direction;
         const align = direction === "incoming" ? "start" : "end";
         const ctx: MessageRenderContext = {
@@ -387,6 +427,7 @@ export function MessageList({
           align,
           groupPosition,
           label,
+          linkPreview,
         };
 
         return (
@@ -399,6 +440,7 @@ export function MessageList({
               templateName={message.templateName || undefined}
               label={label}
               groupPosition={groupPosition}
+              linkPreview={linkPreview}
             />
           )
         );
