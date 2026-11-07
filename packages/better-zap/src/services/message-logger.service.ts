@@ -16,6 +16,9 @@ import type { SyncEvent } from "../types/sync-events";
 import { type Logger, serializeError } from "../logger";
 import { hasPendingMedia } from "../utils/media-placeholder";
 import { asRecord, mergeDefined } from "../utils/record";
+import { tryCatch } from "../utils/result";
+import { getMessageMedia } from "../media/message-media";
+import type { MessageMedia } from "../media/types";
 import {
   createFreeformMessageWindow,
   normalizeConversationRecord,
@@ -149,15 +152,11 @@ export class MessageLoggerService {
   }
 
   private async notify(event: SyncEvent) {
-    if (!this.notifier) {
-      return;
-    }
+    const notifier = this.notifier;
+    if (!notifier) return;
 
-    try {
-      await this.notifier.notify(event);
-    } catch (err) {
-      this.log.error("message_logger.sync_notify_failed", serializeError(err));
-    }
+    const [, error] = await tryCatch(() => notifier.notify(event));
+    if (error) this.log.error("message_logger.sync_notify_failed", serializeError(error));
   }
 
   private async notifyNewMessage(message: WhatsAppLogRecord) {
@@ -367,6 +366,44 @@ export class MessageLoggerService {
     return "created";
   }
 
+  /**
+   * Save the result of a media download as `metadata.media` on a stored
+   * message and send a `MESSAGE_UPDATE` sync event.
+   *
+   * Only the `media` field is written; other metadata fields are kept. A
+   * stored file is never replaced by a failed or skipped result.
+   *
+   * Returns the updated record, or `null` when the message isn't stored or
+   * the update was skipped.
+   */
+  async setMessageMedia(
+    waMessageId: string,
+    media: MessageMedia,
+  ): Promise<WhatsAppLogRecord | null> {
+    const existing = await this.store.getMessageByWaId(waMessageId);
+    if (!existing) return null;
+
+    // A stored file is never replaced by a later failure or skip.
+    const alreadyStored = getMessageMedia(existing)?.status === "stored";
+    if (alreadyStored && media.status !== "stored") return null;
+
+    return this.updateMessage(waMessageId, existing, {
+      metadata: { ...asRecord(existing.metadata), media },
+    });
+  }
+
+  /** Writes `updates` to a stored message and sends `MESSAGE_UPDATE`. */
+  private async updateMessage(
+    waMessageId: string,
+    existing: WhatsAppLogRecord,
+    updates: Partial<WhatsAppLogRecord>,
+  ): Promise<WhatsAppLogRecord> {
+    await this.store.updateWhatsAppLogByWaMessageId(waMessageId, updates);
+    const message = { ...existing, ...updates };
+    await this.notify({ type: "MESSAGE_UPDATE", message });
+    return message;
+  }
+
   private async replaceMediaPlaceholder(
     existing: WhatsAppLogRecord | undefined,
     params: ImportMessageParams,
@@ -378,14 +415,9 @@ export class MessageLoggerService {
     const metadata = mergeDefined(asRecord(existing.metadata), params.metadata);
     delete metadata.mediaPending;
 
-    await this.store.updateWhatsAppLogByWaMessageId(params.waMessageId, {
+    await this.updateMessage(params.waMessageId, existing, {
       content: params.content,
       metadata,
-    });
-
-    await this.notify({
-      type: "MESSAGE_UPDATE",
-      message: { ...existing, content: params.content, metadata },
     });
     return true;
   }

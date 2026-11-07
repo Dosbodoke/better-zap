@@ -150,6 +150,10 @@ importers:
         version: 4.158.0(@types/node@25.4.0)
 
   packages/better-zap:
+    dependencies:
+      aws4fetch:
+        specifier: ^1.0.20
+        version: 1.0.20
     devDependencies:
       '@better-zap/fixtures':
         specifier: workspace:*

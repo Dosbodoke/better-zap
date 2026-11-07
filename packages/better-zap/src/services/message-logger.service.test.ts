@@ -145,6 +145,79 @@ describe("MessageLoggerService.importMessage", () => {
   });
 });
 
+describe("MessageLoggerService.setMessageMedia", () => {
+  const stored = {
+    status: "stored" as const,
+    key: "whatsapp/phone_1/wamid.media",
+    contentType: "image/jpeg",
+    size: 3,
+    sha256: "abc",
+    mediaId: "asset_1",
+    storedAt: "2026-07-01T00:00:01.000Z",
+  };
+
+  it("adds metadata.media without touching other fields and notifies", async () => {
+    const { store, rows } = createMemoryStore();
+    const notifier = { notify: vi.fn().mockResolvedValue(undefined) };
+    const logger = new MessageLoggerService(store, noopLogger, notifier);
+    await logger.importMessage(realMedia);
+    notifier.notify.mockClear();
+
+    const updated = await logger.setMessageMedia("wamid.media", stored);
+
+    expect(rows.get("wamid.media")?.metadata).toEqual({
+      ...realMedia.metadata,
+      media: stored,
+    });
+    expect(updated?.metadata.media).toEqual(stored);
+    expect(store.updateWhatsAppLogByWaMessageId).toHaveBeenCalledWith(
+      "wamid.media",
+      { metadata: { ...realMedia.metadata, media: stored } },
+    );
+    expect(notifier.notify).toHaveBeenCalledWith({
+      type: "MESSAGE_UPDATE",
+      message: expect.objectContaining({
+        waMessageId: "wamid.media",
+        metadata: expect.objectContaining({ media: stored }),
+      }),
+    });
+  });
+
+  it("works when the record has no metadata", async () => {
+    const { store, rows } = createMemoryStore();
+    const logger = new MessageLoggerService(store, noopLogger);
+    await logger.importMessage({ ...realMedia, metadata: undefined });
+
+    await logger.setMessageMedia("wamid.media", stored);
+    expect(rows.get("wamid.media")?.metadata).toEqual({ media: stored });
+  });
+
+  it("never replaces a stored file with a failed result", async () => {
+    const { store, rows } = createMemoryStore();
+    const logger = new MessageLoggerService(store, noopLogger);
+    await logger.importMessage(realMedia);
+    await logger.setMessageMedia("wamid.media", stored);
+
+    await expect(
+      logger.setMessageMedia("wamid.media", {
+        status: "failed",
+        error: "boom",
+        mediaId: "asset_1",
+        failedAt: "2026-07-01T00:00:02.000Z",
+      }),
+    ).resolves.toBeNull();
+    expect(rows.get("wamid.media")?.metadata.media).toEqual(stored);
+  });
+
+  it("returns null for unknown messages", async () => {
+    const { store } = createMemoryStore();
+    const logger = new MessageLoggerService(store, noopLogger);
+
+    await expect(logger.setMessageMedia("wamid.missing", stored)).resolves.toBeNull();
+    expect(store.updateWhatsAppLogByWaMessageId).not.toHaveBeenCalled();
+  });
+});
+
 describe("media placeholder helpers", () => {
   it("detects placeholder messages", () => {
     expect(isMediaPlaceholder({ type: "media_placeholder" })).toBe(true);

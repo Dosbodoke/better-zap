@@ -1,4 +1,5 @@
-import { $ as SendInteractiveMediaCarouselData, A as WhatsAppMessageType, B as MessageUpdateEvent, C as ImportMessageResult, D as WhatsAppDirection, E as WHATSAPP_MESSAGE_TYPES, F as createLogger, G as Conversation, H as StatusUpdateEvent, I as noopLogger, J as IncomingMessage, K as ConversationRecord, L as serializeError, M as LogLevel, N as Logger, O as WhatsAppLogRecord, P as LoggerConfig, Q as MessageStatus, R as ConversationSummary, S as ImportMessageParams, T as MessageLoggerService, U as SyncEvent, V as NewMessageEvent, W as WhatsAppConfig, X as MediaMessage, Y as InteractiveMediaCarouselCardInput, Z as MessageError, _ as getTemplateNames, _t as WhatsAppLocationMessage, a as createZapClient, at as UIMessage, b as OutgoingLoggingMetadata, bt as WhatsAppWebhookField, c as SupportedTemplateParameterType, ct as WebhookContact, d as TemplateName, dt as WebhookPayload, et as SendMessageError, f as TemplateParameterDefinition, ft as WebhookValue, g as defineTemplates, gt as WhatsAppInteractiveMediaCarouselMessage, h as TemplateRegistry, ht as WhatsAppInteractiveListMessage, i as apiKeyTransport, it as TemplateParameter, j as WhatsAppStatus, k as WhatsAppLogStore, l as TemplateComponentDefinition, lt as WebhookEntry, m as TemplateParams, mt as WhatsAppInteractiveButtonsMessage, n as ZapClient, nt as SendResult, o as sessionTransport, ot as UIMessageStatus, p as TemplateParameterInputMap, pt as WhatsAppCarouselCard, q as FreeformMessageWindow, r as ZapTransport, rt as TemplateComponent, s as EMPTY_TEMPLATE_REGISTRY, st as WebhookChange, t as BetterZapClientError, tt as SendMessageResponse, u as TemplateDefinition, ut as WebhookError, v as hasConfiguredTemplates, vt as WhatsAppTemplateMessage, w as MessageLoggerNotifier, x as WhatsAppService, y as serializeTemplateFromRegistry, yt as WhatsAppTextMessage, z as ConversationUpdateEvent } from "./client-BOzEekAI.cjs";
+import { $ as SendInteractiveMediaCarouselData, A as WhatsAppMessageType, B as MessageUpdateEvent, C as ImportMessageResult, D as WhatsAppDirection, E as WHATSAPP_MESSAGE_TYPES, F as createLogger, G as Conversation, H as StatusUpdateEvent, I as noopLogger, J as IncomingMessage, K as ConversationRecord, L as serializeError, M as LogLevel, N as Logger, O as WhatsAppLogRecord, P as LoggerConfig, Q as MessageStatus, R as ConversationSummary, S as ImportMessageParams, T as MessageLoggerService, U as SyncEvent, V as NewMessageEvent, W as WhatsAppConfig, X as MediaMessage, Y as InteractiveMediaCarouselCardInput, Z as MessageError, _ as getTemplateNames, _t as WhatsAppLocationMessage, a as createZapClient, at as UIMessage, b as OutgoingLoggingMetadata, bt as WhatsAppWebhookField, c as SupportedTemplateParameterType, ct as WebhookContact, d as TemplateName, dt as WebhookPayload, et as SendMessageError, f as TemplateParameterDefinition, ft as WebhookValue, g as defineTemplates, gt as WhatsAppInteractiveMediaCarouselMessage, h as TemplateRegistry, ht as WhatsAppInteractiveListMessage, i as apiKeyTransport, it as TemplateParameter, j as WhatsAppStatus, k as WhatsAppLogStore, l as TemplateComponentDefinition, lt as WebhookEntry, m as TemplateParams, mt as WhatsAppInteractiveButtonsMessage, n as ZapClient, nt as SendResult, o as sessionTransport, ot as UIMessageStatus, p as TemplateParameterInputMap, pt as WhatsAppCarouselCard, q as FreeformMessageWindow, r as ZapTransport, rt as TemplateComponent, s as EMPTY_TEMPLATE_REGISTRY, st as WebhookChange, t as BetterZapClientError, tt as SendMessageResponse, u as TemplateDefinition, ut as WebhookError, v as hasConfiguredTemplates, vt as WhatsAppTemplateMessage, w as MessageLoggerNotifier, x as WhatsAppService, y as serializeTemplateFromRegistry, yt as WhatsAppTextMessage, z as ConversationUpdateEvent } from "./client-BQYYy8C-.cjs";
+import { a as MediaDownloadResult, c as MediaStorePutInfo, d as SkippedMessageMedia, f as StorableMediaType, i as MediaDownloadOptions, l as MessageMedia, m as clampSignedUrlExpiry, n as FailedMessageMedia, o as MediaStore, p as StoredMessageMedia, r as MAX_SIGNED_URL_EXPIRES_IN, s as MediaStoreObject, t as DEFAULT_MEDIA_MAX_BYTES, u as STORABLE_MEDIA_TYPES } from "./types-B6zRj8UP.cjs";
 
 //#region src/events.d.ts
 type MessageContext = {
@@ -18,6 +19,13 @@ type StatusContext = {
 interface BetterZapDatabase {
   whatsappLog: WhatsAppLogStore;
   coexistence?: CoexistenceStore;
+  /**
+   * Storage for incoming media files. When set, image, audio, video, document
+   * and sticker files are downloaded from Meta when they arrive and referenced
+   * in `metadata.media`. Without it, only the text label and Meta's media id
+   * are stored, and Meta deletes the file after 7 days.
+   */
+  media?: MediaStore;
 }
 type BetterZapCoreConfig = WhatsAppConfig & {
   webhookToken: string;
@@ -810,6 +818,80 @@ declare function hasPendingMedia(record: {
  */
 declare function delay(ms: number): Promise<void>;
 //#endregion
+//#region src/utils/result.d.ts
+/** Go-style result: `[value, null]` on success, `[null, error]` on failure. */
+type Result<T> = [value: T, error: null] | [value: null, error: Error];
+/**
+ * Runs `fn` and returns its outcome as a {@link Result} instead of throwing.
+ * This is the one place that catches, so callers handle errors directly:
+ *
+ * ```ts
+ * const [record, error] = await tryCatch(() => store.get(key));
+ * if (error) return fail(error);
+ * ```
+ */
+declare function tryCatch<T>(fn: () => T | Promise<T>): Promise<Result<T>>;
+declare function toError(error: unknown): Error;
+//#endregion
+//#region src/media/message-media.d.ts
+interface MessageMediaPayload {
+  type: StorableMediaType;
+  /** Meta media id. Expires 7 days after the webhook. */
+  id: string;
+  mimeType?: string;
+  sha256?: string;
+  filename?: string;
+}
+/**
+ * Returns the media object of an image, audio, video, document or sticker
+ * message. Returns `undefined` for other types and for history media
+ * placeholders, which carry no media.
+ */
+declare function getMessageMediaPayload(message: {
+  type?: unknown;
+  [key: string]: unknown;
+} | null | undefined): MessageMediaPayload | undefined;
+/**
+ * Stable storage key for a message's media:
+ * `whatsapp/{phoneNumberId}/{waMessageId}`. Each segment is URI-encoded, so
+ * ids with `/` or `=` stay one path segment.
+ */
+declare function getMediaStorageKey(input: {
+  phoneNumberId?: string | null;
+  waMessageId: string;
+}): string;
+/** Reads `metadata.media` from a stored log record. */
+declare function getMessageMedia(record: {
+  metadata?: unknown;
+} | null | undefined): MessageMedia | undefined;
+/** Returns `metadata.media` only when the file is in the `MediaStore`. */
+declare function getStoredMessageMedia(record: {
+  metadata?: unknown;
+} | null | undefined): StoredMessageMedia | undefined;
+//#endregion
+//#region src/media/store-message-media.d.ts
+/** Media download settings for the webhook processor. */
+type WebhookMediaConfig = {
+  store: MediaStore; /** Downloads a Meta media id. `betterZap()` uses `WhatsAppService.downloadMedia`. */
+  download: (mediaId: string, options: MediaDownloadOptions & {
+    phoneNumberId?: string;
+  }) => Promise<MediaDownloadResult>; /** Files larger than this are skipped. Defaults to 25 MiB. */
+  maxBytes?: number; /** Used in the storage key when the webhook has no `phone_number_id`. */
+  phoneNumberId?: string;
+};
+/**
+ * Downloads a message's media, stores it, and records the result in
+ * `metadata.media`. Does nothing for messages without media and for history
+ * media placeholders. Never throws.
+ */
+declare function storeMessageMedia(input: {
+  message: IncomingMessage;
+  phoneNumberId?: string;
+  media: WebhookMediaConfig | undefined;
+  logger: MessageLoggerService;
+  log: Logger;
+}): Promise<MessageMedia | undefined>;
+//#endregion
 //#region src/webhook/message-content.d.ts
 /**
  * Extract human-readable content from incoming messages for audit logs.
@@ -921,6 +1003,12 @@ interface WebhookProcessorConfig {
   hooks: WebhookProcessorHooks;
   /** Seam for human-readable message content. Defaults to the built-in pt-BR resolver. */
   resolveMessageContent?: (message: IncomingMessage) => string;
+  /**
+   * Download incoming media into a `MediaStore`. Covers `messages`,
+   * `smb_message_echoes` and `history`, including follow-up media that
+   * replaces a placeholder. Omit to keep only the text label and media id.
+   */
+  media?: WebhookMediaConfig;
 }
 interface WebhookProcessor {
   /** Dispatches one Meta webhook payload. Never throws: all errors are logged. */
@@ -928,4 +1016,4 @@ interface WebhookProcessor {
 }
 declare function createWebhookProcessor(config: WebhookProcessorConfig): WebhookProcessor;
 //#endregion
-export { type Awaitable, type BetterZapApi, BetterZapClientError, type BetterZapContext, type BetterZapCoreConfig, type BetterZapCoreContext, type BetterZapCoreServices, type BetterZapDatabase, type BetterZapPlugin, type BetterZapPluginInitContext, type BetterZapPluginInitResult, type BetterZapServices, type CoexistenceAccountOffboardedContext, type CoexistenceAccountOffboardedValue, type CoexistenceAccountOffboardedWebhook, type CoexistenceAccountReconnectedContext, type CoexistenceAccountReconnectedValue, type CoexistenceAccountReconnectedWebhook, type CoexistenceAccountUpdateContext, type CoexistenceAccountUpdateValue, type CoexistenceAccountUpdateWebhook, type CoexistenceBillingStatus, type CoexistenceConnectedAccountIdentifiers, type CoexistenceConnectedAccountRecord, type CoexistenceContactRecord, type CoexistenceCredentialProvider, type CoexistenceEligibilityStatus, type CoexistenceEmbeddedSignupCallbacks, type CoexistenceEmbeddedSignupConfig, type CoexistenceEmbeddedSignupConfigInput, type CoexistenceEmbeddedSignupController, type CoexistenceEmbeddedSignupMessageEvent, type CoexistenceEmbeddedSignupResult, type CoexistenceEmbeddedSignupSetup, type CoexistenceEmbeddedSignupStatus, type CoexistenceEmbeddedSignupWindow, type CoexistenceErrorValue, type CoexistenceErrorWebhook, type CoexistenceFacebookInitOptions, type CoexistenceFacebookLoginResponse, type CoexistenceFacebookSdk, type CoexistenceFeatureType, type CoexistenceGenericSessionEvent, type CoexistenceGraphErrorDiagnostics, type CoexistenceGraphFailureKind, type CoexistenceGraphResult, type CoexistenceHistoryChunk, type CoexistenceHistoryChunkMetadata, type CoexistenceHistoryContext, type CoexistenceHistoryThread, type CoexistenceHistoryValue, type CoexistenceHistoryWebhook, type CoexistenceLegacySessionEvent, type CoexistenceLifecycleEventRecord, type CoexistenceMessageEditContext, type CoexistenceMessageEditValue, type CoexistenceMessageEditWebhook, type CoexistenceMessageRevokeContext, type CoexistenceMessageRevokeValue, type CoexistenceMessageRevokeWebhook, type CoexistenceOnboardingSessionRecord, type CoexistencePhoneStatusResponse, type CoexistencePreflightFailureCode, type CoexistencePreflightStateRecord, type CoexistenceRawEventStatusRecord, CoexistenceService, type CoexistenceServiceConfig, type CoexistenceSessionEventPayload, type CoexistenceSessionInfoVersion, type CoexistenceSmbAppStateSyncValue, type CoexistenceSmbAppStateSyncWebhook, type CoexistenceSmbMessageEchoesValue, type CoexistenceSmbMessageEchoesWebhook, type CoexistenceStateSyncContact, type CoexistenceStateSyncItem, type CoexistenceStore, type CoexistenceSyncJobRecord, type CoexistenceSyncJobStatus, type CoexistenceSyncRequest, type CoexistenceSyncResponse, type CoexistenceSyncType, type CoexistenceTokenExchangeResult, type CoexistenceUnsupportedMessageContext, type CoexistenceUnsupportedValue, type CoexistenceUnsupportedWebhook, type CoexistenceWebhookBase, type CoexistenceWebhookMessage, type CoexistenceWebhookPayload, type CoexistenceWebhookValueBase, type Conversation, type ConversationRecord, type ConversationSummary, type ConversationUpdateEvent, EMPTY_TEMPLATE_REGISTRY, FREEFORM_MESSAGE_WINDOW_MS, type FreeformMessageWindow, type ImportMessageParams, type ImportMessageResult, InMemoryCoexistenceStore, type IncomingMessage, type InferBetterZapPluginContext, type InferBetterZapPluginServices, type InteractiveMediaCarouselCardInput, type LaunchCoexistenceEmbeddedSignupInput, type LinkPreview, type LogLevel, type Logger, type LoggerConfig, MEDIA_PLACEHOLDER_TYPE, type MediaMessage, type MessageContext, type MessageError, type MessageLoggerNotifier, MessageLoggerService, type MessageStatus, type MessageUpdateEvent, type MetaAccessTokenProvider, type MetaGraphApiErrorBody, type NewMessageEvent, type NormalizedCoexistenceSessionEvent, type OutgoingLoggingMetadata, type SendInteractiveMediaCarouselData, type SendMessageError, type SendMessageResponse, type SendResult, type SmbAppStateSyncContext, type SmbMessageEchoContext, type StatusContext, type StatusUpdateEvent, type SupportedTemplateParameterType, type SyncEvent, type TemplateComponent, type TemplateComponentDefinition, type TemplateDefinition, type TemplateName, type TemplateParameter, type TemplateParameterDefinition, type TemplateParameterInputMap, type TemplateParams, type TemplateRegistry, type UIMessage, type UIMessageStatus, WHATSAPP_MESSAGE_TYPES, type WebhookChange, type WebhookContact, type WebhookEntry, type WebhookError, type WebhookPayload, type WebhookProcessor, type WebhookProcessorConfig, type WebhookProcessorHooks, type WebhookValue, type WhatsAppCarouselCard, type WhatsAppConfig, type WhatsAppDirection, type WhatsAppInteractiveButtonsMessage, type WhatsAppInteractiveListMessage, type WhatsAppInteractiveMediaCarouselMessage, type WhatsAppLocationMessage, type WhatsAppLogRecord, type WhatsAppLogStore, type WhatsAppMessageType, WhatsAppService, type WhatsAppStatus, type WhatsAppTemplateMessage, type WhatsAppTextMessage, type WhatsAppWebhookField, type ZapClient, type ZapTransport, apiKeyTransport, createCoexistenceEmbeddedSignupConfig, createFreeformMessageWindow, createLogger, createWebhookProcessor, createZapClient, defineTemplates, delay, firstLinkIn, formatPhone, getLatestIncomingMessageAt, getMessageContent, getTemplateNames, hasConfiguredTemplates, hasPendingMedia, isMediaPlaceholder, launchCoexistenceEmbeddedSignup, noopLogger, normalizeCoexistenceSessionEvent, normalizeCoexistenceSessionPayload, normalizeConversationRecord, normalizeConversationRecords, parseOpenGraph, resolveConversationFreeformMessageWindow, serializeError, serializeTemplateFromRegistry, sessionTransport, toLegacyCoexistenceSessionEvent };
+export { type Awaitable, type BetterZapApi, BetterZapClientError, type BetterZapContext, type BetterZapCoreConfig, type BetterZapCoreContext, type BetterZapCoreServices, type BetterZapDatabase, type BetterZapPlugin, type BetterZapPluginInitContext, type BetterZapPluginInitResult, type BetterZapServices, type CoexistenceAccountOffboardedContext, type CoexistenceAccountOffboardedValue, type CoexistenceAccountOffboardedWebhook, type CoexistenceAccountReconnectedContext, type CoexistenceAccountReconnectedValue, type CoexistenceAccountReconnectedWebhook, type CoexistenceAccountUpdateContext, type CoexistenceAccountUpdateValue, type CoexistenceAccountUpdateWebhook, type CoexistenceBillingStatus, type CoexistenceConnectedAccountIdentifiers, type CoexistenceConnectedAccountRecord, type CoexistenceContactRecord, type CoexistenceCredentialProvider, type CoexistenceEligibilityStatus, type CoexistenceEmbeddedSignupCallbacks, type CoexistenceEmbeddedSignupConfig, type CoexistenceEmbeddedSignupConfigInput, type CoexistenceEmbeddedSignupController, type CoexistenceEmbeddedSignupMessageEvent, type CoexistenceEmbeddedSignupResult, type CoexistenceEmbeddedSignupSetup, type CoexistenceEmbeddedSignupStatus, type CoexistenceEmbeddedSignupWindow, type CoexistenceErrorValue, type CoexistenceErrorWebhook, type CoexistenceFacebookInitOptions, type CoexistenceFacebookLoginResponse, type CoexistenceFacebookSdk, type CoexistenceFeatureType, type CoexistenceGenericSessionEvent, type CoexistenceGraphErrorDiagnostics, type CoexistenceGraphFailureKind, type CoexistenceGraphResult, type CoexistenceHistoryChunk, type CoexistenceHistoryChunkMetadata, type CoexistenceHistoryContext, type CoexistenceHistoryThread, type CoexistenceHistoryValue, type CoexistenceHistoryWebhook, type CoexistenceLegacySessionEvent, type CoexistenceLifecycleEventRecord, type CoexistenceMessageEditContext, type CoexistenceMessageEditValue, type CoexistenceMessageEditWebhook, type CoexistenceMessageRevokeContext, type CoexistenceMessageRevokeValue, type CoexistenceMessageRevokeWebhook, type CoexistenceOnboardingSessionRecord, type CoexistencePhoneStatusResponse, type CoexistencePreflightFailureCode, type CoexistencePreflightStateRecord, type CoexistenceRawEventStatusRecord, CoexistenceService, type CoexistenceServiceConfig, type CoexistenceSessionEventPayload, type CoexistenceSessionInfoVersion, type CoexistenceSmbAppStateSyncValue, type CoexistenceSmbAppStateSyncWebhook, type CoexistenceSmbMessageEchoesValue, type CoexistenceSmbMessageEchoesWebhook, type CoexistenceStateSyncContact, type CoexistenceStateSyncItem, type CoexistenceStore, type CoexistenceSyncJobRecord, type CoexistenceSyncJobStatus, type CoexistenceSyncRequest, type CoexistenceSyncResponse, type CoexistenceSyncType, type CoexistenceTokenExchangeResult, type CoexistenceUnsupportedMessageContext, type CoexistenceUnsupportedValue, type CoexistenceUnsupportedWebhook, type CoexistenceWebhookBase, type CoexistenceWebhookMessage, type CoexistenceWebhookPayload, type CoexistenceWebhookValueBase, type Conversation, type ConversationRecord, type ConversationSummary, type ConversationUpdateEvent, DEFAULT_MEDIA_MAX_BYTES, EMPTY_TEMPLATE_REGISTRY, FREEFORM_MESSAGE_WINDOW_MS, type FailedMessageMedia, type FreeformMessageWindow, type ImportMessageParams, type ImportMessageResult, InMemoryCoexistenceStore, type IncomingMessage, type InferBetterZapPluginContext, type InferBetterZapPluginServices, type InteractiveMediaCarouselCardInput, type LaunchCoexistenceEmbeddedSignupInput, type LinkPreview, type LogLevel, type Logger, type LoggerConfig, MAX_SIGNED_URL_EXPIRES_IN, MEDIA_PLACEHOLDER_TYPE, type MediaDownloadOptions, type MediaDownloadResult, type MediaMessage, type MediaStore, type MediaStoreObject, type MediaStorePutInfo, type MessageContext, type MessageError, type MessageLoggerNotifier, MessageLoggerService, type MessageMedia, type MessageMediaPayload, type MessageStatus, type MessageUpdateEvent, type MetaAccessTokenProvider, type MetaGraphApiErrorBody, type NewMessageEvent, type NormalizedCoexistenceSessionEvent, type OutgoingLoggingMetadata, type Result, STORABLE_MEDIA_TYPES, type SendInteractiveMediaCarouselData, type SendMessageError, type SendMessageResponse, type SendResult, type SkippedMessageMedia, type SmbAppStateSyncContext, type SmbMessageEchoContext, type StatusContext, type StatusUpdateEvent, type StorableMediaType, type StoredMessageMedia, type SupportedTemplateParameterType, type SyncEvent, type TemplateComponent, type TemplateComponentDefinition, type TemplateDefinition, type TemplateName, type TemplateParameter, type TemplateParameterDefinition, type TemplateParameterInputMap, type TemplateParams, type TemplateRegistry, type UIMessage, type UIMessageStatus, WHATSAPP_MESSAGE_TYPES, type WebhookChange, type WebhookContact, type WebhookEntry, type WebhookError, type WebhookMediaConfig, type WebhookPayload, type WebhookProcessor, type WebhookProcessorConfig, type WebhookProcessorHooks, type WebhookValue, type WhatsAppCarouselCard, type WhatsAppConfig, type WhatsAppDirection, type WhatsAppInteractiveButtonsMessage, type WhatsAppInteractiveListMessage, type WhatsAppInteractiveMediaCarouselMessage, type WhatsAppLocationMessage, type WhatsAppLogRecord, type WhatsAppLogStore, type WhatsAppMessageType, WhatsAppService, type WhatsAppStatus, type WhatsAppTemplateMessage, type WhatsAppTextMessage, type WhatsAppWebhookField, type ZapClient, type ZapTransport, apiKeyTransport, clampSignedUrlExpiry, createCoexistenceEmbeddedSignupConfig, createFreeformMessageWindow, createLogger, createWebhookProcessor, createZapClient, defineTemplates, delay, firstLinkIn, formatPhone, getLatestIncomingMessageAt, getMediaStorageKey, getMessageContent, getMessageMedia, getMessageMediaPayload, getStoredMessageMedia, getTemplateNames, hasConfiguredTemplates, hasPendingMedia, isMediaPlaceholder, launchCoexistenceEmbeddedSignup, noopLogger, normalizeCoexistenceSessionEvent, normalizeCoexistenceSessionPayload, normalizeConversationRecord, normalizeConversationRecords, parseOpenGraph, resolveConversationFreeformMessageWindow, serializeError, serializeTemplateFromRegistry, sessionTransport, storeMessageMedia, toError, toLegacyCoexistenceSessionEvent, tryCatch };

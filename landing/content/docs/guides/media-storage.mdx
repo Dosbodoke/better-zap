@@ -1,0 +1,215 @@
+---
+title: Media Storage
+description: Keep incoming images, audio, video, documents and stickers in your own bucket before Meta deletes them after 7 days.
+---
+
+Without storage, Better Zap logs an incoming image as a text label such as `[imagem: foto]`, plus Meta's media id in the message metadata. That id is not enough to show the file later:
+
+- **Meta deletes webhook media after 7 days.** After that the file is gone.
+- The download URL Meta returns expires after 5 minutes and needs your access token, so it can't go in an `<img>` tag.
+
+With a `MediaStore`, Better Zap downloads each file once, when the webhook arrives, saves it in your bucket, and adds a reference to the message. Your app then serves it from `GET {basePath}/media/:waMessageId`.
+
+> **Only media received after you enable storage is saved.** Media from earlier messages can't be recovered once Meta's 7-day window has passed.
+
+## How it works
+
+For every `image`, `audio`, `video`, `document` and `sticker` message in the `messages`, `smb_message_echoes` and `history` webhooks:
+
+1. Meta gets its `200 OK` right away. The rest runs inside `waitUntil`.
+2. The message is logged as usual.
+3. Better Zap calls `GET /{media-id}`, downloads the file with your token, and checks its SHA-256 when Meta sends one.
+4. The file is saved with `MediaStore.put` under `whatsapp/{phoneNumberId}/{waMessageId}`.
+5. `metadata.media` is set on the log record through `updateWhatsAppLogByWaMessageId`, and a `MESSAGE_UPDATE` [sync event](/docs/concepts/durable-objects) is sent.
+6. Your `onMessage` hook runs.
+
+Coexistence history placeholders (`media_placeholder`) carry no file and are never downloaded. When Meta later sends the real media with the same message id, the placeholder is replaced and that media is downloaded. Duplicate webhooks don't download again.
+
+A failed download never fails the webhook. The error is logged and recorded in `metadata.media`.
+
+## Set up Cloudflare R2
+
+1. Create a bucket: `npx wrangler r2 bucket create whatsapp-media`.
+2. In the Cloudflare dashboard, go to **R2 > Manage API tokens** and create a token with **Object Read & Write** on that bucket. Copy the access key id and secret.
+3. Store them as secrets:
+
+```bash
+npx wrangler secret put R2_ACCESS_KEY_ID
+npx wrangler secret put R2_SECRET_ACCESS_KEY
+```
+
+4. Pass the store as `database.media`:
+
+```ts title="src/index.ts"
+import { betterZap } from "@better-zap/hono";
+import { createS3MediaStore } from "better-zap/s3";
+
+const zap = betterZap({
+  database: {
+    whatsappLog: myLogStore,
+    media: createS3MediaStore({
+      endpoint: `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+      bucket: "whatsapp-media",
+      accessKeyId: env.R2_ACCESS_KEY_ID,
+      secretAccessKey: env.R2_SECRET_ACCESS_KEY,
+      // region defaults to "auto" for R2
+    }),
+  },
+  // ...
+});
+```
+
+The bucket stays private. Files reach the browser only through the authorized media route.
+
+### Using an R2 binding instead
+
+On Workers you can skip the S3 API and implement `MediaStore` with an R2 binding directly:
+
+```ts title="src/media-store.ts"
+import type { MediaStore } from "better-zap";
+
+export function r2MediaStore(bucket: R2Bucket): MediaStore {
+  return {
+    async put(key, body, info) {
+      await bucket.put(key, body, {
+        httpMetadata: { contentType: info.contentType },
+        customMetadata: info.sha256 ? { sha256: info.sha256 } : undefined,
+      });
+    },
+    async get(key) {
+      const object = await bucket.get(key);
+      return object
+        ? {
+            body: object.body,
+            contentType: object.httpMetadata?.contentType ?? "application/octet-stream",
+            size: object.size,
+          }
+        : null;
+    },
+    async delete(key) {
+      await bucket.delete(key);
+    },
+  };
+}
+```
+
+## Set up AWS S3
+
+1. Create a private bucket (keep **Block all public access** on).
+2. Create an IAM user or role with this policy:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"],
+      "Resource": "arn:aws:s3:::whatsapp-media/*"
+    }
+  ]
+}
+```
+
+3. Create the store. `endpoint` is optional for AWS when `region` is set:
+
+```ts
+import { createS3MediaStore } from "better-zap/s3";
+
+const media = createS3MediaStore({
+  region: "us-east-1",
+  bucket: "whatsapp-media",
+  accessKeyId: env.AWS_ACCESS_KEY_ID,
+  secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
+  // sessionToken: env.AWS_SESSION_TOKEN, // for temporary credentials
+});
+```
+
+AWS uses virtual-hosted URLs (`whatsapp-media.s3.us-east-1.amazonaws.com`) by default. Set `forcePathStyle: true` if your bucket name contains dots.
+
+## Other S3-compatible storage
+
+`createS3MediaStore` signs requests with SigV4 over `fetch` (via [`aws4fetch`](https://github.com/mhart/aws4fetch)), so it runs on Workers and Node 20+ without the AWS SDK. It also works with:
+
+| Provider | `endpoint` | Region |
+| --- | --- | --- |
+| MinIO | `http://localhost:9000` | `us-east-1` (default) |
+| Backblaze B2 | `https://s3.us-west-004.backblazeb2.com` | Read from the host name |
+
+Every provider except AWS uses path-style URLs (`endpoint/bucket/key`) by default.
+
+### `createS3MediaStore` options
+
+| Option | Type | Description |
+| --- | --- | --- |
+| `endpoint` | `string?` | S3 API endpoint, without the bucket. Optional for AWS when `region` is set |
+| `bucket` | `string` | Bucket name |
+| `region` | `string?` | Signing region. Defaults to `auto` for R2, the host name's region for AWS and B2, and `us-east-1` otherwise |
+| `accessKeyId` | `string` | Access key id |
+| `secretAccessKey` | `string` | Secret access key |
+| `sessionToken` | `string?` | For temporary AWS credentials |
+| `forcePathStyle` | `boolean?` | Path-style URLs. Defaults to `false` for AWS, `true` otherwise |
+| `keyPrefix` | `string?` | Added to every key, e.g. `"prod/"` |
+| `signedUrls` | `boolean?` | Add `getSignedUrl`, so the media route redirects to a presigned URL. Defaults to `false` |
+| `retries` | `number?` | Retries for network errors, 429 and 5xx. Defaults to `2` |
+| `fetch` | `typeof fetch?` | Custom `fetch` |
+
+## Options
+
+```ts
+betterZap({
+  database: { whatsappLog, media },
+  media: {
+    maxBytes: 25 * 1024 * 1024, // default: 25 MiB
+    signedUrlExpiresIn: 3600,   // default: 1 hour
+  },
+  // ...
+});
+```
+
+- **`maxBytes`**: larger files are not downloaded. They are recorded with `status: "skipped"`. Files are held in memory while they are checked and uploaded, so keep this well under your runtime's memory limit (128 MB on Workers). Meta allows documents up to 100 MB.
+- **`signedUrlExpiresIn`**: lifetime of the presigned URL when the store has `getSignedUrl`. Capped at 7 days, the S3 limit.
+
+Downloads use `config.token`. For history and echo webhooks of another business's number, the token comes from `coexistence.credentials.getAccessToken({ phoneNumberId })` when you configure it. Downloads also run when `environment` is `"development"`, since they send nothing.
+
+## `metadata.media`
+
+After a download, the log record's `metadata.media` holds one of these. Other metadata fields are kept.
+
+```ts
+// Stored
+{
+  status: "stored",
+  key: "whatsapp/123456/wamid.HBgM...",
+  contentType: "image/jpeg",
+  size: 48213,
+  sha256: "9f86d0...", // hex
+  filename: "orcamento.pdf", // documents only
+  mediaId: "1234567890",
+  storedAt: "2026-11-07T12:00:00.000Z",
+}
+
+// Download or upload failed
+{ status: "failed", error: "Media lookup failed: HTTP 404", mediaId, failedAt }
+
+// Over maxBytes
+{ status: "skipped", reason: "too_large", size: 52428800, maxBytes: 26214400, mediaId, skippedAt }
+```
+
+`getMessageMedia(record)` and `getStoredMessageMedia(record)` from `better-zap` read it for you. A stored file is never replaced by a later failed result.
+
+## Serving media
+
+`GET {basePath}/media/:waMessageId` returns the stored file. Encode the id with `encodeURIComponent`, since message ids can contain `/`, `+` and `=`.
+
+```tsx
+<img src={`/api/whatsapp/media/${encodeURIComponent(message.waMessageId)}`} />
+```
+
+- It runs behind [`authorizeAppRequest`](/docs/reference/server#authorization), like the other app routes. A denied request gets `401`.
+- It returns `404` when the message doesn't exist, has no stored media, or the file is missing from the store.
+- Files are streamed with `Cache-Control: private, max-age=31536000, immutable` and an `ETag`, since they never change.
+- When the store has `getSignedUrl`, the route answers `302` to a presigned URL for images, audio, video and PDFs. Other types (HTML, SVG, unknown files) are still streamed as sandboxed downloads, because the bucket would serve them without those headers. The redirect doesn't check that the object still exists in the bucket.
+- Images, audio, video and PDFs are served inline. Anything else (HTML, SVG, unknown types) is served as a download with `Content-Security-Policy: sandbox`, so a file a contact sends can't run script on your domain.
+
+The route doesn't support `Range` requests yet. Safari needs them to seek in audio and video; use `signedUrls: true` if you need that today.

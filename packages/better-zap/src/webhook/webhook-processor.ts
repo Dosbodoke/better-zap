@@ -35,6 +35,7 @@ import type {
   WebhookPayload,
 } from "../types/whatsapp.types";
 import { getMessageContent as defaultGetMessageContent } from "./message-content";
+import { storeMessageMedia, type WebhookMediaConfig } from "../media/store-message-media";
 
 // ============================================
 // Hook context types
@@ -193,6 +194,12 @@ export interface WebhookProcessorConfig {
   hooks: WebhookProcessorHooks;
   /** Seam for human-readable message content. Defaults to the built-in pt-BR resolver. */
   resolveMessageContent?: (message: IncomingMessage) => string;
+  /**
+   * Download incoming media into a `MediaStore`. Covers `messages`,
+   * `smb_message_echoes` and `history`, including follow-up media that
+   * replaces a placeholder. Omit to keep only the text label and media id.
+   */
+  media?: WebhookMediaConfig;
 }
 
 export interface WebhookProcessor {
@@ -302,7 +309,13 @@ async function processMessagesChange(
   if (value.messages && value.messages.length > 0) {
     for (const message of value.messages) {
       const contact = resolveContact(value.contacts, message);
-      await processIncomingMessage(message, contact, config, log);
+      await processIncomingMessage(
+        message,
+        contact,
+        value.metadata?.phone_number_id,
+        config,
+        log,
+      );
     }
   }
 
@@ -1127,7 +1140,7 @@ async function importCoexistenceMessage(input: {
       message.to_user_id,
       thread?.context?.user_id,
     ].find(isNonEmptyString);
-    return await input.config.logger.importMessage({
+    const result = await input.config.logger.importMessage({
       phone,
       waMessageId: message.id,
       direction,
@@ -1150,6 +1163,19 @@ async function importCoexistenceMessage(input: {
         raw: message,
       },
     });
+
+    // New rows and upgraded placeholders get their media. Duplicates are
+    // skipped so a replayed webhook never downloads twice.
+    if (result === "created" || result === "upgraded") {
+      await storeMessageMedia({
+        message,
+        phoneNumberId: input.metadata?.phone_number_id,
+        media: input.config.media,
+        logger: input.config.logger,
+        log,
+      });
+    }
+    return result;
   } catch (error) {
     log.error("webhook.coexistence_import_failed", {
       field: input.source,
@@ -1237,11 +1263,13 @@ async function runOptionalHook(
  * Processes a single incoming message:
  * 1. Extracts human-readable content
  * 2. Atomically logs and deduplicates by waMessageId
- * 3. Calls {@link WebhookProcessorHooks.onMessage}
+ * 3. Downloads its media when a `MediaStore` is configured
+ * 4. Calls {@link WebhookProcessorHooks.onMessage}
  */
 async function processIncomingMessage(
   message: IncomingMessage,
   contact: WebhookContact | undefined,
+  phoneNumberId: string | undefined,
   config: WebhookProcessorConfig,
   log: Logger,
 ): Promise<void> {
@@ -1278,6 +1306,14 @@ async function processIncomingMessage(
     });
     return;
   }
+
+  await storeMessageMedia({
+    message,
+    phoneNumberId,
+    media: config.media,
+    logger: config.logger,
+    log,
+  });
 
   const ctx: MessageContext = {
     message,

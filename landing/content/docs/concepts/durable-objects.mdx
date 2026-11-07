@@ -83,8 +83,10 @@ Fired when conversation metadata changes (e.g., new last message).
 
 ### `MESSAGE_UPDATE`
 
-Fired when a stored message changes content. Today this happens when a
-coexistence history media placeholder is replaced by the real media.
+Fired when a stored message changes. This happens when a coexistence history
+media placeholder is replaced by the real media, and when a message's media
+file is stored (or fails to download) and `metadata.media` is set. See
+[Media Storage](/docs/guides/media-storage).
 
 ```ts
 {

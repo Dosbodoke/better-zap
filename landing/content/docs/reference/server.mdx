@@ -50,6 +50,7 @@ The hook runs for:
 - `GET /conversations`
 - `GET /conversations/:phone`
 - `GET /conversations/:phone/messages`
+- `GET /media/:waMessageId`
 
 It does not run for `GET /webhook` or `POST /webhook`.
 
@@ -127,6 +128,7 @@ The handler automatically registers these routes under `basePath` (default: `/ap
 | `GET` | `/conversations` | List all conversations |
 | `GET` | `/conversations/:phone` | Get a single conversation |
 | `GET` | `/conversations/:phone/messages` | Get paginated messages |
+| `GET` | `/media/:waMessageId` | Stored media file of a message. See [Media Storage](/docs/guides/media-storage) |
 
 ## Webhook Processing
 
@@ -137,4 +139,5 @@ The webhook handler is designed for speed:
    - Returns `200 OK` to Meta immediately (within ~20ms)
    - Processes the message asynchronously via `executionCtx.waitUntil()`
    - Logs incoming messages automatically
+   - Downloads incoming media into `database.media`, when configured
    - Runs plugin hooks, then your `onMessage`/`onStatusUpdate` callbacks

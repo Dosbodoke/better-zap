@@ -202,6 +202,32 @@ export {
   isMediaPlaceholder,
 } from "./utils/media-placeholder";
 export { delay } from "./utils/delay";
+export { tryCatch, toError, type Result } from "./utils/result";
+
+export {
+  DEFAULT_MEDIA_MAX_BYTES,
+  MAX_SIGNED_URL_EXPIRES_IN,
+  STORABLE_MEDIA_TYPES,
+  clampSignedUrlExpiry,
+  type FailedMessageMedia,
+  type MediaDownloadOptions,
+  type MediaDownloadResult,
+  type MediaStore,
+  type MediaStoreObject,
+  type MediaStorePutInfo,
+  type MessageMedia,
+  type SkippedMessageMedia,
+  type StorableMediaType,
+  type StoredMessageMedia,
+} from "./media/types";
+export {
+  getMediaStorageKey,
+  getMessageMedia,
+  getMessageMediaPayload,
+  getStoredMessageMedia,
+  type MessageMediaPayload,
+} from "./media/message-media";
+export { storeMessageMedia, type WebhookMediaConfig } from "./media/store-message-media";
 
 export { getMessageContent } from "./webhook/message-content";
 export {

@@ -29,6 +29,7 @@ const zap = betterZap({
   templates: myTemplates,         // From defineTemplates()
   plugins: [myPlugin],            // Plugin array
   conversationSync: env.SYNC_DO,  // Durable Object namespace
+  media: { maxBytes: 25 * 1024 * 1024 }, // Media download settings
   logger: { level: "info" },      // Logger config
 });
 ```
@@ -45,7 +46,7 @@ WhatsApp Cloud API credentials:
 | `phoneId` | `string` | Phone Number ID registered in your WhatsApp Business App |
 | `webhookToken` | `string` | A secret string you choose — Meta sends it during webhook verification |
 | `appSecret` | `string` | App Secret from your Meta App Dashboard — used for HMAC-SHA256 signature verification |
-| `environment` | `string?` | Set to `"development"` to skip real API calls and return mock responses |
+| `environment` | `string?` | Set to `"development"` to skip real API calls and return mock responses. Media downloads still run, since they send nothing |
 
 ### `database` (required)
 
@@ -54,10 +55,36 @@ An object containing your database implementation:
 ```ts
 interface BetterZapDatabase {
   whatsappLog: WhatsAppLogStore;
+  coexistence?: CoexistenceStore;
+  media?: MediaStore;
 }
 ```
 
 The `WhatsAppLogStore` interface defines the methods Better Zap needs for message logging. You must implement this interface with your database of choice (D1, Prisma, Drizzle, etc.).
+
+`coexistence` stores [coexistence](/docs/guides/self-hosted-coexistence) accounts, contacts and sync jobs.
+
+`media` stores incoming media files. Without it, Better Zap keeps only the text label (`[imagem: foto]`) and Meta's media id, and Meta deletes the file after 7 days. Use `createS3MediaStore` from `better-zap/s3` for R2, AWS S3, MinIO or B2, or implement the interface yourself:
+
+```ts
+interface MediaStore {
+  put(
+    key: string,
+    body: ReadableStream<Uint8Array> | ArrayBuffer,
+    info: { contentType: string; size?: number; sha256?: string },
+  ): Promise<void>;
+  get(key: string): Promise<{
+    body: ReadableStream<Uint8Array>;
+    contentType: string;
+    size?: number;
+  } | null>;
+  delete?(key: string): Promise<void>;
+  /** When present, the media route redirects images, audio, video and PDFs here instead of streaming. Must stay valid for `expiresInSeconds` (at most 7 days). */
+  getSignedUrl?(key: string, expiresInSeconds: number): Promise<string>;
+}
+```
+
+See [Media Storage](/docs/guides/media-storage) for setup.
 
 See the [WhatsAppLogStore interface](#whatsapplogstore-interface) section below for the full interface.
 
@@ -99,6 +126,7 @@ All API routes are mounted under this path:
 - `GET  {basePath}/conversations` — List conversations
 - `GET  {basePath}/conversations/:phone` — Get conversation
 - `GET  {basePath}/conversations/:phone/messages` — Paginated messages
+- `GET  {basePath}/media/:waMessageId` — Stored media file
 
 ### `templates` (optional)
 
@@ -144,6 +172,17 @@ conversationSync: env.CONVERSATION_SYNC
 ```
 
 See [Durable Objects](/docs/concepts/durable-objects) for details.
+
+### `media` (optional)
+
+Media download settings. Downloads only run when `database.media` is set.
+
+| Property | Type | Description |
+| --- | --- | --- |
+| `maxBytes` | `number?` | Files larger than this are skipped. Defaults to 25 MiB |
+| `signedUrlExpiresIn` | `number?` | Lifetime in seconds of the presigned URL the media route redirects to, when the store has `getSignedUrl`. Capped at 7 days. Defaults to `3600` |
+
+See [Media Storage](/docs/guides/media-storage) for details.
 
 ## WhatsAppLogStore Interface
 
@@ -217,6 +256,13 @@ the real media. When the existing row still holds a placeholder
 (`hasPendingMedia(record)`), Better Zap replaces its `content` and `metadata`
 through `updateWhatsAppLogByWaMessageId`. A placeholder never overwrites real
 content. Your store needs no extra method for this.
+
+When `database.media` is set, Better Zap also reads the row with
+`getMessageByWaId` after downloading a message's media, and writes the
+reference back as `metadata.media` with `updateWhatsAppLogByWaMessageId`. The
+update carries the whole `metadata` object with the existing fields kept, so
+your store can overwrite the column. The media route reads the row with
+`getMessageByWaId`.
 
 `updateStatusIfProgressed` must be atomic in your database implementation so duplicate or out-of-order webhook status events cannot regress a message.
 

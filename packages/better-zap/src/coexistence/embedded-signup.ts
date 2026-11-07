@@ -4,6 +4,7 @@ import type {
 } from "../types/coexistence.types";
 import { createCoexistenceEmbeddedSignupConfig } from "./config";
 import { normalizeCoexistenceSessionEvent } from "./events";
+import { isRecord } from "../utils/record";
 
 export type CoexistenceEmbeddedSignupMessageEvent = {
   origin: string;
@@ -135,7 +136,7 @@ function parseEmbeddedSignupMessage(
   data: unknown,
 ): CoexistenceSessionEventPayload | null {
   const payload = typeof data === "string" ? parseJson(data) : data;
-  if (!isPlainObject(payload)) {
+  if (!isRecord(payload)) {
     return null;
   }
 
@@ -148,7 +149,7 @@ function parseEmbeddedSignupMessage(
     return null;
   }
 
-  if (payload.data !== undefined && !isPlainObject(payload.data)) {
+  if (payload.data !== undefined && !isRecord(payload.data)) {
     return null;
   }
 
@@ -169,10 +170,6 @@ function parseEmbeddedSignupMessage(
   }
 
   return { event: payload.event, data: sessionData };
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function parseJson(value: string) {
