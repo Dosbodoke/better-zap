@@ -1,5 +1,13 @@
 # @better-zap/react
 
+## 25.0.3
+
+### Patch Changes
+
+- Updated dependencies [ac638cc]
+- Updated dependencies [0c7a29e]
+  - better-zap@25.0.3
+
 ## 25.0.2
 
 ### Patch Changes
