@@ -14,6 +14,8 @@ import type {
 } from "../types/whatsapp.types";
 import type { SyncEvent } from "../types/sync-events";
 import { type Logger, serializeError } from "../logger";
+import { hasPendingMedia } from "../utils/media-placeholder";
+import { asRecord, mergeDefined } from "../utils/record";
 import {
   createFreeformMessageWindow,
   normalizeConversationRecord,
@@ -158,6 +160,12 @@ export class MessageLoggerService {
     }
   }
 
+  private async notifyNewMessage(message: WhatsAppLogRecord) {
+    const conversation = await this.getConversationById(message.conversationId);
+    if (!conversation) return;
+    await this.notify({ type: "NEW_MESSAGE", message, conversation });
+  }
+
   async getConversationById(conversationId: string): Promise<Conversation | null> {
     const conversation = await this.store.getConversationById(conversationId);
     return conversation ? normalizeConversationRecord(conversation) : null;
@@ -220,14 +228,7 @@ export class MessageLoggerService {
       metadata: params.metadata,
     });
 
-    const conversation = await this.getConversationById(inserted.conversationId);
-    if (conversation) {
-      await this.notify({
-        type: "NEW_MESSAGE",
-        message: inserted,
-        conversation,
-      });
-    }
+    await this.notifyNewMessage(inserted);
     return inserted.id;
   }
 
@@ -314,14 +315,7 @@ export class MessageLoggerService {
       return false;
     }
 
-    const conversation = await this.getConversationById(inserted.conversationId);
-    if (conversation) {
-      await this.notify({
-        type: "NEW_MESSAGE",
-        message: inserted,
-        conversation,
-      });
-    }
+    await this.notifyNewMessage(inserted);
     return true;
   }
 
@@ -329,18 +323,28 @@ export class MessageLoggerService {
    * Log an imported WhatsApp message with an explicit direction and timestamp.
    * Used by coexistence history imports and app echo webhooks where the message
    * did not originate from the local send API call.
+   *
+   * Returns true only when a new row was created. See {@link importMessage}
+   * for the detailed result, including placeholder upgrades.
    */
-  async logImportedMessage(params: {
-    phone: string;
-    waMessageId: string;
-    direction: WhatsAppDirection;
-    content: string;
-    sentAt: string;
-    senderName?: string;
-    messageType?: WhatsAppMessageType;
-    metadata?: Record<string, unknown>;
-  }): Promise<boolean> {
-    const { record: inserted, created } = await this.store.createWhatsAppLog({
+  async logImportedMessage(params: ImportMessageParams): Promise<boolean> {
+    return (await this.importMessage(params)) === "created";
+  }
+
+  /**
+   * Import a WhatsApp message, deduplicated by `waMessageId`.
+   *
+   * When a row with the same id already exists and still holds a history media
+   * placeholder (see {@link hasPendingMedia}), and the new message has real
+   * content, the stored content and metadata are replaced and a
+   * `MESSAGE_UPDATE` sync event is sent. A placeholder never overwrites real
+   * content.
+   *
+   * Relies on `createWhatsAppLog` returning the existing row with
+   * `created: false` for a known `waMessageId`.
+   */
+  async importMessage(params: ImportMessageParams): Promise<ImportMessageResult> {
+    const { record, created } = await this.store.createWhatsAppLog({
       phone: params.phone,
       contactName: params.senderName,
       waMessageId: params.waMessageId,
@@ -355,17 +359,52 @@ export class MessageLoggerService {
     });
 
     if (!created) {
-      return false;
+      const upgraded = await this.replaceMediaPlaceholder(record, params);
+      return upgraded ? "upgraded" : "duplicate";
     }
 
-    const conversation = await this.getConversationById(inserted.conversationId);
-    if (conversation) {
-      await this.notify({
-        type: "NEW_MESSAGE",
-        message: inserted,
-        conversation,
-      });
-    }
+    await this.notifyNewMessage(record);
+    return "created";
+  }
+
+  private async replaceMediaPlaceholder(
+    existing: WhatsAppLogRecord | undefined,
+    params: ImportMessageParams,
+  ): Promise<boolean> {
+    if (!existing || !hasPendingMedia(existing)) return false;
+    if (hasPendingMedia({ metadata: params.metadata })) return false;
+
+    // Keep stored fields the follow-up lacks (e.g. the original requestId).
+    const metadata = mergeDefined(asRecord(existing.metadata), params.metadata);
+    delete metadata.mediaPending;
+
+    await this.store.updateWhatsAppLogByWaMessageId(params.waMessageId, {
+      content: params.content,
+      metadata,
+    });
+
+    await this.notify({
+      type: "MESSAGE_UPDATE",
+      message: { ...existing, content: params.content, metadata },
+    });
     return true;
   }
 }
+
+export type ImportMessageParams = {
+  phone: string;
+  waMessageId: string;
+  direction: WhatsAppDirection;
+  content: string;
+  sentAt: string;
+  senderName?: string;
+  messageType?: WhatsAppMessageType;
+  metadata?: Record<string, unknown>;
+};
+
+/**
+ * - `created`: a new row was stored.
+ * - `duplicate`: a row with this `waMessageId` already existed and was left as is.
+ * - `upgraded`: a stored media placeholder was replaced with the real media.
+ */
+export type ImportMessageResult = "created" | "duplicate" | "upgraded";

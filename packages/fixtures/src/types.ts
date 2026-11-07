@@ -36,9 +36,18 @@ export type CoexistenceWebhookMetadata = {
 export type CoexistenceHistoryChunk = {
   phase?: number;
   progress?: Record<string, unknown>;
+  metadata?: { phase?: number; chunk_order?: number; progress?: number };
+  threads?: CoexistenceHistoryThread[];
   messages?: CoexistenceMessage[];
   statuses?: CoexistenceStatus[];
   errors?: CoexistenceError[];
+  [key: string]: unknown;
+};
+
+export type CoexistenceHistoryThread = {
+  id?: string;
+  context?: { wa_id?: string; user_id?: string; [key: string]: unknown };
+  messages?: CoexistenceMessage[];
   [key: string]: unknown;
 };
 

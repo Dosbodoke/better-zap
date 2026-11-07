@@ -4,6 +4,8 @@ import { accountUpdatePartnerRemovedFixture } from "./account-update-partner-rem
 import { historyDuplicateChunkFixture } from "./history-duplicate-chunk";
 import { historyGroupExcludedFixture } from "./history-group-excluded";
 import { historyMediaMissingAssetIdAfterDay14Fixture } from "./history-media-missing-asset-id-after-day-14";
+import { historyMediaPlaceholderFixture } from "./history-media-placeholder";
+import { historyMediaPlaceholderFollowUpFixture } from "./history-media-placeholder-follow-up";
 import { historyMediaWithAssetIdFixture } from "./history-media-with-asset-id";
 import { historyOtherErrorFixture } from "./history-other-error";
 import { historyPhase1Day01Fixture } from "./history-phase-1-day0-1";
@@ -33,6 +35,8 @@ export { accountUpdatePartnerRemovedFixture } from "./account-update-partner-rem
 export { historyDuplicateChunkFixture } from "./history-duplicate-chunk";
 export { historyGroupExcludedFixture } from "./history-group-excluded";
 export { historyMediaMissingAssetIdAfterDay14Fixture } from "./history-media-missing-asset-id-after-day-14";
+export { historyMediaPlaceholderFixture } from "./history-media-placeholder";
+export { historyMediaPlaceholderFollowUpFixture } from "./history-media-placeholder-follow-up";
 export { historyMediaWithAssetIdFixture } from "./history-media-with-asset-id";
 export { historyOtherErrorFixture } from "./history-other-error";
 export { historyPhase1Day01Fixture } from "./history-phase-1-day0-1";
@@ -66,6 +70,8 @@ export const coexistenceWebhookFixtures = {
   historyOtherErrorFixture,
   historyMediaWithAssetIdFixture,
   historyMediaMissingAssetIdAfterDay14Fixture,
+  historyMediaPlaceholderFixture,
+  historyMediaPlaceholderFollowUpFixture,
   historyDuplicateChunkFixture,
   historyGroupExcludedFixture,
   smbAppStateSyncContactAddFixture,

@@ -41,7 +41,7 @@ new_classes = ["ConversationSync"]
 
 ## Sync Events
 
-Three types of events are broadcast:
+Four types of events are broadcast:
 
 ### `NEW_MESSAGE`
 
@@ -78,6 +78,18 @@ Fired when conversation metadata changes (e.g., new last message).
   type: "CONVERSATION_UPDATE",
   conversationPhone: "5511999998888",
   conversation: { /* Conversation */ },
+}
+```
+
+### `MESSAGE_UPDATE`
+
+Fired when a stored message changes content. Today this happens when a
+coexistence history media placeholder is replaced by the real media.
+
+```ts
+{
+  type: "MESSAGE_UPDATE",
+  message: { /* WhatsAppLogRecord with the new content and metadata */ },
 }
 ```
 

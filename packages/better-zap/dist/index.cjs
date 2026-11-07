@@ -973,6 +973,49 @@ var InMemoryCoexistenceStore = class {
 	}
 };
 //#endregion
+//#region src/utils/record.ts
+/** True for a plain key-value object: not null, not an array. */
+function isRecord(value) {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+/** The value when it is a plain object, otherwise an empty object. */
+function asRecord(value) {
+	return isRecord(value) ? value : {};
+}
+/** Copies `patch` onto `base`, skipping `undefined` values so they never erase stored fields. */
+function mergeDefined(base, patch) {
+	const merged = { ...base };
+	for (const [key, value] of Object.entries(patch ?? {})) {
+		if (value === void 0) continue;
+		merged[key] = value;
+	}
+	return merged;
+}
+//#endregion
+//#region src/utils/media-placeholder.ts
+/**
+* Coexistence history sync sends older media as `type: "media_placeholder"`
+* with no media object. For media sent within 14 days of onboarding, Meta later
+* sends another history webhook with the same message id and the real media.
+*/
+const MEDIA_PLACEHOLDER_TYPE = "media_placeholder";
+/** True when a webhook message is a history media placeholder. */
+function isMediaPlaceholder(message) {
+	return message?.type === MEDIA_PLACEHOLDER_TYPE;
+}
+/**
+* True when a stored log record still holds a media placeholder, so UIs can
+* show "media unavailable" instead of the text label.
+*
+* Checks the `mediaPending` flag set by the SDK, and falls back to the raw
+* message type for records stored before the flag existed.
+*/
+function hasPendingMedia(record) {
+	const metadata = asRecord(record?.metadata);
+	if (metadata.mediaPending === true) return true;
+	return isMediaPlaceholder(asRecord(metadata.raw));
+}
+//#endregion
 //#region src/services/message-logger.service.ts
 const WHATSAPP_MESSAGE_TYPES = [
 	"queue_position",
@@ -998,6 +1041,15 @@ var MessageLoggerService = class {
 		} catch (err) {
 			this.log.error("message_logger.sync_notify_failed", serializeError(err));
 		}
+	}
+	async notifyNewMessage(message) {
+		const conversation = await this.getConversationById(message.conversationId);
+		if (!conversation) return;
+		await this.notify({
+			type: "NEW_MESSAGE",
+			message,
+			conversation
+		});
 	}
 	async getConversationById(conversationId) {
 		const conversation = await this.store.getConversationById(conversationId);
@@ -1040,12 +1092,7 @@ var MessageLoggerService = class {
 			sentAt: (/* @__PURE__ */ new Date()).toISOString(),
 			metadata: params.metadata
 		});
-		const conversation = await this.getConversationById(inserted.conversationId);
-		if (conversation) await this.notify({
-			type: "NEW_MESSAGE",
-			message: inserted,
-			conversation
-		});
+		await this.notifyNewMessage(inserted);
 		return inserted.id;
 	}
 	/**
@@ -1095,21 +1142,34 @@ var MessageLoggerService = class {
 			sentAt: params.sentAt
 		});
 		if (!created) return false;
-		const conversation = await this.getConversationById(inserted.conversationId);
-		if (conversation) await this.notify({
-			type: "NEW_MESSAGE",
-			message: inserted,
-			conversation
-		});
+		await this.notifyNewMessage(inserted);
 		return true;
 	}
 	/**
 	* Log an imported WhatsApp message with an explicit direction and timestamp.
 	* Used by coexistence history imports and app echo webhooks where the message
 	* did not originate from the local send API call.
+	*
+	* Returns true only when a new row was created. See {@link importMessage}
+	* for the detailed result, including placeholder upgrades.
 	*/
 	async logImportedMessage(params) {
-		const { record: inserted, created } = await this.store.createWhatsAppLog({
+		return await this.importMessage(params) === "created";
+	}
+	/**
+	* Import a WhatsApp message, deduplicated by `waMessageId`.
+	*
+	* When a row with the same id already exists and still holds a history media
+	* placeholder (see {@link hasPendingMedia}), and the new message has real
+	* content, the stored content and metadata are replaced and a
+	* `MESSAGE_UPDATE` sync event is sent. A placeholder never overwrites real
+	* content.
+	*
+	* Relies on `createWhatsAppLog` returning the existing row with
+	* `created: false` for a known `waMessageId`.
+	*/
+	async importMessage(params) {
+		const { record, created } = await this.store.createWhatsAppLog({
 			phone: params.phone,
 			contactName: params.senderName,
 			waMessageId: params.waMessageId,
@@ -1120,12 +1180,26 @@ var MessageLoggerService = class {
 			metadata: params.metadata,
 			sentAt: params.sentAt
 		});
-		if (!created) return false;
-		const conversation = await this.getConversationById(inserted.conversationId);
-		if (conversation) await this.notify({
-			type: "NEW_MESSAGE",
-			message: inserted,
-			conversation
+		if (!created) return await this.replaceMediaPlaceholder(record, params) ? "upgraded" : "duplicate";
+		await this.notifyNewMessage(record);
+		return "created";
+	}
+	async replaceMediaPlaceholder(existing, params) {
+		if (!existing || !hasPendingMedia(existing)) return false;
+		if (hasPendingMedia({ metadata: params.metadata })) return false;
+		const metadata = mergeDefined(asRecord(existing.metadata), params.metadata);
+		delete metadata.mediaPending;
+		await this.store.updateWhatsAppLogByWaMessageId(params.waMessageId, {
+			content: params.content,
+			metadata
+		});
+		await this.notify({
+			type: "MESSAGE_UPDATE",
+			message: {
+				...existing,
+				content: params.content,
+				metadata
+			}
 		});
 		return true;
 	}
@@ -1360,6 +1434,7 @@ function getMessageContent(message) {
 			return "[interativo]";
 		case "sticker": return "[figurinha]";
 		case "reaction": return "[reação]";
+		case "media_placeholder": return "[mídia]";
 		default: return `[${message.type}]`;
 	}
 }
@@ -1455,6 +1530,7 @@ async function processHistoryChange(change, config, log) {
 	const tally = {
 		importedMessages: 0,
 		duplicateMessages: 0,
+		upgradedMessages: 0,
 		failedMessages: 0
 	};
 	const threadMessageIds = /* @__PURE__ */ new Set();
@@ -1767,6 +1843,7 @@ async function processSmbMessageEchoesChange(change, config, log) {
 	const tally = {
 		importedMessages: 0,
 		duplicateMessages: 0,
+		upgradedMessages: 0,
 		failedMessages: 0
 	};
 	const echoes = rawValue.message_echoes ?? [];
@@ -1937,10 +2014,15 @@ function readHistoryProgress(chunks) {
 	return latest;
 }
 function countImportOutcome(tally, outcome) {
-	if (outcome === "created") tally.importedMessages += 1;
-	else if (outcome === "duplicate") tally.duplicateMessages += 1;
-	else if (outcome === "failed") tally.failedMessages += 1;
+	if (outcome === "skipped") return;
+	tally[TALLY_KEY[outcome]] += 1;
 }
+const TALLY_KEY = {
+	created: "importedMessages",
+	duplicate: "duplicateMessages",
+	upgraded: "upgradedMessages",
+	failed: "failedMessages"
+};
 async function importCoexistenceMessage(input) {
 	if (!input.config.database?.coexistence) return "skipped";
 	const { message, thread, log } = input;
@@ -1960,7 +2042,7 @@ async function importCoexistenceMessage(input) {
 			message.to_user_id,
 			thread?.context?.user_id
 		].find(isNonEmptyString);
-		return await input.config.logger.logImportedMessage({
+		return await input.config.logger.importMessage({
 			phone,
 			waMessageId: message.id,
 			direction,
@@ -1974,9 +2056,10 @@ async function importCoexistenceMessage(input) {
 				...userId ? { userId } : {},
 				...message.history_context?.status ? { historyStatus: message.history_context.status } : {},
 				...sentAt ? {} : { invalidTimestamp: true },
+				...isMediaPlaceholder(message) ? { mediaPending: true } : {},
 				raw: message
 			}
-		}) ? "created" : "duplicate";
+		});
 	} catch (error) {
 		log.error("webhook.coexistence_import_failed", {
 			field: input.source,
@@ -2149,6 +2232,7 @@ exports.CoexistenceService = CoexistenceService;
 exports.EMPTY_TEMPLATE_REGISTRY = EMPTY_TEMPLATE_REGISTRY;
 exports.FREEFORM_MESSAGE_WINDOW_MS = FREEFORM_MESSAGE_WINDOW_MS;
 exports.InMemoryCoexistenceStore = InMemoryCoexistenceStore;
+exports.MEDIA_PLACEHOLDER_TYPE = MEDIA_PLACEHOLDER_TYPE;
 exports.MessageLoggerService = MessageLoggerService;
 exports.WHATSAPP_MESSAGE_TYPES = WHATSAPP_MESSAGE_TYPES;
 exports.WhatsAppService = WhatsAppService;
@@ -2166,6 +2250,8 @@ exports.getLatestIncomingMessageAt = getLatestIncomingMessageAt;
 exports.getMessageContent = getMessageContent;
 exports.getTemplateNames = getTemplateNames;
 exports.hasConfiguredTemplates = hasConfiguredTemplates;
+exports.hasPendingMedia = hasPendingMedia;
+exports.isMediaPlaceholder = isMediaPlaceholder;
 exports.launchCoexistenceEmbeddedSignup = launchCoexistenceEmbeddedSignup;
 exports.noopLogger = noopLogger;
 exports.normalizeCoexistenceSessionEvent = normalizeCoexistenceSessionEvent;

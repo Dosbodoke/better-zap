@@ -9,7 +9,7 @@ const mockOnMessage = vi.fn();
 const mockOnStatusUpdate = vi.fn();
 const mockLogger = {
   logIncoming: vi.fn().mockResolvedValue(true),
-  logImportedMessage: vi.fn().mockResolvedValue(true),
+  importMessage: vi.fn().mockResolvedValue("created"),
   updateStatus: vi.fn().mockResolvedValue(true),
 };
 const mockLog = {
@@ -143,7 +143,7 @@ describe("createWebhookHandler", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockLogger.logIncoming.mockResolvedValue(true);
-    mockLogger.logImportedMessage.mockResolvedValue(true);
+    mockLogger.importMessage.mockResolvedValue("created");
     app = createTestApp();
   });
 
