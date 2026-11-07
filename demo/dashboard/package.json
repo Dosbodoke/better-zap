@@ -1,6 +1,6 @@
 {
   "name": "@better-zap/demo-dashboard",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "private": true,
   "description": "Mocked client to visualize the @better-zap/react WhatsApp dashboard.",
   "type": "module",
