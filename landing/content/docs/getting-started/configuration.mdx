@@ -210,6 +210,14 @@ returning the existing row and `created: false` in one database operation or
 transaction. When `waMessageId` is omitted, return the inserted row with
 `created: true`.
 
+The SDK also uses that existing row for coexistence history media. History sync
+sends older media as a `media_placeholder` message with no content. For media
+sent within 14 days of onboarding, Meta later sends the same message id with
+the real media. When the existing row still holds a placeholder
+(`hasPendingMedia(record)`), Better Zap replaces its `content` and `metadata`
+through `updateWhatsAppLogByWaMessageId`. A placeholder never overwrites real
+content. Your store needs no extra method for this.
+
 `updateStatusIfProgressed` must be atomic in your database implementation so duplicate or out-of-order webhook status events cannot regress a message.
 
 ## Getting Your Credentials

@@ -24,4 +24,17 @@ export type ConversationUpdateEvent = {
   updates: Partial<ConversationSummary>;
 };
 
-export type SyncEvent = NewMessageEvent | StatusUpdateEvent | ConversationUpdateEvent;
+/**
+ * An existing message changed content, e.g. a history media placeholder was
+ * replaced by the real media.
+ */
+export type MessageUpdateEvent = {
+  type: "MESSAGE_UPDATE";
+  message: WhatsAppLogRecord;
+};
+
+export type SyncEvent =
+  | NewMessageEvent
+  | StatusUpdateEvent
+  | ConversationUpdateEvent
+  | MessageUpdateEvent;

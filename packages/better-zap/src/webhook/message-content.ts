@@ -31,6 +31,9 @@ export function getMessageContent(message: IncomingMessage): string {
       return "[figurinha]";
     case "reaction":
       return "[reação]";
+    case "media_placeholder":
+      // History sync omits older media. See `isMediaPlaceholder`.
+      return "[mídia]";
     default:
       return `[${message.type}]`;
   }

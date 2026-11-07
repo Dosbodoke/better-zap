@@ -12,6 +12,13 @@ import {
   createWebhookProcessor,
   type WebhookProcessorConfig,
 } from "./webhook-processor";
+import { noopLogger } from "../logger";
+import {
+  type CreateWhatsAppLogParams,
+  MessageLoggerService,
+  type WhatsAppLogRecord,
+  type WhatsAppLogStore,
+} from "../services/message-logger.service";
 import {
   BUSINESS_PHONE_NUMBER_ID,
   documentedEditFixture,
@@ -37,7 +44,7 @@ const mockOnCoexistenceMessageRevoke = vi.fn();
 const mockOnCoexistenceUnsupportedMessage = vi.fn();
 const mockLogger = {
   logIncoming: vi.fn().mockResolvedValue(true),
-  logImportedMessage: vi.fn().mockResolvedValue(true),
+  importMessage: vi.fn().mockResolvedValue("created"),
   updateStatus: vi.fn().mockResolvedValue(true),
 };
 const mockCoexistenceStore = {
@@ -138,7 +145,7 @@ describe("createWebhookProcessor", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockLogger.logIncoming.mockResolvedValue(true);
-    mockLogger.logImportedMessage.mockResolvedValue(true);
+    mockLogger.importMessage.mockResolvedValue("created");
     mockCoexistenceStore.updateSyncJobByRequestId.mockResolvedValue(undefined);
     mockCoexistenceStore.upsertContact.mockResolvedValue(undefined);
     mockCoexistenceStore.removeContact.mockResolvedValue(undefined);
@@ -200,9 +207,9 @@ describe("createWebhookProcessor", () => {
         coexistence: mockCoexistenceStore as any,
       },
     });
-    mockLogger.logImportedMessage
-      .mockResolvedValueOnce(true)
-      .mockResolvedValueOnce(false);
+    mockLogger.importMessage
+      .mockResolvedValueOnce("created")
+      .mockResolvedValueOnce("duplicate");
 
     await processor.process(
       makeWebhookPayload(
@@ -233,8 +240,8 @@ describe("createWebhookProcessor", () => {
       ) as any,
     );
 
-    expect(mockLogger.logImportedMessage).toHaveBeenCalledTimes(2);
-    expect(mockLogger.logImportedMessage).toHaveBeenCalledWith(
+    expect(mockLogger.importMessage).toHaveBeenCalledTimes(2);
+    expect(mockLogger.importMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         phone: "5511999887766",
         waMessageId: "wamid.history.1",
@@ -279,7 +286,7 @@ describe("createWebhookProcessor", () => {
       ) as any,
     );
 
-    expect(mockLogger.logImportedMessage).not.toHaveBeenCalled();
+    expect(mockLogger.importMessage).not.toHaveBeenCalled();
     expect(mockOnCoexistenceHistory).toHaveBeenCalledWith(
       expect.objectContaining({
         importedMessages: 0,
@@ -353,7 +360,7 @@ describe("createWebhookProcessor", () => {
       ) as any,
     );
 
-    expect(mockLogger.logImportedMessage).toHaveBeenCalledWith(
+    expect(mockLogger.importMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         phone: "5511999887766",
         waMessageId: "wamid.echo.1",
@@ -605,8 +612,8 @@ describe("createWebhookProcessor", () => {
         phoneNumberId: BUSINESS_PHONE_NUMBER_ID,
         syncType: "history",
       });
-      expect(mockLogger.logImportedMessage).toHaveBeenCalledTimes(4);
-      expect(mockLogger.logImportedMessage).toHaveBeenNthCalledWith(
+      expect(mockLogger.importMessage).toHaveBeenCalledTimes(4);
+      expect(mockLogger.importMessage).toHaveBeenNthCalledWith(
         1,
         expect.objectContaining({
           phone: "15550002222",
@@ -624,15 +631,16 @@ describe("createWebhookProcessor", () => {
           }),
         }),
       );
-      expect(mockLogger.logImportedMessage).toHaveBeenNthCalledWith(
+      expect(mockLogger.importMessage).toHaveBeenNthCalledWith(
         2,
         expect.objectContaining({
           waMessageId: "wamid.fake.thread.media.1",
           direction: "outgoing",
-          content: "[media_placeholder]",
+          content: "[mídia]",
+          metadata: expect.objectContaining({ mediaPending: true }),
         }),
       );
-      expect(mockLogger.logImportedMessage).toHaveBeenNthCalledWith(
+      expect(mockLogger.importMessage).toHaveBeenNthCalledWith(
         3,
         expect.objectContaining({
           phone: "15550002222",
@@ -641,7 +649,7 @@ describe("createWebhookProcessor", () => {
           sentAt: isoFromUnix(1739230980),
         }),
       );
-      expect(mockLogger.logImportedMessage).toHaveBeenNthCalledWith(
+      expect(mockLogger.importMessage).toHaveBeenNthCalledWith(
         4,
         expect.objectContaining({
           phone: "BSUID.fake.hidden",
@@ -718,7 +726,7 @@ describe("createWebhookProcessor", () => {
 
       await processor.process(payload as any);
 
-      expect(mockLogger.logImportedMessage).toHaveBeenCalledOnce();
+      expect(mockLogger.importMessage).toHaveBeenCalledOnce();
       expect(mockOnCoexistenceHistory).toHaveBeenCalledWith(
         expect.objectContaining({ importedMessages: 1, duplicateMessages: 1 }),
       );
@@ -728,11 +736,11 @@ describe("createWebhookProcessor", () => {
       processor = createStoreProcessor({
         getInFlightSyncJob: inFlightJob("req_fake_history", "history"),
       });
-      mockLogger.logImportedMessage.mockResolvedValueOnce(false);
+      mockLogger.importMessage.mockResolvedValueOnce("duplicate");
 
       await processor.process(historyMediaAssetFixture as any);
 
-      expect(mockLogger.logImportedMessage).toHaveBeenCalledWith(
+      expect(mockLogger.importMessage).toHaveBeenCalledWith(
         expect.objectContaining({
           waMessageId: "wamid.fake.thread.media.1",
           direction: "incoming",
@@ -742,6 +750,90 @@ describe("createWebhookProcessor", () => {
       expect(syncJobStatuses("req_fake_history")).not.toContain("completed");
       expect(mockOnCoexistenceHistory).toHaveBeenCalledWith(
         expect.objectContaining({ duplicateMessages: 1 }),
+      );
+    });
+
+    it("reports follow-up media that replaced a placeholder", async () => {
+      processor = createStoreProcessor({
+        getInFlightSyncJob: inFlightJob("req_fake_history", "history"),
+      });
+      mockLogger.importMessage.mockResolvedValueOnce("upgraded");
+
+      await processor.process(historyMediaAssetFixture as any);
+
+      expect(mockLogger.importMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadata: expect.not.objectContaining({ mediaPending: true }),
+        }),
+      );
+      expect(mockOnCoexistenceHistory).toHaveBeenCalledWith(
+        expect.objectContaining({
+          importedMessages: 0,
+          duplicateMessages: 0,
+          upgradedMessages: 1,
+        }),
+      );
+    });
+
+    it("replaces a stored placeholder with follow-up media and keeps it afterwards", async () => {
+      const rows = new Map<string, WhatsAppLogRecord>();
+      const store = {
+        async createWhatsAppLog(params: CreateWhatsAppLogParams) {
+          const existing = rows.get(params.waMessageId!);
+          if (existing) return { record: existing, created: false };
+          const record: WhatsAppLogRecord = {
+            id: params.waMessageId!,
+            conversationId: "conversation-1",
+            phone: params.phone,
+            waMessageId: params.waMessageId,
+            direction: params.direction,
+            messageType: params.messageType,
+            content: params.content,
+            status: params.status,
+            metadata: params.metadata,
+            sentAt: params.sentAt,
+          };
+          rows.set(record.id, record);
+          return { record, created: true };
+        },
+        async updateWhatsAppLogByWaMessageId(
+          waMessageId: string,
+          updates: Partial<WhatsAppLogRecord>,
+        ) {
+          rows.set(waMessageId, { ...rows.get(waMessageId)!, ...updates });
+        },
+        getConversationById: vi.fn().mockResolvedValue(null),
+      } as Partial<WhatsAppLogStore> as WhatsAppLogStore;
+
+      processor = createTestProcessor({
+        logger: new MessageLoggerService(store, noopLogger),
+        database: {
+          whatsappLog: store,
+          coexistence: {
+            ...mockCoexistenceStore,
+            getInFlightSyncJob: inFlightJob("req_fake_history", "history"),
+          },
+        } as any,
+      });
+      const stored = () => rows.get("wamid.fake.thread.media.1");
+
+      await processor.process(historyThreadsChunkFixture as any);
+      expect(stored()?.content).toBe("[mídia]");
+      expect(stored()?.metadata).toMatchObject({ mediaPending: true });
+
+      await processor.process(historyMediaAssetFixture as any);
+      expect(stored()?.content).toBe("[imagem: fake caption]");
+      expect(stored()?.metadata).not.toHaveProperty("mediaPending");
+      expect(stored()?.metadata).toMatchObject({
+        requestId: "req_fake_history",
+        raw: { type: "image", image: { id: "media_fake_1" } },
+      });
+
+      // A placeholder replayed after the real media must not overwrite it.
+      await processor.process(historyThreadsChunkFixture as any);
+      expect(stored()?.content).toBe("[imagem: fake caption]");
+      expect(mockOnCoexistenceHistory).toHaveBeenLastCalledWith(
+        expect.objectContaining({ upgradedMessages: 0 }),
       );
     });
 
@@ -771,8 +863,8 @@ describe("createWebhookProcessor", () => {
       processor = createStoreProcessor({
         getInFlightSyncJob: inFlightJob("req_fake_history", "history"),
       });
-      mockLogger.logImportedMessage
-        .mockResolvedValueOnce(true)
+      mockLogger.importMessage
+        .mockResolvedValueOnce("created")
         .mockRejectedValueOnce(new Error("storage unavailable"));
 
       await processor.process(historyThreadsChunkFixture as any);
@@ -831,7 +923,7 @@ describe("createWebhookProcessor", () => {
         ) as any,
       );
 
-      expect(mockLogger.logImportedMessage).toHaveBeenCalledWith(
+      expect(mockLogger.importMessage).toHaveBeenCalledWith(
         expect.objectContaining({
           waMessageId: "wamid.fake.bad-ts",
           metadata: expect.objectContaining({ invalidTimestamp: true }),
@@ -939,8 +1031,8 @@ describe("createWebhookProcessor", () => {
 
       await processor.process(payload as any);
 
-      expect(mockLogger.logImportedMessage).toHaveBeenCalledTimes(2);
-      expect(mockLogger.logImportedMessage).toHaveBeenCalledWith(
+      expect(mockLogger.importMessage).toHaveBeenCalledTimes(2);
+      expect(mockLogger.importMessage).toHaveBeenCalledWith(
         expect.objectContaining({
           phone: "15550002222",
           waMessageId: "wamid.fake.echo.1",
@@ -949,7 +1041,7 @@ describe("createWebhookProcessor", () => {
           sentAt: isoFromUnix(1739321024),
         }),
       );
-      expect(mockLogger.logImportedMessage).toHaveBeenCalledWith(
+      expect(mockLogger.importMessage).toHaveBeenCalledWith(
         expect.objectContaining({
           phone: "BSUID.fake.hidden",
           waMessageId: "wamid.fake.echo.hidden",
@@ -972,7 +1064,7 @@ describe("createWebhookProcessor", () => {
 
     it("counts and logs failed echo imports", async () => {
       processor = createStoreProcessor();
-      mockLogger.logImportedMessage.mockRejectedValueOnce(new Error("db down"));
+      mockLogger.importMessage.mockRejectedValueOnce(new Error("db down"));
 
       await processor.process(messageEchoesFixture as any);
 
