@@ -60,7 +60,9 @@ import {
   handleSendLocation,
   handleSendText,
 } from "./handler/send";
+import { handleGetMedia } from "./handler/media";
 import type { BetterZapEnv } from "./handler/types";
+import type { WebhookMediaConfig } from "better-zap";
 import { createWebhookHandler } from "./webhook/create-webhook-handler";
 import { createConversationSyncNotifier } from "./internal/cloudflare/conversation-sync";
 
@@ -140,12 +142,36 @@ export function betterZap<
     log,
   });
 
+  const mediaCredentials = options.coexistence?.credentials;
+  const media: WebhookMediaConfig | undefined = database.media
+    ? {
+        store: database.media,
+        maxBytes: options.media?.maxBytes,
+        timeoutMs: options.media?.timeoutMs,
+        concurrency: options.media?.concurrency,
+        phoneNumberId: config.phoneId,
+        download: async (mediaId, { phoneNumberId, ...downloadOptions }) => {
+          // Media sent to another business's number needs that business's token.
+          const accessToken =
+            mediaCredentials && phoneNumberId && phoneNumberId !== config.phoneId
+              ? await mediaCredentials.getAccessToken({ phoneNumberId })
+              : undefined;
+          return whatsapp.downloadMedia(mediaId, {
+            ...downloadOptions,
+            ...(accessToken ? { accessToken } : {}),
+          });
+        },
+      }
+    : undefined;
+
   const webhookRouter = createWebhookHandler({
     verifyToken: config.webhookToken,
     appSecret: config.appSecret,
     logger,
     log,
     database,
+    media,
+    runInBackground: options.webhook.runInBackground,
     onMessage: async (ctx) => {
       const hookContext = {
         ...ctx,
@@ -258,6 +284,8 @@ export function betterZap<
       "subscribeWabaAfterCodeExchange",
       options.coexistence?.subscribeWabaAfterCodeExchange ?? true,
     );
+    c.set("mediaStore", database.media);
+    c.set("mediaSignedUrlExpiresIn", options.media?.signedUrlExpiresIn);
     await next();
   });
 
@@ -290,6 +318,7 @@ export function betterZap<
   app.get("/conversations", handleListConversations);
   app.get("/conversations/:phone", handleGetConversation);
   app.get("/conversations/:phone/messages", handleGetMessages);
+  app.get("/media/:waMessageId", handleGetMedia);
   app.post(
     "/coexistence/embedded-signup/callback",
     handleEmbeddedSignupCallback,

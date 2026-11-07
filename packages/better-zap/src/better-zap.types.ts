@@ -9,6 +9,7 @@ import type {
 } from "./services/whatsapp.service";
 import type { WhatsAppConfig } from "./types/config";
 import type { CoexistenceStore } from "./types/coexistence.types";
+import type { MediaStore } from "./media/types";
 import type {
   Conversation,
   SendInteractiveMediaCarouselData,
@@ -26,6 +27,13 @@ import type { MessageContext, StatusContext } from "./events";
 export interface BetterZapDatabase {
   whatsappLog: WhatsAppLogStore;
   coexistence?: CoexistenceStore;
+  /**
+   * Storage for incoming media files. When set, image, audio, video, document
+   * and sticker files are downloaded from Meta when they arrive and referenced
+   * in `metadata.media`. Without it, only the text label and Meta's media id
+   * are stored, and Meta deletes the file after 7 days.
+   */
+  media?: MediaStore;
 }
 
 export type BetterZapCoreConfig = WhatsAppConfig & {

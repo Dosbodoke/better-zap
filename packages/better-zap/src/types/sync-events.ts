@@ -25,8 +25,8 @@ export type ConversationUpdateEvent = {
 };
 
 /**
- * An existing message changed content, e.g. a history media placeholder was
- * replaced by the real media.
+ * An existing message changed, e.g. a history media placeholder was replaced
+ * by the real media, or its media file was stored (`metadata.media`).
  */
 export type MessageUpdateEvent = {
   type: "MESSAGE_UPDATE";

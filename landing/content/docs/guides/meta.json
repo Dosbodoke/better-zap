@@ -1,4 +1,4 @@
 {
   "title": "Guides",
-  "pages": ["cloudflare-workers", "building-a-bot", "link-previews", "self-hosted-coexistence"]
+  "pages": ["cloudflare-workers", "building-a-bot", "link-previews", "media-storage", "self-hosted-coexistence"]
 }

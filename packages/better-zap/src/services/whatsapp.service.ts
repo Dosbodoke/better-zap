@@ -26,6 +26,11 @@ import {
   type WhatsAppMessageType,
 } from "./message-logger.service";
 import { type Logger, serializeError } from "../logger";
+import { downloadMetaMedia } from "../media/download";
+import type {
+  MediaDownloadOptions,
+  MediaDownloadResult,
+} from "../media/types";
 
 const META_API_VERSION = "v25.0";
 const META_BASE_URL = "https://graph.facebook.com";
@@ -347,6 +352,28 @@ export class WhatsAppService {
     };
 
     return this.send(payload);
+  }
+
+  /**
+   * Download a media file received in a webhook (image, audio, video,
+   * document or sticker), using the configured access token.
+   *
+   * Meta deletes webhook media after 7 days. Never throws: failures and files
+   * over `maxBytes` are returned as results. Runs in development mode too,
+   * since it sends nothing.
+   *
+   * @see https://developers.facebook.com/docs/whatsapp/cloud-api/reference/media
+   */
+  async downloadMedia(
+    mediaId: string,
+    options?: MediaDownloadOptions,
+  ): Promise<MediaDownloadResult> {
+    return downloadMetaMedia({
+      mediaId,
+      accessToken: this.token,
+      graphUrl: `${META_BASE_URL}/${META_API_VERSION}`,
+      options,
+    });
   }
 
   /** Core send method with retry logic (2 retries, exponential backoff). */

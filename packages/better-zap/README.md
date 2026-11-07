@@ -10,6 +10,7 @@ Framework-agnostic Better Zap core.
 - logging primitives and message log store interfaces
 - transport-neutral webhook event and plugin contracts
 - link preview helpers: `firstLinkIn(text)` and `parseOpenGraph(html, pageUrl)` (fetching stays in your app; see the [link previews guide](https://github.com/Dosbodoke/better-zap/blob/main/landing/content/docs/guides/link-previews.mdx))
+- `MediaStore` interface for keeping incoming media past Meta's 7-day expiry, and an S3-compatible adapter at `better-zap/s3` (`createS3MediaStore`, for R2, AWS S3, MinIO and B2; see the [media storage guide](https://github.com/Dosbodoke/better-zap/blob/main/landing/content/docs/guides/media-storage.mdx))
 
 ## Coexistence onboarding
 

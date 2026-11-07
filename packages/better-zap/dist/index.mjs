@@ -1,4 +1,5 @@
 import { BetterZapClientError, apiKeyTransport, createZapClient, sessionTransport } from "./client.mjs";
+import { a as STORABLE_MEDIA_TYPES, c as fetchWithRetry, d as toError, f as tryCatch, h as delay, i as MAX_SIGNED_URL_EXPIRES_IN, l as toNumber, m as sha256Hex, n as DEFAULT_MEDIA_MAX_BYTES, o as clampSignedUrlExpiry, p as bytesToHex, r as DEFAULT_MEDIA_TIMEOUT_MS, s as discardBody, t as DEFAULT_MEDIA_CONCURRENCY, u as timeoutSignal } from "./types-ClrLWuyK.mjs";
 //#region src/freeform-message-window.ts
 const FREEFORM_MESSAGE_WINDOW_MS = 1440 * 60 * 1e3;
 function toTimestamp(value) {
@@ -121,13 +122,184 @@ function formatPhone(phone) {
 	throw new Error(`[formatPhone] Cannot normalize phone: "${phone}" (${digits.length} digits). Expected 10–13 digit Brazilian number.`);
 }
 //#endregion
-//#region src/utils/delay.ts
+//#region src/utils/record.ts
+/** True for a plain key-value object: not null, not an array. */
+function isRecord(value) {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+/** The value when it is a plain object, otherwise an empty object. */
+function asRecord(value) {
+	return isRecord(value) ? value : {};
+}
+/** Copies `patch` onto `base`, skipping `undefined` values so they never erase stored fields. */
+function mergeDefined(base, patch) {
+	const merged = { ...base };
+	for (const [key, value] of Object.entries(patch ?? {})) {
+		if (value === void 0) continue;
+		merged[key] = value;
+	}
+	return merged;
+}
+//#endregion
+//#region src/media/download.ts
+/** Returned by one download pass when the 5-minute URL expired before use. */
+const URL_EXPIRED = Symbol("url_expired");
+var TooLargeError = class extends Error {
+	constructor(size) {
+		super("too_large");
+		this.size = size;
+	}
+};
 /**
-* Utility function to pause execution for a given number of milliseconds.
-* Useful for exponential backoff or rate limiting.
+* Downloads a WhatsApp media file:
+* 1. `GET /{media-id}` returns a download URL that expires after 5 minutes.
+* 2. The URL is fetched with the same bearer token. On 404 a new URL is
+*    requested once.
+*
+* Never throws. Files over `maxBytes` are not read.
 */
-function delay(ms) {
-	return new Promise((resolve) => setTimeout(resolve, ms));
+async function downloadMetaMedia(input) {
+	const [result, error] = await tryCatch(() => download(input));
+	if (error) return failed$1(`Media download failed: ${error.message}`);
+	return result;
+}
+async function download(input) {
+	const token = input.options?.accessToken ?? input.accessToken;
+	const context = {
+		lookupUrl: `${input.graphUrl}/${encodeURIComponent(input.mediaId)}`,
+		headers: { Authorization: `Bearer ${token}` },
+		maxBytes: input.options?.maxBytes ?? 26214400,
+		retries: input.options?.retries ?? 2,
+		expectedSha256: input.options?.expectedSha256,
+		signal: input.options?.signal,
+		fetch: input.fetch ?? fetch
+	};
+	const first = await downloadOnce(context);
+	if (first !== URL_EXPIRED) return first;
+	const second = await downloadOnce(context);
+	if (second !== URL_EXPIRED) return second;
+	return failed$1("Media download failed: HTTP 404");
+}
+async function downloadOnce(context) {
+	const { headers, maxBytes, retries, signal } = context;
+	const [lookup, lookupError] = await fetchWithRetry(() => context.fetch(context.lookupUrl, {
+		method: "GET",
+		headers,
+		signal
+	}), {
+		retries,
+		signal
+	});
+	if (lookupError) return failed$1(`Media lookup failed: ${lookupError.message}`);
+	if (!lookup.ok) return failed$1(`Media lookup failed: ${await describeError(lookup)}`);
+	const [json, jsonError] = await tryCatch(() => lookup.json());
+	if (jsonError) return failed$1(`Media lookup returned invalid JSON: ${jsonError.message}`);
+	const info = asRecord(json);
+	const fileUrl = info.url;
+	if (typeof fileUrl !== "string" || !fileUrl) return failed$1("Media lookup returned no url");
+	const reportedSize = toNumber(info.file_size);
+	if (reportedSize !== void 0 && reportedSize > maxBytes) return {
+		status: "too_large",
+		size: reportedSize,
+		maxBytes
+	};
+	const [response, downloadError] = await fetchWithRetry(() => context.fetch(fileUrl, {
+		method: "GET",
+		headers,
+		signal
+	}), {
+		retries,
+		signal
+	});
+	if (downloadError) return failed$1(`Media download failed: ${downloadError.message}`);
+	if (response.status === 404) {
+		await discardBody(response);
+		return URL_EXPIRED;
+	}
+	if (!response.ok) return failed$1(`Media download failed: ${await describeError(response)}`);
+	const [body, readError] = await readLimited(response, maxBytes);
+	if (readError instanceof TooLargeError) return {
+		status: "too_large",
+		size: readError.size ?? reportedSize,
+		maxBytes
+	};
+	if (readError) return failed$1(`Media download failed: ${readError.message}`);
+	const sha256 = await sha256Hex(body);
+	const expected = stringOrUndefined(info.sha256) ?? context.expectedSha256;
+	if (expected && !sha256Matches(sha256, expected)) return failed$1(`SHA-256 mismatch: expected ${expected}, got ${sha256}`);
+	return {
+		status: "downloaded",
+		body,
+		contentType: stringOrUndefined(info.mime_type) || response.headers.get("content-type") || "application/octet-stream",
+		size: body.byteLength,
+		sha256
+	};
+}
+function failed$1(error) {
+	return {
+		status: "failed",
+		error
+	};
+}
+function stringOrUndefined(value) {
+	return typeof value === "string" ? value : void 0;
+}
+async function describeError(response) {
+	const [data] = await tryCatch(() => response.json());
+	const message = data?.error?.message;
+	if (!message) return `HTTP ${response.status}`;
+	return `HTTP ${response.status}: ${message}`;
+}
+/** Reads the body, stopping with a `TooLargeError` once it passes `maxBytes`. */
+async function readLimited(response, maxBytes) {
+	const declared = toNumber(response.headers.get("content-length"));
+	if (declared !== void 0 && declared > maxBytes) {
+		await discardBody(response);
+		return [null, new TooLargeError(declared)];
+	}
+	if (!response.body) return [/* @__PURE__ */ new ArrayBuffer(0), null];
+	const reader = response.body.getReader();
+	const chunks = [];
+	let total = 0;
+	for (;;) {
+		const [chunk, error] = await tryCatch(() => reader.read());
+		if (error) return [null, error];
+		if (chunk.done) break;
+		total += chunk.value.byteLength;
+		if (total > maxBytes) {
+			await tryCatch(() => reader.cancel());
+			return [null, new TooLargeError(declared)];
+		}
+		chunks.push(chunk.value);
+	}
+	const out = new Uint8Array(total);
+	let offset = 0;
+	for (const chunk of chunks) {
+		out.set(chunk, offset);
+		offset += chunk.byteLength;
+	}
+	return [out.buffer, null];
+}
+/**
+* Meta's docs don't say whether the hash is hex or base64, so both are
+* accepted. Values that are neither (e.g. test fixtures) are ignored rather
+* than failing the download.
+*/
+function sha256Matches(actualHex, expected) {
+	const trimmed = expected.trim();
+	if (/^[0-9a-f]{64}$/i.test(trimmed)) return trimmed.toLowerCase() === actualHex;
+	const bytes = decodeBase64(trimmed);
+	if (bytes?.length !== 32) return true;
+	return bytesToHex(bytes) === actualHex;
+}
+/** Decodes standard or URL-safe base64. Returns `undefined` for anything else. */
+function decodeBase64(value) {
+	if (!/^[A-Za-z0-9+/_-]+={0,2}$/.test(value)) return void 0;
+	const standard = value.replace(/-/g, "+").replace(/_/g, "/");
+	if (standard.includes("=") && standard.length % 4 !== 0) return void 0;
+	if (standard.replace(/=+$/, "").length % 4 === 1) return void 0;
+	const binary = atob(standard);
+	return Uint8Array.from(binary, (char) => char.charCodeAt(0));
 }
 //#endregion
 //#region src/services/whatsapp.service.ts
@@ -369,6 +541,24 @@ var WhatsAppService = class {
 			}
 		};
 		return this.send(payload);
+	}
+	/**
+	* Download a media file received in a webhook (image, audio, video,
+	* document or sticker), using the configured access token.
+	*
+	* Meta deletes webhook media after 7 days. Never throws: failures and files
+	* over `maxBytes` are returned as results. Runs in development mode too,
+	* since it sends nothing.
+	*
+	* @see https://developers.facebook.com/docs/whatsapp/cloud-api/reference/media
+	*/
+	async downloadMedia(mediaId, options) {
+		return downloadMetaMedia({
+			mediaId,
+			accessToken: this.token,
+			graphUrl: `${META_BASE_URL$1}/${META_API_VERSION$1}`,
+			options
+		});
 	}
 	/** Core send method with retry logic (2 retries, exponential backoff). */
 	async send(payload, logging, retries = 2) {
@@ -743,9 +933,9 @@ const SESSION_IDENTIFIER_FIELDS = [
 ];
 function parseEmbeddedSignupMessage(data) {
 	const payload = typeof data === "string" ? parseJson(data) : data;
-	if (!isPlainObject(payload)) return null;
+	if (!isRecord(payload)) return null;
 	if (payload.type !== "WA_EMBEDDED_SIGNUP" || !SUPPORTED_SESSION_VERSIONS.has(payload.version) || typeof payload.event !== "string" || payload.event.length === 0) return null;
-	if (payload.data !== void 0 && !isPlainObject(payload.data)) return null;
+	if (payload.data !== void 0 && !isRecord(payload.data)) return null;
 	const sessionData = payload.data;
 	if (SESSION_IDENTIFIER_FIELDS.some((field) => sessionData?.[field] !== void 0 && typeof sessionData[field] !== "string")) return null;
 	if (normalizeCoexistenceSessionEvent(payload.event) === "FINISH" && typeof sessionData?.waba_id !== "string") return null;
@@ -753,9 +943,6 @@ function parseEmbeddedSignupMessage(data) {
 		event: payload.event,
 		data: sessionData
 	};
-}
-function isPlainObject(value) {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function parseJson(value) {
 	try {
@@ -972,25 +1159,6 @@ var InMemoryCoexistenceStore = class {
 	}
 };
 //#endregion
-//#region src/utils/record.ts
-/** True for a plain key-value object: not null, not an array. */
-function isRecord(value) {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-/** The value when it is a plain object, otherwise an empty object. */
-function asRecord(value) {
-	return isRecord(value) ? value : {};
-}
-/** Copies `patch` onto `base`, skipping `undefined` values so they never erase stored fields. */
-function mergeDefined(base, patch) {
-	const merged = { ...base };
-	for (const [key, value] of Object.entries(patch ?? {})) {
-		if (value === void 0) continue;
-		merged[key] = value;
-	}
-	return merged;
-}
-//#endregion
 //#region src/utils/media-placeholder.ts
 /**
 * Coexistence history sync sends older media as `type: "media_placeholder"`
@@ -1015,6 +1183,58 @@ function hasPendingMedia(record) {
 	return isMediaPlaceholder(asRecord(metadata.raw));
 }
 //#endregion
+//#region src/media/message-media.ts
+/**
+* Returns the media object of an image, audio, video, document or sticker
+* message. Returns `undefined` for other types and for history media
+* placeholders, which carry no media.
+*/
+function getMessageMediaPayload(message) {
+	if (!message || isMediaPlaceholder(message)) return void 0;
+	if (!isStorableMediaType(message.type)) return void 0;
+	const type = message.type;
+	const media = asRecord(message[type]);
+	if (typeof media.id !== "string" || media.id.length === 0) return void 0;
+	return {
+		type,
+		id: media.id,
+		mimeType: typeof media.mime_type === "string" ? media.mime_type : void 0,
+		sha256: typeof media.sha256 === "string" ? media.sha256 : void 0,
+		filename: typeof media.filename === "string" ? media.filename : void 0
+	};
+}
+/**
+* Stable storage key for a message's media:
+* `whatsapp/{phoneNumberId}/{waMessageId}`. Each segment is URI-encoded, so
+* ids with `/` or `=` stay one path segment.
+*/
+function getMediaStorageKey(input) {
+	return [
+		"whatsapp",
+		encodeURIComponent(input.phoneNumberId || "unknown"),
+		encodeURIComponent(input.waMessageId)
+	].join("/");
+}
+/** Reads `metadata.media` from a stored log record. */
+function getMessageMedia(record) {
+	const media = asRecord(asRecord(record?.metadata).media);
+	if (!MEDIA_STATUSES.includes(media.status)) return void 0;
+	return media;
+}
+/** Returns `metadata.media` only when the file is in the `MediaStore`. */
+function getStoredMessageMedia(record) {
+	const media = getMessageMedia(record);
+	return media?.status === "stored" && typeof media.key === "string" ? media : void 0;
+}
+const MEDIA_STATUSES = [
+	"stored",
+	"failed",
+	"skipped"
+];
+function isStorableMediaType(type) {
+	return STORABLE_MEDIA_TYPES.includes(type);
+}
+//#endregion
 //#region src/services/message-logger.service.ts
 const WHATSAPP_MESSAGE_TYPES = [
 	"queue_position",
@@ -1034,12 +1254,10 @@ var MessageLoggerService = class {
 		this.log = log;
 	}
 	async notify(event) {
-		if (!this.notifier) return;
-		try {
-			await this.notifier.notify(event);
-		} catch (err) {
-			this.log.error("message_logger.sync_notify_failed", serializeError(err));
-		}
+		const notifier = this.notifier;
+		if (!notifier) return;
+		const [, error] = await tryCatch(() => notifier.notify(event));
+		if (error) this.log.error("message_logger.sync_notify_failed", serializeError(error));
 	}
 	async notifyNewMessage(message) {
 		const conversation = await this.getConversationById(message.conversationId);
@@ -1183,22 +1401,46 @@ var MessageLoggerService = class {
 		await this.notifyNewMessage(record);
 		return "created";
 	}
+	/**
+	* Save the result of a media download as `metadata.media` on a stored
+	* message and send a `MESSAGE_UPDATE` sync event.
+	*
+	* Only the `media` field is written; other metadata fields are kept. A
+	* stored file is never replaced by a failed or skipped result.
+	*
+	* Returns the updated record, or `null` when the message isn't stored or
+	* the update was skipped.
+	*/
+	async setMessageMedia(waMessageId, media) {
+		const existing = await this.store.getMessageByWaId(waMessageId);
+		if (!existing) return null;
+		if (getMessageMedia(existing)?.status === "stored" && media.status !== "stored") return null;
+		return this.updateMessage(waMessageId, existing, { metadata: {
+			...asRecord(existing.metadata),
+			media
+		} });
+	}
+	/** Writes `updates` to a stored message and sends `MESSAGE_UPDATE`. */
+	async updateMessage(waMessageId, existing, updates) {
+		await this.store.updateWhatsAppLogByWaMessageId(waMessageId, updates);
+		const message = {
+			...existing,
+			...updates
+		};
+		await this.notify({
+			type: "MESSAGE_UPDATE",
+			message
+		});
+		return message;
+	}
 	async replaceMediaPlaceholder(existing, params) {
 		if (!existing || !hasPendingMedia(existing)) return false;
 		if (hasPendingMedia({ metadata: params.metadata })) return false;
 		const metadata = mergeDefined(asRecord(existing.metadata), params.metadata);
 		delete metadata.mediaPending;
-		await this.store.updateWhatsAppLogByWaMessageId(params.waMessageId, {
+		await this.updateMessage(params.waMessageId, existing, {
 			content: params.content,
 			metadata
-		});
-		await this.notify({
-			type: "MESSAGE_UPDATE",
-			message: {
-				...existing,
-				content: params.content,
-				metadata
-			}
 		});
 		return true;
 	}
@@ -1414,6 +1656,116 @@ function decodeEntities(value) {
 	});
 }
 //#endregion
+//#region src/media/store-message-media.ts
+/**
+* Downloads a message's media, stores it, and records the result in
+* `metadata.media`. Does nothing for messages without media and for history
+* media placeholders. Never throws.
+*
+* The download and upload together must finish within `media.timeoutMs`.
+* The webhook processor runs this in the background through a media queue,
+* after `onMessage`.
+*/
+async function storeMessageMedia(input) {
+	if (!input.media) return void 0;
+	const payload = getMessageMediaPayload(input.message);
+	if (!payload) return void 0;
+	const timeoutMs = input.media.timeoutMs ?? 3e4;
+	const timeout = timeoutSignal(timeoutMs, `Media transfer timed out after ${timeoutMs}ms`);
+	const result = await downloadAndStore(input.media, input, payload, timeout.signal);
+	timeout.clear();
+	const [, updateError] = await tryCatch(() => input.logger.setMessageMedia(input.message.id, result));
+	if (updateError) input.log.error("webhook.media_metadata_update_failed", {
+		waMessageId: input.message.id,
+		...serializeError(updateError)
+	});
+	return result;
+}
+async function downloadAndStore(media, input, payload, signal) {
+	const { message, log } = input;
+	const phoneNumberId = input.phoneNumberId ?? media.phoneNumberId;
+	const logContext = {
+		waMessageId: message.id,
+		mediaId: payload.id,
+		mediaType: payload.type
+	};
+	const [download, downloadError] = await tryCatch(() => media.download(payload.id, {
+		maxBytes: media.maxBytes ?? 26214400,
+		expectedSha256: payload.sha256,
+		phoneNumberId,
+		signal
+	}), signal);
+	if (downloadError) {
+		log.error("webhook.media_download_failed", {
+			...logContext,
+			...serializeError(downloadError)
+		});
+		return failed(payload.id, downloadError.message);
+	}
+	if (download.status === "failed") {
+		log.error("webhook.media_download_failed", {
+			...logContext,
+			error: download.error
+		});
+		return failed(payload.id, download.error);
+	}
+	if (download.status === "too_large") {
+		log.warn("webhook.media_skipped_too_large", {
+			...logContext,
+			size: download.size,
+			maxBytes: download.maxBytes
+		});
+		return {
+			status: "skipped",
+			reason: "too_large",
+			...download.size !== void 0 ? { size: download.size } : {},
+			maxBytes: download.maxBytes,
+			mediaId: payload.id,
+			skippedAt: (/* @__PURE__ */ new Date()).toISOString()
+		};
+	}
+	const key = getMediaStorageKey({
+		phoneNumberId,
+		waMessageId: message.id
+	});
+	const [, putError] = await tryCatch(() => media.store.put(key, download.body, {
+		contentType: download.contentType,
+		size: download.size,
+		sha256: download.sha256,
+		signal
+	}), signal);
+	if (putError) {
+		log.error("webhook.media_store_failed", {
+			...logContext,
+			...serializeError(putError)
+		});
+		return failed(payload.id, putError.message);
+	}
+	log.info("webhook.media_stored", {
+		...logContext,
+		key,
+		size: download.size
+	});
+	return {
+		status: "stored",
+		key,
+		contentType: download.contentType,
+		size: download.size,
+		sha256: download.sha256,
+		...payload.filename ? { filename: payload.filename } : {},
+		mediaId: payload.id,
+		storedAt: (/* @__PURE__ */ new Date()).toISOString()
+	};
+}
+function failed(mediaId, error) {
+	return {
+		status: "failed",
+		error,
+		mediaId,
+		failedAt: (/* @__PURE__ */ new Date()).toISOString()
+	};
+}
+//#endregion
 //#region src/webhook/message-content.ts
 /**
 * Extract human-readable content from incoming messages for audit logs.
@@ -1438,13 +1790,80 @@ function getMessageContent(message) {
 	}
 }
 //#endregion
+//#region src/utils/limit.ts
+/**
+* Returns a runner that runs at most `concurrency` tasks at a time. Extra
+* tasks wait their turn in order. Task errors come back as a {@link Result}.
+*/
+function createLimiter(concurrency) {
+	const max = Number.isNaN(concurrency) ? 1 : Math.max(1, Math.floor(concurrency));
+	const waiting = [];
+	let active = 0;
+	const acquire = () => {
+		if (active < max) {
+			active++;
+			return Promise.resolve();
+		}
+		return new Promise((resolve) => waiting.push(resolve));
+	};
+	const release = () => {
+		const next = waiting.shift();
+		if (next) return next();
+		active--;
+	};
+	return async (task) => {
+		await acquire();
+		const result = await tryCatch(task);
+		release();
+		return result;
+	};
+}
+//#endregion
+//#region src/media/media-queue.ts
+/** Runs media downloads in the background so they never delay webhook hooks. */
+function createMediaQueue(input) {
+	const run = createLimiter(input.media.concurrency ?? 3);
+	const queued = /* @__PURE__ */ new Map();
+	return { add(message, phoneNumberId) {
+		if (!getMessageMediaPayload(message)) return Promise.resolve();
+		const existing = queued.get(message.id);
+		if (existing) return existing;
+		const job = run(() => storeMessageMedia({
+			...input,
+			message,
+			phoneNumberId
+		})).then(() => {
+			queued.delete(message.id);
+		});
+		queued.set(message.id, job);
+		return job;
+	} };
+}
+//#endregion
 //#region src/webhook/webhook-processor.ts
 function createWebhookProcessor(config) {
-	return { process: (payload) => processPayload(payload, config) };
+	const mediaQueue = config.media ? createMediaQueue({
+		media: config.media,
+		logger: config.logger,
+		log: config.log
+	}) : void 0;
+	return { process: (payload) => processPayload(payload, config, mediaQueue) };
 }
 /** Top-level dispatcher — iterates entries in the webhook payload. */
-async function processPayload(payload, config) {
+async function processPayload(payload, processorConfig, mediaQueue) {
+	const mediaJobs = [];
+	const config = {
+		...processorConfig,
+		queueMedia: (message, phoneNumberId) => {
+			if (!mediaQueue) return;
+			mediaJobs.push(mediaQueue.add(message, phoneNumberId));
+		}
+	};
 	const log = config.log;
+	await dispatchPayload(payload, config, log);
+	await Promise.all(mediaJobs);
+}
+async function dispatchPayload(payload, config, log) {
 	try {
 		if (payload.object !== "whatsapp_business_account") {
 			log.debug("webhook.ignored_payload", { object: payload.object });
@@ -1504,7 +1923,7 @@ async function processMessagesChange(change, config, log) {
 		await processUnsupportedMessagesChange(change, config, log);
 		return;
 	}
-	if (value.messages && value.messages.length > 0) for (const message of value.messages) await processIncomingMessage(message, resolveContact(value.contacts, message), config, log);
+	if (value.messages && value.messages.length > 0) for (const message of value.messages) await processIncomingMessage(message, resolveContact(value.contacts, message), value.metadata?.phone_number_id, config, log);
 	if (value.statuses && value.statuses.length > 0) for (const status of value.statuses) await processStatusUpdate(status, config, log);
 	if (value.errors && value.errors.length > 0) {
 		const errorHandler = config.hooks.onError ?? ((err) => {
@@ -2041,7 +2460,7 @@ async function importCoexistenceMessage(input) {
 			message.to_user_id,
 			thread?.context?.user_id
 		].find(isNonEmptyString);
-		return await input.config.logger.importMessage({
+		const result = await input.config.logger.importMessage({
 			phone,
 			waMessageId: message.id,
 			direction,
@@ -2059,6 +2478,8 @@ async function importCoexistenceMessage(input) {
 				raw: message
 			}
 		});
+		if (result === "created" || result === "upgraded") input.config.queueMedia(message, input.metadata?.phone_number_id);
+		return result;
 	} catch (error) {
 		log.error("webhook.coexistence_import_failed", {
 			field: input.source,
@@ -2112,8 +2533,10 @@ async function runOptionalHook(run, logEvent, log) {
 * 1. Extracts human-readable content
 * 2. Atomically logs and deduplicates by waMessageId
 * 3. Calls {@link WebhookProcessorHooks.onMessage}
+* 4. Queues its media download when a `MediaStore` is configured. The hook
+*    runs first so the bot's reply is never held up by a slow file.
 */
-async function processIncomingMessage(message, contact, config, log) {
+async function processIncomingMessage(message, contact, phoneNumberId, config, log) {
 	const phone = message.from;
 	log.info("webhook.message_received", {
 		waMessageId: message.id,
@@ -2153,6 +2576,7 @@ async function processIncomingMessage(message, contact, config, log) {
 			...serializeError(error)
 		});
 	}
+	config.queueMedia(message, phoneNumberId);
 }
 /**
 * Processes a single delivery status update:
@@ -2226,4 +2650,4 @@ function toWebhookError(error) {
 	};
 }
 //#endregion
-export { BetterZapClientError, CoexistenceService, EMPTY_TEMPLATE_REGISTRY, FREEFORM_MESSAGE_WINDOW_MS, InMemoryCoexistenceStore, MEDIA_PLACEHOLDER_TYPE, MessageLoggerService, WHATSAPP_MESSAGE_TYPES, WhatsAppService, apiKeyTransport, createCoexistenceEmbeddedSignupConfig, createFreeformMessageWindow, createLogger, createWebhookProcessor, createZapClient, defineTemplates, delay, firstLinkIn, formatPhone, getLatestIncomingMessageAt, getMessageContent, getTemplateNames, hasConfiguredTemplates, hasPendingMedia, isMediaPlaceholder, launchCoexistenceEmbeddedSignup, noopLogger, normalizeCoexistenceSessionEvent, normalizeCoexistenceSessionPayload, normalizeConversationRecord, normalizeConversationRecords, parseOpenGraph, resolveConversationFreeformMessageWindow, serializeError, serializeTemplateFromRegistry, sessionTransport, toLegacyCoexistenceSessionEvent };
+export { BetterZapClientError, CoexistenceService, DEFAULT_MEDIA_CONCURRENCY, DEFAULT_MEDIA_MAX_BYTES, DEFAULT_MEDIA_TIMEOUT_MS, EMPTY_TEMPLATE_REGISTRY, FREEFORM_MESSAGE_WINDOW_MS, InMemoryCoexistenceStore, MAX_SIGNED_URL_EXPIRES_IN, MEDIA_PLACEHOLDER_TYPE, MessageLoggerService, STORABLE_MEDIA_TYPES, WHATSAPP_MESSAGE_TYPES, WhatsAppService, apiKeyTransport, clampSignedUrlExpiry, createCoexistenceEmbeddedSignupConfig, createFreeformMessageWindow, createLogger, createWebhookProcessor, createZapClient, defineTemplates, delay, firstLinkIn, formatPhone, getLatestIncomingMessageAt, getMediaStorageKey, getMessageContent, getMessageMedia, getMessageMediaPayload, getStoredMessageMedia, getTemplateNames, hasConfiguredTemplates, hasPendingMedia, isMediaPlaceholder, launchCoexistenceEmbeddedSignup, noopLogger, normalizeCoexistenceSessionEvent, normalizeCoexistenceSessionPayload, normalizeConversationRecord, normalizeConversationRecords, parseOpenGraph, resolveConversationFreeformMessageWindow, serializeError, serializeTemplateFromRegistry, sessionTransport, storeMessageMedia, toError, toLegacyCoexistenceSessionEvent, tryCatch };
