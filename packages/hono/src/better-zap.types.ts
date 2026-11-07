@@ -15,8 +15,6 @@ import type {
 import type {
   CoexistenceCredentialProvider,
   CoexistenceService,
-} from "better-zap";
-import type {
   CoexistenceAccountOffboardedContext,
   CoexistenceAccountReconnectedContext,
   CoexistenceAccountUpdateContext,
@@ -26,7 +24,7 @@ import type {
   CoexistenceUnsupportedMessageContext,
   SmbAppStateSyncContext,
   SmbMessageEchoContext,
-} from "./webhook/create-webhook-handler";
+} from "better-zap";
 
 export type BetterZapAuthorizeAppRequest = (input: {
   request: Request;

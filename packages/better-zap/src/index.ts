@@ -51,7 +51,12 @@ export type {
   CoexistenceErrorWebhook,
   CoexistenceFeatureType,
   CoexistenceGenericSessionEvent,
+  CoexistenceGraphErrorDiagnostics,
+  CoexistenceGraphFailureKind,
   CoexistenceGraphResult,
+  CoexistenceHistoryChunk,
+  CoexistenceHistoryChunkMetadata,
+  CoexistenceHistoryThread,
   CoexistenceHistoryValue,
   CoexistenceHistoryWebhook,
   CoexistenceLegacySessionEvent,
@@ -70,6 +75,8 @@ export type {
   CoexistenceSessionEventPayload,
   CoexistenceSessionInfoVersion,
   CoexistenceSmbAppStateSyncValue,
+  CoexistenceStateSyncContact,
+  CoexistenceStateSyncItem,
   CoexistenceSmbAppStateSyncWebhook,
   CoexistenceSmbMessageEchoesValue,
   CoexistenceSmbMessageEchoesWebhook,
@@ -83,6 +90,7 @@ export type {
   CoexistenceUnsupportedValue,
   CoexistenceUnsupportedWebhook,
   CoexistenceWebhookBase,
+  CoexistenceWebhookMessage,
   CoexistenceWebhookPayload,
   CoexistenceWebhookValueBase,
   MetaAccessTokenProvider,
@@ -140,6 +148,7 @@ export {
   type CoexistenceEmbeddedSignupController,
   type CoexistenceEmbeddedSignupMessageEvent,
   type CoexistenceEmbeddedSignupResult,
+  type CoexistenceEmbeddedSignupStatus,
   type CoexistenceEmbeddedSignupWindow,
   type CoexistenceFacebookInitOptions,
   type CoexistenceFacebookLoginResponse,
@@ -185,6 +194,23 @@ export {
 
 export { formatPhone } from "./utils/phone";
 export { delay } from "./utils/delay";
+
+export { getMessageContent } from "./webhook/message-content";
+export {
+  createWebhookProcessor,
+  type CoexistenceAccountOffboardedContext,
+  type CoexistenceAccountReconnectedContext,
+  type CoexistenceAccountUpdateContext,
+  type CoexistenceHistoryContext,
+  type CoexistenceMessageEditContext,
+  type CoexistenceMessageRevokeContext,
+  type CoexistenceUnsupportedMessageContext,
+  type SmbAppStateSyncContext,
+  type SmbMessageEchoContext,
+  type WebhookProcessor,
+  type WebhookProcessorConfig,
+  type WebhookProcessorHooks,
+} from "./webhook/webhook-processor";
 
 export type {
   Awaitable,
