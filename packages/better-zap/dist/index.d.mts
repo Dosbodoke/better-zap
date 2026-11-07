@@ -195,16 +195,39 @@ interface MetaGraphApiErrorBody {
     code?: number;
     error_subcode?: number;
     fbtrace_id?: string;
+    is_transient?: boolean;
     error_data?: Record<string, unknown>;
   };
+}
+type CoexistenceGraphFailureKind = "graph_error" | "http_error" | "network_error" | "malformed_response" | "configuration_error" | "credential_provider_error";
+/**
+ * Log-safe failure summary. It never contains tokens, the app secret, the
+ * authorization code, request URLs, or Meta's free-text error message.
+ */
+interface CoexistenceGraphErrorDiagnostics {
+  kind: CoexistenceGraphFailureKind;
+  httpStatus?: number;
+  code?: number;
+  subcode?: number;
+  type?: string;
+  fbtraceId?: string;
+  /**
+   * The failure class is usually transient (network, 5xx, 429, throttling or
+   * `is_transient`). An Embedded Signup code is single-use and short-lived, so
+   * retrying an exchange may still need a new code.
+   */
+  retryable: boolean;
 }
 interface CoexistenceGraphResult<TData> {
   success: boolean;
   data?: TData;
   error?: string;
   errorCode?: number;
+  errorSubcode?: number;
   httpStatus?: number;
+  /** Raw response body. May contain untrusted text; do not log it verbatim. */
   details?: unknown;
+  diagnostics?: CoexistenceGraphErrorDiagnostics;
 }
 interface MetaAccessTokenProvider {
   getAccessToken(input: {
@@ -257,19 +280,88 @@ interface CoexistenceWebhookValueBase {
   }>;
   errors?: WebhookError[];
 }
+/**
+ * Message fields Meta adds for coexistence webhooks. `from` is omitted when the
+ * user's phone number is unavailable; `from_user_id` / `to_user_id` carry the
+ * business-scoped user ID (BSUID) instead.
+ */
+type CoexistenceWebhookMessage = IncomingMessage & {
+  from_user_id?: string;
+  from_parent_user_id?: string;
+  to?: string;
+  to_user_id?: string;
+  to_parent_user_id?: string;
+  history_context?: {
+    status?: string;
+    [key: string]: unknown;
+  };
+};
+interface CoexistenceHistoryThread {
+  /** The WhatsApp user's phone number. Omitted when unavailable. */
+  id?: string;
+  context?: {
+    wa_id?: string;
+    user_id?: string;
+    parent_user_id?: string;
+    username?: string;
+    [key: string]: unknown;
+  };
+  messages?: CoexistenceWebhookMessage[];
+  [key: string]: unknown;
+}
+interface CoexistenceHistoryChunkMetadata {
+  /** 0: day 0-1, 1: day 1-90, 2: day 90-180. Does not mean the phase finished. */
+  phase?: number;
+  /** Chunks can arrive out of order; use this to sequence them. */
+  chunk_order?: number;
+  /** Overall sync progress, 0-100. 100 means the history sync is complete. */
+  progress?: number;
+  [key: string]: unknown;
+}
+interface CoexistenceHistoryChunk {
+  metadata?: CoexistenceHistoryChunkMetadata;
+  /** Documented shape: messages grouped per WhatsApp user thread. */
+  threads?: CoexistenceHistoryThread[];
+  /** Legacy flat shape. Still accepted; duplicates of thread messages are skipped. */
+  messages?: CoexistenceWebhookMessage[];
+  statuses?: MessageStatus[];
+  errors?: WebhookError[];
+  [key: string]: unknown;
+}
 interface CoexistenceHistoryValue extends CoexistenceWebhookValueBase {
   request_id?: string;
-  history?: Array<{
-    messages?: IncomingMessage[];
-    statuses?: MessageStatus[];
-    errors?: WebhookError[];
-    [key: string]: unknown;
-  }>;
+  history?: CoexistenceHistoryChunk[];
+  /** Media asset deliveries for earlier `media_placeholder` history messages. */
+  messages?: CoexistenceWebhookMessage[];
 }
 type CoexistenceHistoryWebhook = CoexistenceWebhookBase<"history", CoexistenceHistoryValue>;
+interface CoexistenceStateSyncContact {
+  full_name?: string;
+  first_name?: string;
+  /** Omitted when the user's phone number is unavailable. */
+  phone_number?: string;
+  user_id?: string;
+  parent_user_id?: string;
+  username?: string;
+  [key: string]: unknown;
+}
+interface CoexistenceStateSyncItem {
+  type?: "contact" | (string & {});
+  contact?: CoexistenceStateSyncContact;
+  /** `add` covers adds and edits; `remove` deletes the contact. */
+  action?: "add" | "remove" | (string & {});
+  metadata?: {
+    timestamp?: string;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
 interface CoexistenceSmbAppStateSyncValue extends CoexistenceWebhookValueBase {
   request_id?: string;
   sync_type?: "smb_app_state_sync";
+  /** Documented contact sync shape. */
+  state_sync?: CoexistenceStateSyncItem[];
+  /** Legacy contact shape. Still accepted; contacts already in `state_sync` are skipped. */
   contacts?: Array<{
     wa_id: string;
     profile?: {
@@ -282,7 +374,12 @@ interface CoexistenceSmbAppStateSyncValue extends CoexistenceWebhookValueBase {
 }
 type CoexistenceSmbAppStateSyncWebhook = CoexistenceWebhookBase<"smb_app_state_sync", CoexistenceSmbAppStateSyncValue>;
 interface CoexistenceSmbMessageEchoesValue extends CoexistenceWebhookValueBase {
+  /**
+   * Echoed messages. Meta's documented payload uses `message_echoes`; the Hono
+   * webhook handler merges both arrays into `messages` before calling hooks.
+   */
   messages: IncomingMessage[];
+  message_echoes?: CoexistenceWebhookMessage[];
 }
 type CoexistenceSmbMessageEchoesWebhook = CoexistenceWebhookBase<"smb_message_echoes", CoexistenceSmbMessageEchoesValue>;
 interface CoexistenceAccountUpdateValue extends CoexistenceWebhookValueBase {
@@ -401,9 +498,14 @@ interface CoexistenceSyncJobRecord {
   metadata?: Record<string, unknown>;
 }
 interface CoexistenceContactRecord {
+  /** The contact's phone number, or its business-scoped user ID when Meta omits the phone. */
   waId: string;
   phoneNumberId?: string;
   displayName?: string;
+  firstName?: string;
+  userId?: string;
+  parentUserId?: string;
+  username?: string;
   removed?: boolean;
   updatedAt?: Date | string;
   metadata?: Record<string, unknown>;
@@ -543,10 +645,26 @@ type CoexistenceFacebookInitOptions = {
   status?: boolean;
   [key: string]: unknown;
 };
+/**
+ * How an Embedded Signup launch ended.
+ *
+ * - `completed`: a FINISH session event and an authorization code both arrived.
+ * - `finished_without_code`: FINISH arrived but no code did. Meta treats closing
+ *   the popup on the final screen as success, but only sends the code when the
+ *   customer clicks Finish.
+ * - `missing_session`: a code arrived but no terminal session event did within
+ *   `joinTimeoutMs`. Do not treat this as a confirmed onboarding.
+ * - `cancelled` / `error`: the latest terminal session event was CANCEL / ERROR.
+ * - `no_authorization`: the login callback had no code and no session arrived.
+ * - `torn_down`: `teardown()` ran before the flow settled.
+ */
+type CoexistenceEmbeddedSignupStatus = "completed" | "finished_without_code" | "missing_session" | "cancelled" | "error" | "no_authorization" | "torn_down";
 type CoexistenceEmbeddedSignupResult = {
+  status: CoexistenceEmbeddedSignupStatus;
   code: string | null;
-  session: CoexistenceSessionEventPayload | null;
+  session: CoexistenceSessionEventPayload | null; /** The FB.login response, or `{}` when the callback never ran. */
   loginResponse: CoexistenceFacebookLoginResponse;
+  loginCallbackReceived: boolean;
 };
 type CoexistenceEmbeddedSignupCallbacks = {
   onFinish?: (event: {
@@ -569,9 +687,20 @@ type LaunchCoexistenceEmbeddedSignupInput = CoexistenceEmbeddedSignupConfigInput
   allowedOrigins?: string[];
   origin?: string;
   fbInit?: CoexistenceFacebookInitOptions;
+  /**
+   * How long to wait for the other half (session event or login callback)
+   * once a code or a FINISH/CANCEL event arrives. Meta codes expire after
+   * about 30 seconds, so keep this short.
+   * @default 5000
+   */
+  joinTimeoutMs?: number;
 };
 type CoexistenceEmbeddedSignupController = {
-  result: Promise<CoexistenceEmbeddedSignupResult>;
+  /**
+   * Settles exactly once. It rejects only when `FB.login` throws; every flow
+   * outcome resolves with a `status`.
+   */
+  result: Promise<CoexistenceEmbeddedSignupResult>; /** Removes the listener, clears timers, and settles as `torn_down` if pending. */
   teardown(): void;
 };
 declare function launchCoexistenceEmbeddedSignup(input: LaunchCoexistenceEmbeddedSignupInput): CoexistenceEmbeddedSignupController;
@@ -659,4 +788,118 @@ declare function formatPhone(phone: string): string;
  */
 declare function delay(ms: number): Promise<void>;
 //#endregion
-export { type Awaitable, type BetterZapApi, BetterZapClientError, type BetterZapContext, type BetterZapCoreConfig, type BetterZapCoreContext, type BetterZapCoreServices, type BetterZapDatabase, type BetterZapPlugin, type BetterZapPluginInitContext, type BetterZapPluginInitResult, type BetterZapServices, type CoexistenceAccountOffboardedValue, type CoexistenceAccountOffboardedWebhook, type CoexistenceAccountReconnectedValue, type CoexistenceAccountReconnectedWebhook, type CoexistenceAccountUpdateValue, type CoexistenceAccountUpdateWebhook, type CoexistenceBillingStatus, type CoexistenceConnectedAccountIdentifiers, type CoexistenceConnectedAccountRecord, type CoexistenceContactRecord, type CoexistenceCredentialProvider, type CoexistenceEligibilityStatus, type CoexistenceEmbeddedSignupCallbacks, type CoexistenceEmbeddedSignupConfig, type CoexistenceEmbeddedSignupConfigInput, type CoexistenceEmbeddedSignupController, type CoexistenceEmbeddedSignupMessageEvent, type CoexistenceEmbeddedSignupResult, type CoexistenceEmbeddedSignupSetup, type CoexistenceEmbeddedSignupWindow, type CoexistenceErrorValue, type CoexistenceErrorWebhook, type CoexistenceFacebookInitOptions, type CoexistenceFacebookLoginResponse, type CoexistenceFacebookSdk, type CoexistenceFeatureType, type CoexistenceGenericSessionEvent, type CoexistenceGraphResult, type CoexistenceHistoryValue, type CoexistenceHistoryWebhook, type CoexistenceLegacySessionEvent, type CoexistenceLifecycleEventRecord, type CoexistenceMessageEditValue, type CoexistenceMessageEditWebhook, type CoexistenceMessageRevokeValue, type CoexistenceMessageRevokeWebhook, type CoexistenceOnboardingSessionRecord, type CoexistencePhoneStatusResponse, type CoexistencePreflightFailureCode, type CoexistencePreflightStateRecord, type CoexistenceRawEventStatusRecord, CoexistenceService, type CoexistenceServiceConfig, type CoexistenceSessionEventPayload, type CoexistenceSessionInfoVersion, type CoexistenceSmbAppStateSyncValue, type CoexistenceSmbAppStateSyncWebhook, type CoexistenceSmbMessageEchoesValue, type CoexistenceSmbMessageEchoesWebhook, type CoexistenceStore, type CoexistenceSyncJobRecord, type CoexistenceSyncJobStatus, type CoexistenceSyncRequest, type CoexistenceSyncResponse, type CoexistenceSyncType, type CoexistenceTokenExchangeResult, type CoexistenceUnsupportedValue, type CoexistenceUnsupportedWebhook, type CoexistenceWebhookBase, type CoexistenceWebhookPayload, type CoexistenceWebhookValueBase, type Conversation, type ConversationRecord, type ConversationSummary, type ConversationUpdateEvent, EMPTY_TEMPLATE_REGISTRY, FREEFORM_MESSAGE_WINDOW_MS, type FreeformMessageWindow, InMemoryCoexistenceStore, type IncomingMessage, type InferBetterZapPluginContext, type InferBetterZapPluginServices, type InteractiveMediaCarouselCardInput, type LaunchCoexistenceEmbeddedSignupInput, type LinkPreview, type LogLevel, type Logger, type LoggerConfig, type MediaMessage, type MessageContext, type MessageError, type MessageLoggerNotifier, MessageLoggerService, type MessageStatus, type MetaAccessTokenProvider, type MetaGraphApiErrorBody, type NewMessageEvent, type NormalizedCoexistenceSessionEvent, type OutgoingLoggingMetadata, type SendInteractiveMediaCarouselData, type SendMessageError, type SendMessageResponse, type SendResult, type StatusContext, type StatusUpdateEvent, type SupportedTemplateParameterType, type SyncEvent, type TemplateComponent, type TemplateComponentDefinition, type TemplateDefinition, type TemplateName, type TemplateParameter, type TemplateParameterDefinition, type TemplateParameterInputMap, type TemplateParams, type TemplateRegistry, type UIMessage, type UIMessageStatus, WHATSAPP_MESSAGE_TYPES, type WebhookChange, type WebhookContact, type WebhookEntry, type WebhookError, type WebhookPayload, type WebhookValue, type WhatsAppCarouselCard, type WhatsAppConfig, type WhatsAppDirection, type WhatsAppInteractiveButtonsMessage, type WhatsAppInteractiveListMessage, type WhatsAppInteractiveMediaCarouselMessage, type WhatsAppLocationMessage, type WhatsAppLogRecord, type WhatsAppLogStore, type WhatsAppMessageType, WhatsAppService, type WhatsAppStatus, type WhatsAppTemplateMessage, type WhatsAppTextMessage, type WhatsAppWebhookField, type ZapClient, type ZapTransport, apiKeyTransport, createCoexistenceEmbeddedSignupConfig, createFreeformMessageWindow, createLogger, createZapClient, defineTemplates, delay, firstLinkIn, formatPhone, getLatestIncomingMessageAt, getTemplateNames, hasConfiguredTemplates, launchCoexistenceEmbeddedSignup, noopLogger, normalizeCoexistenceSessionEvent, normalizeCoexistenceSessionPayload, normalizeConversationRecord, normalizeConversationRecords, parseOpenGraph, resolveConversationFreeformMessageWindow, serializeError, serializeTemplateFromRegistry, sessionTransport, toLegacyCoexistenceSessionEvent };
+//#region src/webhook/message-content.d.ts
+/**
+ * Extract human-readable content from incoming messages for audit logs.
+ */
+declare function getMessageContent(message: IncomingMessage): string;
+//#endregion
+//#region src/webhook/webhook-processor.d.ts
+interface CoexistenceHistoryContext {
+  value: CoexistenceHistoryValue;
+  change: WebhookChange;
+  importedMessages: number;
+  /** Already stored, or repeated within this webhook. */
+  duplicateMessages: number;
+  /** Messages or statuses that could not be stored. Any failure fails the sync job. */
+  failedMessages: number;
+  /** From `request_id`, or the in-flight history job for this phone number. */
+  requestId?: string;
+  /** Highest `history[].metadata.progress` in this webhook (100 = complete). */
+  progress?: number;
+  phase?: number;
+  chunkOrder?: number;
+}
+interface SmbAppStateSyncContext {
+  value: CoexistenceSmbAppStateSyncValue;
+  change: WebhookChange;
+  upsertedContacts: number;
+  removedContacts: number;
+  /** Non-contact items, unknown actions, or contacts without any identity. */
+  skippedContacts: number;
+  /** Contacts the store failed to write. Any failure fails the sync job. */
+  failedContacts: number;
+}
+interface SmbMessageEchoContext {
+  /** `messages` holds the merged `message_echoes` and legacy `messages`. */
+  value: CoexistenceSmbMessageEchoesValue;
+  change: WebhookChange;
+  importedMessages: number;
+  duplicateMessages: number;
+  failedMessages: number;
+}
+interface CoexistenceAccountUpdateContext {
+  value: CoexistenceAccountUpdateValue;
+  change: WebhookChange;
+}
+interface CoexistenceAccountOffboardedContext {
+  value: CoexistenceAccountOffboardedValue;
+  change: WebhookChange;
+}
+interface CoexistenceAccountReconnectedContext {
+  value: CoexistenceAccountReconnectedValue;
+  change: WebhookChange;
+}
+interface CoexistenceMessageEditContext {
+  value: CoexistenceMessageEditValue;
+  change: WebhookChange;
+  editedMessages: number;
+}
+interface CoexistenceMessageRevokeContext {
+  value: CoexistenceMessageRevokeValue;
+  change: WebhookChange;
+  revokedMessages: number;
+}
+interface CoexistenceUnsupportedMessageContext {
+  value: CoexistenceHistoryValue | CoexistenceSmbAppStateSyncValue | CoexistenceUnsupportedValue;
+  change: WebhookChange;
+  errors: WebhookError[];
+}
+interface WebhookProcessorHooks {
+  /** Called once per incoming message, after SDK pre-processing. */
+  onMessage: (ctx: MessageContext) => Promise<void>;
+  /** Called once per delivery status update (sent → delivered → read → failed). */
+  onStatusUpdate: (ctx: StatusContext) => Promise<void>;
+  /** Called once per history webhook after SDK pre-processing. */
+  onCoexistenceHistory?: (ctx: CoexistenceHistoryContext) => Promise<void>;
+  /** Called once per SMB app state sync webhook after SDK pre-processing. */
+  onSmbAppStateSync?: (ctx: SmbAppStateSyncContext) => Promise<void>;
+  /** Called once per app message echo webhook after SDK pre-processing. */
+  onSmbMessageEcho?: (ctx: SmbMessageEchoContext) => Promise<void>;
+  /** Called once per coexistence account lifecycle webhook. */
+  onCoexistenceAccountUpdate?: (ctx: CoexistenceAccountUpdateContext) => Promise<void>;
+  /** Called once per coexistence offboarding lifecycle webhook. */
+  onCoexistenceAccountOffboarded?: (ctx: CoexistenceAccountOffboardedContext) => Promise<void>;
+  /** Called once per coexistence background reconnection lifecycle webhook. */
+  onCoexistenceAccountReconnected?: (ctx: CoexistenceAccountReconnectedContext) => Promise<void>;
+  /** Called for coexistence message edit webhooks. */
+  onCoexistenceMessageEdit?: (ctx: CoexistenceMessageEditContext) => Promise<void>;
+  /** Called for coexistence message revoke webhooks. */
+  onCoexistenceMessageRevoke?: (ctx: CoexistenceMessageRevokeContext) => Promise<void>;
+  /** Called when a coexistence webhook contains unsupported/error content. */
+  onCoexistenceUnsupportedMessage?: (ctx: CoexistenceUnsupportedMessageContext) => Promise<void>;
+  /**
+   * Called for Meta platform-level errors.
+   * @default Uses the configured {@link WebhookProcessorConfig.log} logger's {@code error} method.
+   */
+  onError?: (error: WebhookError) => void;
+}
+interface WebhookProcessorConfig {
+  /** logger for automatic message storage. */
+  logger: MessageLoggerService;
+  /** Structured logger for operational logging. */
+  log: Logger;
+  /** Optional database contracts used for automatic coexistence persistence. */
+  database?: BetterZapDatabase;
+  /** The dispatch hooks called for each webhook event. */
+  hooks: WebhookProcessorHooks;
+  /** Seam for human-readable message content. Defaults to the built-in pt-BR resolver. */
+  resolveMessageContent?: (message: IncomingMessage) => string;
+}
+interface WebhookProcessor {
+  /** Dispatches one Meta webhook payload. Never throws: all errors are logged. */
+  process(payload: WebhookPayload): Promise<void>;
+}
+declare function createWebhookProcessor(config: WebhookProcessorConfig): WebhookProcessor;
+//#endregion
+export { type Awaitable, type BetterZapApi, BetterZapClientError, type BetterZapContext, type BetterZapCoreConfig, type BetterZapCoreContext, type BetterZapCoreServices, type BetterZapDatabase, type BetterZapPlugin, type BetterZapPluginInitContext, type BetterZapPluginInitResult, type BetterZapServices, type CoexistenceAccountOffboardedContext, type CoexistenceAccountOffboardedValue, type CoexistenceAccountOffboardedWebhook, type CoexistenceAccountReconnectedContext, type CoexistenceAccountReconnectedValue, type CoexistenceAccountReconnectedWebhook, type CoexistenceAccountUpdateContext, type CoexistenceAccountUpdateValue, type CoexistenceAccountUpdateWebhook, type CoexistenceBillingStatus, type CoexistenceConnectedAccountIdentifiers, type CoexistenceConnectedAccountRecord, type CoexistenceContactRecord, type CoexistenceCredentialProvider, type CoexistenceEligibilityStatus, type CoexistenceEmbeddedSignupCallbacks, type CoexistenceEmbeddedSignupConfig, type CoexistenceEmbeddedSignupConfigInput, type CoexistenceEmbeddedSignupController, type CoexistenceEmbeddedSignupMessageEvent, type CoexistenceEmbeddedSignupResult, type CoexistenceEmbeddedSignupSetup, type CoexistenceEmbeddedSignupStatus, type CoexistenceEmbeddedSignupWindow, type CoexistenceErrorValue, type CoexistenceErrorWebhook, type CoexistenceFacebookInitOptions, type CoexistenceFacebookLoginResponse, type CoexistenceFacebookSdk, type CoexistenceFeatureType, type CoexistenceGenericSessionEvent, type CoexistenceGraphErrorDiagnostics, type CoexistenceGraphFailureKind, type CoexistenceGraphResult, type CoexistenceHistoryChunk, type CoexistenceHistoryChunkMetadata, type CoexistenceHistoryContext, type CoexistenceHistoryThread, type CoexistenceHistoryValue, type CoexistenceHistoryWebhook, type CoexistenceLegacySessionEvent, type CoexistenceLifecycleEventRecord, type CoexistenceMessageEditContext, type CoexistenceMessageEditValue, type CoexistenceMessageEditWebhook, type CoexistenceMessageRevokeContext, type CoexistenceMessageRevokeValue, type CoexistenceMessageRevokeWebhook, type CoexistenceOnboardingSessionRecord, type CoexistencePhoneStatusResponse, type CoexistencePreflightFailureCode, type CoexistencePreflightStateRecord, type CoexistenceRawEventStatusRecord, CoexistenceService, type CoexistenceServiceConfig, type CoexistenceSessionEventPayload, type CoexistenceSessionInfoVersion, type CoexistenceSmbAppStateSyncValue, type CoexistenceSmbAppStateSyncWebhook, type CoexistenceSmbMessageEchoesValue, type CoexistenceSmbMessageEchoesWebhook, type CoexistenceStateSyncContact, type CoexistenceStateSyncItem, type CoexistenceStore, type CoexistenceSyncJobRecord, type CoexistenceSyncJobStatus, type CoexistenceSyncRequest, type CoexistenceSyncResponse, type CoexistenceSyncType, type CoexistenceTokenExchangeResult, type CoexistenceUnsupportedMessageContext, type CoexistenceUnsupportedValue, type CoexistenceUnsupportedWebhook, type CoexistenceWebhookBase, type CoexistenceWebhookMessage, type CoexistenceWebhookPayload, type CoexistenceWebhookValueBase, type Conversation, type ConversationRecord, type ConversationSummary, type ConversationUpdateEvent, EMPTY_TEMPLATE_REGISTRY, FREEFORM_MESSAGE_WINDOW_MS, type FreeformMessageWindow, InMemoryCoexistenceStore, type IncomingMessage, type InferBetterZapPluginContext, type InferBetterZapPluginServices, type InteractiveMediaCarouselCardInput, type LaunchCoexistenceEmbeddedSignupInput, type LinkPreview, type LogLevel, type Logger, type LoggerConfig, type MediaMessage, type MessageContext, type MessageError, type MessageLoggerNotifier, MessageLoggerService, type MessageStatus, type MetaAccessTokenProvider, type MetaGraphApiErrorBody, type NewMessageEvent, type NormalizedCoexistenceSessionEvent, type OutgoingLoggingMetadata, type SendInteractiveMediaCarouselData, type SendMessageError, type SendMessageResponse, type SendResult, type SmbAppStateSyncContext, type SmbMessageEchoContext, type StatusContext, type StatusUpdateEvent, type SupportedTemplateParameterType, type SyncEvent, type TemplateComponent, type TemplateComponentDefinition, type TemplateDefinition, type TemplateName, type TemplateParameter, type TemplateParameterDefinition, type TemplateParameterInputMap, type TemplateParams, type TemplateRegistry, type UIMessage, type UIMessageStatus, WHATSAPP_MESSAGE_TYPES, type WebhookChange, type WebhookContact, type WebhookEntry, type WebhookError, type WebhookPayload, type WebhookProcessor, type WebhookProcessorConfig, type WebhookProcessorHooks, type WebhookValue, type WhatsAppCarouselCard, type WhatsAppConfig, type WhatsAppDirection, type WhatsAppInteractiveButtonsMessage, type WhatsAppInteractiveListMessage, type WhatsAppInteractiveMediaCarouselMessage, type WhatsAppLocationMessage, type WhatsAppLogRecord, type WhatsAppLogStore, type WhatsAppMessageType, WhatsAppService, type WhatsAppStatus, type WhatsAppTemplateMessage, type WhatsAppTextMessage, type WhatsAppWebhookField, type ZapClient, type ZapTransport, apiKeyTransport, createCoexistenceEmbeddedSignupConfig, createFreeformMessageWindow, createLogger, createWebhookProcessor, createZapClient, defineTemplates, delay, firstLinkIn, formatPhone, getLatestIncomingMessageAt, getMessageContent, getTemplateNames, hasConfiguredTemplates, launchCoexistenceEmbeddedSignup, noopLogger, normalizeCoexistenceSessionEvent, normalizeCoexistenceSessionPayload, normalizeConversationRecord, normalizeConversationRecords, parseOpenGraph, resolveConversationFreeformMessageWindow, serializeError, serializeTemplateFromRegistry, sessionTransport, toLegacyCoexistenceSessionEvent };
