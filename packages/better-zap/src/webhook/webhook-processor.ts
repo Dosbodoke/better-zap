@@ -1,9 +1,13 @@
 import { formatPhone } from "../utils/phone";
+import { isMediaPlaceholder } from "../utils/media-placeholder";
 import { type Logger, serializeError } from "../logger";
 import type { BetterZapDatabase } from "../better-zap.types";
 import type { MessageContext, StatusContext } from "../events";
 import type { MessageLoggerService } from "../services/message-logger.service";
-import type { WhatsAppDirection } from "../services/message-logger.service";
+import type {
+  ImportMessageResult,
+  WhatsAppDirection,
+} from "../services/message-logger.service";
 import type {
   CoexistenceAccountOffboardedValue,
   CoexistenceAccountReconnectedValue,
@@ -42,6 +46,8 @@ export interface CoexistenceHistoryContext {
   importedMessages: number;
   /** Already stored, or repeated within this webhook. */
   duplicateMessages: number;
+  /** Stored media placeholders replaced by the real media in this webhook. */
+  upgradedMessages: number;
   /** Messages or statuses that could not be stored. Any failure fails the sync job. */
   failedMessages: number;
   /** From `request_id`, or the in-flight history job for this phone number. */
@@ -69,6 +75,8 @@ export interface SmbMessageEchoContext {
   change: WebhookChange;
   importedMessages: number;
   duplicateMessages: number;
+  /** Stored media placeholders replaced by real media. */
+  upgradedMessages: number;
   failedMessages: number;
 }
 
@@ -114,11 +122,12 @@ type CoexistenceWebhookContact = {
   user_id?: string;
 };
 
-type ImportOutcome = "created" | "duplicate" | "skipped" | "failed";
+type ImportOutcome = ImportMessageResult | "skipped" | "failed";
 
 type ImportTally = {
   importedMessages: number;
   duplicateMessages: number;
+  upgradedMessages: number;
   failedMessages: number;
 };
 
@@ -335,6 +344,7 @@ async function processHistoryChange(
   const tally: ImportTally = {
     importedMessages: 0,
     duplicateMessages: 0,
+    upgradedMessages: 0,
     failedMessages: 0,
   };
   // Ids from documented thread messages; legacy flat copies of them are skipped.
@@ -796,6 +806,7 @@ async function processSmbMessageEchoesChange(
   const tally: ImportTally = {
     importedMessages: 0,
     duplicateMessages: 0,
+    upgradedMessages: 0,
     failedMessages: 0,
   };
   // Documented message_echoes first; legacy messages only fill gaps.
@@ -1063,14 +1074,16 @@ function readHistoryProgress(chunks: CoexistenceHistoryChunk[]): {
 }
 
 function countImportOutcome(tally: ImportTally, outcome: ImportOutcome) {
-  if (outcome === "created") {
-    tally.importedMessages += 1;
-  } else if (outcome === "duplicate") {
-    tally.duplicateMessages += 1;
-  } else if (outcome === "failed") {
-    tally.failedMessages += 1;
-  }
+  if (outcome === "skipped") return;
+  tally[TALLY_KEY[outcome]] += 1;
 }
+
+const TALLY_KEY = {
+  created: "importedMessages",
+  duplicate: "duplicateMessages",
+  upgraded: "upgradedMessages",
+  failed: "failedMessages",
+} as const satisfies Record<Exclude<ImportOutcome, "skipped">, keyof ImportTally>;
 
 async function importCoexistenceMessage(input: {
   message: CoexistenceWebhookMessage;
@@ -1114,7 +1127,7 @@ async function importCoexistenceMessage(input: {
       message.to_user_id,
       thread?.context?.user_id,
     ].find(isNonEmptyString);
-    const created = await input.config.logger.logImportedMessage({
+    return await input.config.logger.importMessage({
       phone,
       waMessageId: message.id,
       direction,
@@ -1133,11 +1146,10 @@ async function importCoexistenceMessage(input: {
           ? { historyStatus: message.history_context.status }
           : {}),
         ...(sentAt ? {} : { invalidTimestamp: true }),
+        ...(isMediaPlaceholder(message) ? { mediaPending: true } : {}),
         raw: message,
       },
     });
-
-    return created ? "created" : "duplicate";
   } catch (error) {
     log.error("webhook.coexistence_import_failed", {
       field: input.source,

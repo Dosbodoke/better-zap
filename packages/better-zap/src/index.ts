@@ -111,6 +111,7 @@ export type {
   NewMessageEvent,
   StatusUpdateEvent,
   ConversationUpdateEvent,
+  MessageUpdateEvent,
   ConversationSummary,
 } from "./types/sync-events";
 
@@ -160,6 +161,8 @@ export { InMemoryCoexistenceStore } from "./coexistence/memory-store";
 export {
   MessageLoggerService,
   WHATSAPP_MESSAGE_TYPES,
+  type ImportMessageParams,
+  type ImportMessageResult,
   type MessageLoggerNotifier,
   type WhatsAppLogStore,
   type WhatsAppLogRecord,
@@ -193,6 +196,11 @@ export {
 } from "./link-preview";
 
 export { formatPhone } from "./utils/phone";
+export {
+  MEDIA_PLACEHOLDER_TYPE,
+  hasPendingMedia,
+  isMediaPlaceholder,
+} from "./utils/media-placeholder";
 export { delay } from "./utils/delay";
 
 export { getMessageContent } from "./webhook/message-content";

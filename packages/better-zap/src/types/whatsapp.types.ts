@@ -290,6 +290,8 @@ export interface IncomingMessage {
     | "reaction"
     | "sticker"
     | "unsupported"
+    /** Coexistence history media with the content omitted. See `isMediaPlaceholder`. */
+    | "media_placeholder"
     | (string & {});
   text?: {
     body: string;
