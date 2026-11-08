@@ -1,6 +1,13 @@
 name: Next
 
+# Publishes a preview snapshot (e.g. 25.0.4-next-<timestamp>) under npm's
+# `next` tag on every push to main that carries a pending Changeset, so a fix
+# can be tried before the Version Packages PR cuts a stable release. `latest`
+# never moves here. Run it by hand to preview another ref.
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 concurrency:
@@ -8,14 +15,38 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  publish-next:
+  # A push without a pending Changeset (e.g. the Version Packages merge, or a
+  # docs change) has nothing to preview, so the publish job is skipped.
+  pending-changeset:
     if: github.repository == 'Dosbodoke/better-zap'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      found: ${{ steps.check.outputs.found }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - id: check
+        run: |
+          if node scripts/check-release-version.mjs --require-changeset; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No pending Changeset, so there is no next snapshot to publish."
+          fi
+
+  publish-next:
+    needs: pending-changeset
+    if: needs.pending-changeset.outputs.found == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
     steps:
-      # The checkout action uses the ref selected for this workflow dispatch.
+      # The checkout action uses the pushed or dispatched ref.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -28,7 +59,6 @@ jobs:
           cache: pnpm
           registry-url: https://registry.npmjs.org
       - run: pnpm install --frozen-lockfile
-      - run: pnpm release:require-changeset
       - run: pnpm version-packages:next
       - run: pnpm release:check-version:next
       - run: pnpm build
@@ -49,3 +79,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: true
+      - name: Summary
+        run: |
+          version="$(node -p "require('./packages/better-zap/package.json').version")"
+          echo "Published \`better-zap@${version}\` under the \`next\` tag. Install with \`pnpm add better-zap@${version}\`." >> "$GITHUB_STEP_SUMMARY"

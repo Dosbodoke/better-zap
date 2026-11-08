@@ -27,16 +27,24 @@ it without changing package versions. Merge that PR before the first publish pas
 
 ## Next previews
 
-Preview publishing is manual. In GitHub Actions, run `Next` on the ref to
-preview. It requires a non-empty pending Changeset with
-`pnpm release:require-changeset`, then runs `pnpm version-packages:next` and
-`pnpm release:check-version:next`. A patch Changeset on `25.0.x` produces a
-calculated snapshot such as `25.0.1-next-<timestamp>`.
+Every push to `main` that carries a pending Changeset publishes a preview, so a
+merged fix can be tried in an app before the Version Packages PR turns it into a
+stable release. To preview another ref, run `Next` by hand in GitHub Actions.
 
-The workflow builds, type checks, tests, checks package contents, then publishes
-with `pnpm release:publish:next` under npm's `next` dist-tag. It does not move
-`latest`. No schedule or push triggers preview publishing. Install with
-`pnpm add better-zap@next`.
+The workflow first checks for a non-empty pending Changeset with
+`pnpm release:require-changeset`. Without one (a docs change, or the Version
+Packages merge itself) it skips publishing. Otherwise it runs
+`pnpm version-packages:next` and `pnpm release:check-version:next`. A patch
+Changeset on `25.0.x` produces a calculated snapshot such as
+`25.0.1-next-<timestamp>`.
+
+It builds, type checks, tests, checks package contents, then publishes with
+`pnpm release:publish:next` under npm's `next` dist-tag. It does not move
+`latest`. The run summary names the published version. Install it with
+`pnpm add better-zap@next`, or pin the exact snapshot.
+
+Merge the Version Packages PR only once a preview has been tried, so a stable
+version is never cut for a fix that doesn't work.
 
 Generated snapshot version changes are temporary workflow output. Do not commit
 or merge them. The source Changeset remains the record for a later stable
