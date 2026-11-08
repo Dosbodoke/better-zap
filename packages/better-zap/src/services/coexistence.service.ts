@@ -8,6 +8,7 @@ import type {
   MetaAccessTokenProvider,
   MetaGraphApiErrorBody,
 } from "../types/coexistence.types";
+import { defaultFetch } from "../utils/http";
 
 const META_API_VERSION = "v25.0";
 const META_BASE_URL = "https://graph.facebook.com";
@@ -45,7 +46,7 @@ export class CoexistenceService {
     this.appSecret = config.appSecret;
     this.graphApiVersion = config.graphApiVersion ?? META_API_VERSION;
     this.graphBaseUrl = config.graphBaseUrl ?? META_BASE_URL;
-    this.fetchImpl = config.fetch ?? fetch;
+    this.fetchImpl = config.fetch ?? defaultFetch;
     this.tokenProvider = config.tokenProvider ?? config.credentialProvider;
     this.credentialProvider = config.credentialProvider;
   }

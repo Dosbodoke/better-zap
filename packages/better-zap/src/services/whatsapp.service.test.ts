@@ -1,8 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { WhatsAppService } from "./whatsapp.service";
 import type { WhatsAppConfig } from "../types/config";
 import { createFreeformMessageWindow } from "../freeform-message-window";
 import { formatPhone } from "../utils/phone";
+import { stubWorkersFetch } from "../test-utils/workers-fetch";
 
 // ============================================
 // Helpers
@@ -601,6 +602,30 @@ describe("WhatsAppService", () => {
       expect(result.error).toBe("Invalid parameter");
       expect(result.errorCode).toBe(100);
       expect(result.httpStatus).toBe(400);
+    });
+  });
+
+  describe("downloadMedia", () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it("calls the global fetch without a `this`, as Cloudflare Workers requires", async () => {
+      const fetchMock = vi.fn(async (input: RequestInfo | URL) =>
+        String(input).startsWith("https://graph.facebook.com/")
+          ? Response.json({ url: "https://lookaside.fbsbx.com/file", mime_type: "image/jpeg" })
+          : new Response("image bytes"),
+      );
+      stubWorkersFetch(fetchMock);
+
+      const { service } = makeService();
+      const result = await service.downloadMedia("media_1");
+
+      expect(result).toMatchObject({ status: "downloaded", contentType: "image/jpeg" });
+      expect(fetchMock.mock.calls.map(([input]) => String(input))).toEqual([
+        "https://graph.facebook.com/v25.0/media_1",
+        "https://lookaside.fbsbx.com/file",
+      ]);
     });
   });
 });

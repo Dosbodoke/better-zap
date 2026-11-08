@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { stubWorkersFetch } from "../test-utils/workers-fetch";
 import { CoexistenceService } from "./coexistence.service";
 
 const jsonResponse = (body: unknown, status = 200) =>
@@ -8,6 +9,21 @@ const jsonResponse = (body: unknown, status = 200) =>
   });
 
 describe("CoexistenceService", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("calls the global fetch without a `this`, as Cloudflare Workers requires", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ id: "phone_123", is_on_biz_app: true }));
+    stubWorkersFetch(fetchMock);
+    const service = new CoexistenceService({ accessToken: "token_123" });
+
+    const result = await service.getPhoneStatus({ phoneNumberId: "phone_123" });
+
+    expect(result).toEqual({ success: true, data: { id: "phone_123", is_on_biz_app: true } });
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
   it("checks phone status with fields and authorization", async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse({

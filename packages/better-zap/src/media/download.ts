@@ -1,5 +1,5 @@
 import { bytesToHex, sha256Hex } from "../utils/hash";
-import { discardBody, fetchWithRetry, toNumber } from "../utils/http";
+import { defaultFetch, discardBody, fetchWithRetry, toNumber } from "../utils/http";
 import { asRecord } from "../utils/record";
 import { type Result, tryCatch } from "../utils/result";
 import {
@@ -61,7 +61,7 @@ async function download(
     retries: input.options?.retries ?? 2,
     expectedSha256: input.options?.expectedSha256,
     signal: input.options?.signal,
-    fetch: input.fetch ?? fetch,
+    fetch: input.fetch ?? defaultFetch,
   };
 
   const first = await downloadOnce(context);

@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { stubWorkersFetch } from "../test-utils/workers-fetch";
 import { downloadMetaMedia as downloadWithGraphUrl } from "./download";
 import {
   getMediaStorageKey,
@@ -51,6 +52,20 @@ function createMetaFetch(routes: {
 }
 
 describe("downloadMetaMedia", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("calls the global fetch without a `this`, as Cloudflare Workers requires", async () => {
+    const { fetchImpl, calls } = createMetaFetch({});
+    stubWorkersFetch(fetchImpl);
+
+    const result = await downloadMetaMedia({ mediaId: "media_1", accessToken: "t" });
+
+    expect(result).toMatchObject({ status: "downloaded", contentType: "image/jpeg" });
+    expect(calls).toHaveLength(2);
+  });
+
   it("ignores a hash with padding atob would reject instead of throwing", async () => {
     const { fetchImpl } = createMetaFetch({
       lookup: () =>

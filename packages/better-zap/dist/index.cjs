@@ -1,6 +1,6 @@
 Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
 const require_client = require("./client.cjs");
-const require_types = require("./types-CITvQMYt.cjs");
+const require_types = require("./types-Bq1EC389.cjs");
 //#region src/freeform-message-window.ts
 const FREEFORM_MESSAGE_WINDOW_MS = 1440 * 60 * 1e3;
 function toTimestamp(value) {
@@ -173,7 +173,7 @@ async function download(input) {
 		retries: input.options?.retries ?? 2,
 		expectedSha256: input.options?.expectedSha256,
 		signal: input.options?.signal,
-		fetch: input.fetch ?? fetch
+		fetch: input.fetch ?? require_types.defaultFetch
 	};
 	const first = await downloadOnce(context);
 	if (first !== URL_EXPIRED) return first;
@@ -678,7 +678,7 @@ var CoexistenceService = class {
 		this.appSecret = config.appSecret;
 		this.graphApiVersion = config.graphApiVersion ?? META_API_VERSION;
 		this.graphBaseUrl = config.graphBaseUrl ?? META_BASE_URL;
-		this.fetchImpl = config.fetch ?? fetch;
+		this.fetchImpl = config.fetch ?? require_types.defaultFetch;
 		this.tokenProvider = config.tokenProvider ?? config.credentialProvider;
 		this.credentialProvider = config.credentialProvider;
 	}
