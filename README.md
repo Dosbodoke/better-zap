@@ -29,9 +29,9 @@ All five public packages follow the same Meta API version line.
 Consumers moving from `0.x` must update their dependency ranges to include
 `25.0.x`.
 
-The manual `Next` workflow publishes preview snapshots for the selected Git ref
-under npm's `next` tag. It requires a non-empty Changeset. Install a preview
-with `pnpm add better-zap@next`. Next snapshots do not move the `latest` tag.
+Every merge to `main` with a pending Changeset publishes a preview snapshot
+(such as `25.0.1-next-<timestamp>`) under npm's `next` tag. Install it with
+`pnpm add better-zap@next`. Next snapshots do not move the `latest` tag.
 
 See the [maintainer release runbook](.changeset/README.md) for stable releases,
 preview snapshots, and Meta API line upgrades.
