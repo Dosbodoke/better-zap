@@ -2,12 +2,12 @@ import { delay } from "./delay";
 import { abortReason, type Result, tryCatch } from "./result";
 
 /**
- * Calls the global `fetch` as a plain function. Cloudflare Workers throws
- * "Illegal invocation" when the built-in `fetch` runs with any other `this`,
- * e.g. when it is stored on an object and called as `object.fetch()`. Use it
- * as the default wherever a custom `fetch` is stored.
+ * Default `fetch`, safe to store and call as a method. Cloudflare Workers
+ * throws "Illegal invocation" when the built-in `fetch` runs with any `this`
+ * other than the global, e.g. `object.fetch()`. The global is looked up on
+ * each call, so polyfills and test stubs still apply.
  */
-export const globalFetch: typeof fetch = (input, init) => fetch(input, init);
+export const defaultFetch: typeof fetch = (input, init) => fetch(input, init);
 
 export type RetryOptions = {
   /** Extra attempts after the first one. */

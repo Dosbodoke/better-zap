@@ -1,5 +1,5 @@
 import { BetterZapClientError, apiKeyTransport, createZapClient, sessionTransport } from "./client.mjs";
-import { a as STORABLE_MEDIA_TYPES, c as fetchWithRetry, d as timeoutSignal, f as toError, g as delay, h as sha256Hex, i as MAX_SIGNED_URL_EXPIRES_IN, l as globalFetch, m as bytesToHex, n as DEFAULT_MEDIA_MAX_BYTES, o as clampSignedUrlExpiry, p as tryCatch, r as DEFAULT_MEDIA_TIMEOUT_MS, s as discardBody, t as DEFAULT_MEDIA_CONCURRENCY, u as toNumber } from "./types-CD_3MWYJ.mjs";
+import { a as STORABLE_MEDIA_TYPES, c as discardBody, d as timeoutSignal, f as toError, g as delay, h as sha256Hex, i as MAX_SIGNED_URL_EXPIRES_IN, l as fetchWithRetry, m as bytesToHex, n as DEFAULT_MEDIA_MAX_BYTES, o as clampSignedUrlExpiry, p as tryCatch, r as DEFAULT_MEDIA_TIMEOUT_MS, s as defaultFetch, t as DEFAULT_MEDIA_CONCURRENCY, u as toNumber } from "./types-DCBMDoYW.mjs";
 //#region src/freeform-message-window.ts
 const FREEFORM_MESSAGE_WINDOW_MS = 1440 * 60 * 1e3;
 function toTimestamp(value) {
@@ -172,7 +172,7 @@ async function download(input) {
 		retries: input.options?.retries ?? 2,
 		expectedSha256: input.options?.expectedSha256,
 		signal: input.options?.signal,
-		fetch: input.fetch ?? globalFetch
+		fetch: input.fetch ?? defaultFetch
 	};
 	const first = await downloadOnce(context);
 	if (first !== URL_EXPIRED) return first;
@@ -677,7 +677,7 @@ var CoexistenceService = class {
 		this.appSecret = config.appSecret;
 		this.graphApiVersion = config.graphApiVersion ?? META_API_VERSION;
 		this.graphBaseUrl = config.graphBaseUrl ?? META_BASE_URL;
-		this.fetchImpl = config.fetch ?? globalFetch;
+		this.fetchImpl = config.fetch ?? defaultFetch;
 		this.tokenProvider = config.tokenProvider ?? config.credentialProvider;
 		this.credentialProvider = config.credentialProvider;
 	}
