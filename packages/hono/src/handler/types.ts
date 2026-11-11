@@ -6,6 +6,7 @@ import type {
   WhatsAppLogStore,
   WhatsAppService,
 } from "better-zap";
+import type { BetterZapVerifySignupState } from "../better-zap.types";
 
 export type BetterZapEnv = {
   Variables: {
@@ -15,6 +16,7 @@ export type BetterZapEnv = {
     coexistence?: CoexistenceService;
     coexistenceStore?: CoexistenceStore;
     subscribeWabaAfterCodeExchange?: boolean;
+    verifySignupState?: BetterZapVerifySignupState;
     mediaStore?: MediaStore;
     mediaSignedUrlExpiresIn?: number;
   };

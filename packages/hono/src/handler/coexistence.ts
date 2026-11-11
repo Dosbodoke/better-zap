@@ -17,9 +17,7 @@ type EmbeddedSignupCallbackBody = {
   sessionInfo?: unknown;
   data?: unknown;
   state?: unknown;
-  expectedState?: unknown;
   nonce?: unknown;
-  expectedNonce?: unknown;
   idempotencyKey?: unknown;
   preflight?: unknown;
   eligibility?: unknown;
@@ -145,25 +143,38 @@ function resolveIdempotencyKey(
   );
 }
 
-function validateStateAndNonce(
+async function rejectInvalidSignupState(
+  c: Context<BetterZapEnv>,
   body: EmbeddedSignupCallbackBody,
-  session: CoexistenceSessionEventPayload,
-) {
-  const state = optionalString(body.state);
-  const expectedState =
-    optionalString(body.expectedState) ?? optionalString(session.data?.state);
-  if (expectedState && state !== expectedState) {
-    return "state mismatch";
+): Promise<Response | null> {
+  const verifySignupState = c.get("verifySignupState");
+  if (!verifySignupState) {
+    return null;
   }
 
-  const nonce = optionalString(body.nonce);
-  const expectedNonce =
-    optionalString(body.expectedNonce) ?? optionalString(session.data?.nonce);
-  if (expectedNonce && nonce !== expectedNonce) {
-    return "nonce mismatch";
+  try {
+    const valid = await verifySignupState({
+      state: optionalString(body.state),
+      nonce: optionalString(body.nonce),
+      request: c.req.raw,
+      env: c.env,
+    });
+
+    if (valid) {
+      return null;
+    }
+  } catch (error) {
+    c.get("logger").error(
+      "coexistence.signup_state_verification_failed",
+      serializeError(error),
+    );
+    return c.json({ error: "Signup state verification failed" }, 500);
   }
 
-  return null;
+  return c.json(
+    { error: "Invalid signup state", code: "invalid_signup_state" },
+    400,
+  );
 }
 
 async function recordOnboardingSession(
@@ -327,9 +338,9 @@ export async function handleEmbeddedSignupCallback(c: Context<BetterZapEnv>) {
       return c.json({ error: "session is required" }, 400);
     }
 
-    const stateError = validateStateAndNonce(body, session);
-    if (stateError) {
-      return c.json({ error: stateError }, 400);
+    const stateRejection = await rejectInvalidSignupState(c, body);
+    if (stateRejection) {
+      return stateRejection;
     }
 
     const normalizedEvent = normalizeCoexistenceSessionEvent(session.event);
