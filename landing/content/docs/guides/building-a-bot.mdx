@@ -54,16 +54,18 @@ const zap = betterZap({
   },
 });
 
-export default zap.handler;
+export default { fetch: zap.handler };
 ```
 
 Messages sent through `ctx.api.sendText()` are logged as `bot_reply` by default. Pass a custom logging category only when you need to separate a specific flow:
 
 ```ts
 await ctx.api.sendText(ctx.phone, "Your order is confirmed.", {
-  messageType: "order_update",
+  messageType: "reminder",
 });
 ```
+
+`messageType` accepts `queue_position`, `next_in_line`, `queue_optin`, `marketing`, `bot_reply`, `reminder`, `satisfaction` and `incoming`.
 
 ## Adding Interactive Menus
 

@@ -86,8 +86,6 @@ Use it as your worker's default export:
 
 ```ts
 export default { fetch: zap.handler };
-// or simply:
-export default zap.handler;
 ```
 
 ### `api`
@@ -143,6 +141,10 @@ The handler automatically registers these routes under `basePath` (default: `/ap
 | `GET` | `/conversations/:phone` | Get a single conversation |
 | `GET` | `/conversations/:phone/messages` | Get paginated messages |
 | `GET` | `/media/:waMessageId` | Stored media file of a message. See [Media Storage](/docs/guides/media-storage) |
+| `POST` | `/coexistence/embedded-signup/callback` | Completes Embedded Signup. See [Self-hosted Coexistence](/docs/guides/self-hosted-coexistence) |
+| `GET` | `/coexistence/phone-numbers/:phoneNumberId/status` | Phone number coexistence status. See [Self-hosted Coexistence](/docs/guides/self-hosted-coexistence) |
+| `POST` | `/coexistence/phone-numbers/:phoneNumberId/sync/contacts` | Request contact sync. See [Self-hosted Coexistence](/docs/guides/self-hosted-coexistence) |
+| `POST` | `/coexistence/phone-numbers/:phoneNumberId/sync/history` | Request history sync. See [Self-hosted Coexistence](/docs/guides/self-hosted-coexistence) |
 
 ## Webhook Processing
 

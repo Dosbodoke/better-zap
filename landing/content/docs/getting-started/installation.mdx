@@ -38,7 +38,10 @@ To auto-generate a type-safe template registry from your Meta Business Manager t
 Then run:
 
 ```bash
-npx better-zap generate
+npx better-zap generate \
+  --access-token $META_ACCESS_TOKEN \
+  --waba-id $WHATSAPP_BUSINESS_ACCOUNT_ID \
+  --output src/templates.ts
 ```
 
 See the [Template Registry](/docs/concepts/template-registry) for configuration options.

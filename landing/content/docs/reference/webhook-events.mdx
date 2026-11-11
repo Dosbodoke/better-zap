@@ -45,21 +45,22 @@ When plugins are configured, their context is merged into `ctx` with full type i
 
 ### Supported Message Types
 
-Better Zap extracts human-readable content from all WhatsApp message types:
+Better Zap extracts human-readable content from all WhatsApp message types. The built-in labels are in Brazilian Portuguese:
 
-| Type | Content Extraction |
+| Type | `ctx.content` |
 | --- | --- |
-| `text` | The text body |
-| `image` | Caption or `"[Image]"` |
-| `video` | Caption or `"[Video]"` |
-| `audio` | `"[Audio]"` |
-| `document` | Filename or `"[Document]"` |
-| `sticker` | `"[Sticker]"` |
-| `location` | `"[Location: lat, lng]"` |
-| `contacts` | `"[Contact: name]"` |
-| `interactive` | Button reply title or list reply title |
-| `button` | Button text |
-| `reaction` | Emoji |
+| `text` | The text body, or `[texto vazio]` when empty |
+| `image` | `[imagem]`, or `[imagem: <caption>]` |
+| `audio` | `[áudio]` |
+| `video` | `[vídeo]`, or `[vídeo: <caption>]` |
+| `document` | `[documento: <filename>]`, or `[documento: arquivo]` without a filename |
+| `location` | `[localização: <name>]`, or `[localização: <latitude>,<longitude>]` |
+| `button` | `[botão: <text>]` |
+| `interactive` | `[resposta botão: <title>]`, `[resposta lista: <title>]`, or `[interativo]` |
+| `sticker` | `[figurinha]` |
+| `reaction` | `[reação]` |
+| `media_placeholder` | `[mídia]` |
+| any other type | `[<type>]`, for example `[contacts]` |
 
 ## onStatusUpdate
 

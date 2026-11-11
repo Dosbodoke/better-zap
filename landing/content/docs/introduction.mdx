@@ -16,7 +16,7 @@ Better Zap is a type-safe, plugin-extensible TypeScript framework for building W
 
 ## Architecture
 
-Better Zap is a monorepo with four packages:
+Better Zap is a monorepo with five packages:
 
 | Package | Description |
 | --- | --- |
@@ -24,6 +24,7 @@ Better Zap is a monorepo with four packages:
 | `@better-zap/hono` | Hono web framework adapter — webhook handler, API routes, Durable Objects sync |
 | `@better-zap/react` | Pre-built React UI components — dashboard, conversation list, message view |
 | `@better-zap/cli` | CLI tool — auto-generate template registry from Meta Business Manager |
+| `@better-zap/fixtures` | WhatsApp coexistence webhook payload fixtures for tests |
 
 ## Quick Example
 
@@ -49,7 +50,7 @@ const zap = betterZap({
   },
 });
 
-export default zap.handler;
+export default { fetch: zap.handler };
 ```
 
 ## Next Steps

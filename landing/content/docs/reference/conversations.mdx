@@ -28,14 +28,18 @@ Returns all conversations with the latest message metadata and freeform window s
 interface Conversation {
   id: string;
   phone: string;
-  contactName?: string;
-  lastMessageContent?: string;
-  lastMessageAt?: string;
-  lastMessageDirection?: "incoming" | "outgoing";
-  unreadCount?: number;
-  freeformWindow: {
+  contactName: string | null;
+  unreadCount: number;
+  status: string;
+  lastMessageAt: string;
+  lastMessagePreview: string | null;
+  lastDirection: string; // "incoming" or "outgoing"
+  messageCount: number;
+  lastIncomingMessageAt: string | null;
+  freeformMessageWindow: {
     isOpen: boolean;
-    expiresAt?: string;
+    lastIncomingMessageAt: string | null;
+    expiresAt: string | null;
   };
 }
 ```
@@ -59,7 +63,7 @@ Returns a single conversation by phone number, or `null` if not found.
 
 ## Get Messages
 
-Returns paginated messages for a conversation, ordered by timestamp. Uses cursor-based pagination.
+Returns paginated messages for a conversation, ordered by `sentAt`. Uses cursor-based pagination.
 
 <Tabs items={["Server API", "Client SDK"]}>
   <Tab value="Server API">
@@ -90,13 +94,13 @@ Returns paginated messages for a conversation, ordered by timestamp. Uses cursor
 ```ts
 interface UIMessage {
   id: string;
-  waMessageId: string;
-  conversationId: string;
+  phone?: string;
+  content: string | null;
   direction: "incoming" | "outgoing";
-  content: string;
-  type: string;
-  status: "sent" | "delivered" | "read" | "failed";
-  timestamp: string;
-  metadata?: Record<string, unknown>;
+  status: "sent" | "delivered" | "read" | "failed" | string;
+  sentAt: string;
+  templateName?: string | null;
+  messageType?: string | null;
+  metadata?: Record<string, any> | null;
 }
 ```

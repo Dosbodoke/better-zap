@@ -40,8 +40,9 @@ database_id = "your-database-id"
 
 ## 3. Create the Database Schema
 
-```bash
-wrangler d1 execute whatsapp-logs --local --command "
+Save the schema as `schema.sql`:
+
+```sql title="schema.sql"
 CREATE TABLE IF NOT EXISTS conversations (
   id TEXT PRIMARY KEY,
   phone TEXT NOT NULL UNIQUE,
@@ -81,7 +82,12 @@ CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id
 CREATE INDEX IF NOT EXISTS idx_messages_wa_id ON messages(wa_message_id);
 CREATE INDEX IF NOT EXISTS idx_messages_recent_outgoing ON messages(phone, direction, sent_at);
 CREATE INDEX IF NOT EXISTS idx_conversations_phone ON conversations(phone);
-"
+```
+
+Apply it to your local database:
+
+```bash
+wrangler d1 execute whatsapp-logs --local --file schema.sql
 ```
 
 The `wa_message_id TEXT UNIQUE` constraint is required for atomic incoming
@@ -272,6 +278,7 @@ export function createD1Store(db: D1Database): WhatsAppLogStore {
       };
 
       if (updates.status) set("status", updates.status);
+      if (updates.content !== undefined) set("content", updates.content);
       if (updates.errorMessage !== undefined) set("error_message", updates.errorMessage);
       if (updates.deliveredAt !== undefined) set("delivered_at", updates.deliveredAt);
       if (updates.readAt !== undefined) set("read_at", updates.readAt);

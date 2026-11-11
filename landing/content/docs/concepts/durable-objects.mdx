@@ -7,13 +7,49 @@ Better Zap optionally integrates with Cloudflare Durable Objects to broadcast re
 
 ## Overview
 
-When `conversationSync` is configured, Better Zap's message logger automatically notifies a Durable Object whenever:
+When `conversationSync` is configured, Better Zap's message logger sends a sync event to a Durable Object whenever:
 
-- A new message is received
-- A message status changes (sent → delivered → read)
-- A conversation is updated
+- A message is stored: incoming, outgoing, or imported from history
+- A message's delivery status advances (sent → delivered → read)
+- A stored message changes
 
 This enables real-time UI updates across multiple connected clients without polling.
+
+## What Better Zap Does
+
+Every sync event goes to one Durable Object instance, `conversationSync.idFromName("global-workspace")`, as a `POST` to `http://do/sync` whose body is the event as JSON. Delivery failures are logged and never fail the webhook.
+
+## What Your App Provides
+
+Better Zap does not ship the Durable Object class. Your app writes it. This minimal example forwards each event to connected WebSocket clients:
+
+```ts title="src/conversation-sync.ts"
+import { DurableObject } from "cloudflare:workers";
+import type { SyncEvent } from "better-zap";
+
+export class ConversationSync extends DurableObject {
+  async fetch(request: Request): Promise<Response> {
+    // Browsers connect here to receive events.
+    if (request.headers.get("Upgrade") === "websocket") {
+      const pair = new WebSocketPair();
+      this.ctx.acceptWebSocket(pair[1]);
+      return new Response(null, { status: 101, webSocket: pair[0] });
+    }
+
+    // Better Zap posts every sync event here.
+    if (request.method === "POST" && new URL(request.url).pathname === "/sync") {
+      const event = (await request.json()) as SyncEvent;
+      const data = JSON.stringify(event);
+      for (const socket of this.ctx.getWebSockets()) {
+        socket.send(data);
+      }
+      return new Response("OK");
+    }
+
+    return new Response("Not found", { status: 404 });
+  }
+}
+```
 
 ## Setup
 
@@ -39,45 +75,41 @@ tag = "v1"
 new_classes = ["ConversationSync"]
 ```
 
+Export the class from your Worker's entry file. After your app has authenticated a browser's WebSocket request, route it to the same instance:
+
+```ts
+const id = env.CONVERSATION_SYNC.idFromName("global-workspace");
+return env.CONVERSATION_SYNC.get(id).fetch(request);
+```
+
 ## Sync Events
 
-Four types of events are broadcast:
+Three types of events are sent. `message` is a `WhatsAppLogRecord` and `conversation` is a [`Conversation`](/docs/reference/conversations#response).
 
 ### `NEW_MESSAGE`
 
-Fired when an incoming message is logged.
+Sent when a message is stored: incoming, outgoing, or imported from history.
 
 ```ts
 {
   type: "NEW_MESSAGE",
-  conversationPhone: "5511999998888",
-  message: { /* UIMessage */ },
+  message: WhatsAppLogRecord,
+  conversation: Conversation,
 }
 ```
 
 ### `STATUS_UPDATE`
 
-Fired when a message status changes.
+Sent when a message's delivery status advances.
 
 ```ts
 {
   type: "STATUS_UPDATE",
-  conversationPhone: "5511999998888",
-  messageId: "wamid.HBgLNTUxMTk...",
-  status: "delivered",
-  timestamp: 1712345678,
-}
-```
-
-### `CONVERSATION_UPDATE`
-
-Fired when conversation metadata changes (e.g., new last message).
-
-```ts
-{
-  type: "CONVERSATION_UPDATE",
-  conversationPhone: "5511999998888",
-  conversation: { /* Conversation */ },
+  waMessageId: string,
+  status: "sent" | "delivered" | "read" | "failed",
+  timestamp: string, // ISO-8601
+  deliveredAt?: string | null,
+  readAt?: string | null,
 }
 ```
 
@@ -91,9 +123,11 @@ file is stored (or fails to download) and `metadata.media` is set. See
 ```ts
 {
   type: "MESSAGE_UPDATE",
-  message: { /* WhatsAppLogRecord with the new content and metadata */ },
+  message: WhatsAppLogRecord, // with the new content and metadata
 }
 ```
+
+The `SyncEvent` type also contains `CONVERSATION_UPDATE`. It is reserved and not sent today.
 
 ## Without Durable Objects
 
