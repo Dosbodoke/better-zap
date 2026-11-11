@@ -132,16 +132,28 @@ export function redactSecrets(
   );
 }
 
+// Meta's error bodies are a few levels deep. Anything nested deeper than this
+// is dropped rather than walked, so a pathological body cannot exhaust the stack.
+const MAX_REDACT_DEPTH = 32;
+
 /** Copies a parsed JSON body with secrets removed from every string and key. */
-function redactBody(data: unknown, secrets: Array<string | undefined>): unknown {
+function redactBody(
+  data: unknown,
+  secrets: Array<string | undefined>,
+  depth = 0,
+): unknown {
   if (typeof data === "string") return redactSecrets(data, secrets);
-  if (Array.isArray(data)) return data.map((item) => redactBody(item, secrets));
   if (typeof data !== "object" || data === null) return data;
+  if (depth >= MAX_REDACT_DEPTH) return REDACTED;
+
+  if (Array.isArray(data)) {
+    return data.map((item) => redactBody(item, secrets, depth + 1));
+  }
 
   return Object.fromEntries(
     Object.entries(data).map(([key, value]) => [
       redactSecrets(key, secrets),
-      redactBody(value, secrets),
+      redactBody(value, secrets, depth + 1),
     ]),
   );
 }

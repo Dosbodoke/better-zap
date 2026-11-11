@@ -507,6 +507,27 @@ describe("TemplateService", () => {
       diagnostics: { kind: "graph_error", code: 190, retryable: true },
     });
   });
+
+  it("reports an HTTP error for a deeply nested error body", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response("[".repeat(10_000) + "0" + "]".repeat(10_000), { status: 400 }),
+    );
+    const service = new TemplateService({
+      accessToken: "token_1",
+      wabaId: "111",
+      fetch: fetchMock as unknown as typeof fetch,
+    });
+
+    const result = await service.list();
+
+    expect(result).toMatchObject({
+      success: false,
+      error: "HTTP 400",
+      httpStatus: 400,
+      diagnostics: { kind: "http_error", httpStatus: 400, retryable: false },
+    });
+  });
 });
 
 describe("TemplateService.uploadHeaderMedia", () => {
