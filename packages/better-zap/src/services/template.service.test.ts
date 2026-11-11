@@ -458,6 +458,31 @@ describe("TemplateService", () => {
       diagnostics: { kind: "graph_error", code: 100, subcode: 2388024 },
     });
   });
+
+  it("removes the access token from a Meta error that echoes it", async () => {
+    const { service } = setup([
+      jsonResponse(
+        {
+          error: {
+            message: "Malformed access token token_1",
+            code: 190,
+            error_user_msg: "Check token_1",
+          },
+        },
+        400,
+      ),
+    ]);
+
+    const result = await service.list();
+
+    expect(result).toMatchObject({
+      success: false,
+      error: "Malformed access token [REDACTED]",
+      errorCode: 190,
+      errorUserMessage: "Check [REDACTED]",
+    });
+    expect(JSON.stringify(result)).not.toContain("token_1");
+  });
 });
 
 describe("TemplateService.uploadHeaderMedia", () => {

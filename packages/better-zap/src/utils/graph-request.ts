@@ -80,7 +80,12 @@ export async function graphRequest<TData>(
     }
 
     if (!response.ok) {
-      const graphError = readGraphError(data);
+      // Meta can echo the token back, as in "Malformed access token <token>".
+      const body = redactBody(data, [
+        input.token ?? undefined,
+        ...(input.secrets ?? []),
+      ]);
+      const graphError = readGraphError(body);
       const diagnostics = buildFailureDiagnostics(response.status, graphError);
       return {
         success: false,
@@ -96,7 +101,7 @@ export async function graphRequest<TData>(
           ? { errorUserMessage: graphError.userMessage }
           : {}),
         httpStatus: response.status,
-        details: data,
+        details: body,
         diagnostics,
       };
     }
@@ -127,6 +132,21 @@ export function redactSecrets(
       secret ? redacted.split(secret).join(REDACTED) : redacted,
     message,
   );
+}
+
+/** Removes secrets from a parsed JSON body. Returns the same value when it holds none. */
+function redactBody(data: unknown, secrets: Array<string | undefined>): unknown {
+  if (data === null || data === undefined) return data;
+
+  const text = JSON.stringify(data);
+  const redacted = redactSecrets(text, secrets);
+  if (redacted === text) return data;
+
+  try {
+    return JSON.parse(redacted);
+  } catch {
+    return REDACTED;
+  }
 }
 
 type GraphErrorFields = {
