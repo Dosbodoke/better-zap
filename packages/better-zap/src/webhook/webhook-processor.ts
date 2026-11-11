@@ -288,7 +288,15 @@ async function processEntry(
   log: Logger,
 ): Promise<void> {
   for (const change of entry.changes) {
-    await processChange(change, config, log);
+    try {
+      await processChange(change, config, log);
+    } catch (error) {
+      log.error("webhook.change_failed", {
+        entryId: entry.id,
+        field: change.field,
+        ...serializeError(error),
+      });
+    }
   }
 }
 
@@ -350,20 +358,34 @@ async function processMessagesChange(
 
   if (value.messages && value.messages.length > 0) {
     for (const message of value.messages) {
-      const contact = resolveContact(value.contacts, message);
-      await processIncomingMessage(
-        message,
-        contact,
-        value.metadata?.phone_number_id,
-        config,
-        log,
-      );
+      try {
+        const contact = resolveContact(value.contacts, message);
+        await processIncomingMessage(
+          message,
+          contact,
+          value.metadata?.phone_number_id,
+          config,
+          log,
+        );
+      } catch (error) {
+        log.error("webhook.message_failed", {
+          waMessageId: message.id,
+          ...serializeError(error),
+        });
+      }
     }
   }
 
   if (value.statuses && value.statuses.length > 0) {
     for (const status of value.statuses) {
-      await processStatusUpdate(status, config, log);
+      try {
+        await processStatusUpdate(status, config, log);
+      } catch (error) {
+        log.error("webhook.status_failed", {
+          waMessageId: status.id,
+          ...serializeError(error),
+        });
+      }
     }
   }
 
@@ -1377,7 +1399,11 @@ async function processStatusUpdate(
   log: Logger,
 ): Promise<void> {
   const firstError = status.errors?.[0];
-  const timestamp = new Date(parseInt(status.timestamp) * 1000).toISOString();
+  const parsedTimestamp = parseWebhookTimestamp(status.timestamp);
+  if (!parsedTimestamp) {
+    log.warn("webhook.status_invalid_timestamp", { waMessageId: status.id });
+  }
+  const timestamp = parsedTimestamp ?? new Date().toISOString();
   const errorMessage = firstError?.message;
   const errorCode = firstError?.code;
 
