@@ -182,7 +182,10 @@ await templates.list({ wabaId: tenant.wabaId });
 - Deleting an approved template blocks its name for 30 days. A `DISABLED` template cannot be deleted.
 - A business account can create 100 templates per hour.
 
+## Status changes
+
+Approval, rejection, pausing, quality changes and category changes are not returned by these methods. Meta sends them as webhooks, and Better Zap passes them to the `onTemplateStatusUpdate`, `onTemplateQualityUpdate`, `onTemplateCategoryUpdate` and `onTemplateComponentsUpdate` hooks. See [Template events](/docs/reference/webhook-events#template-events).
+
 ## Not covered yet
 
 - Uploading media for an image, video or document header.
-- Template webhooks, such as status and quality changes.

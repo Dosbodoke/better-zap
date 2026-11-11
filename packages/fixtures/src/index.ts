@@ -26,6 +26,12 @@ import { smbAppStateSyncContactAddFixture } from "./smb-app-state-sync-contact-a
 import { smbAppStateSyncContactRemoveFixture } from "./smb-app-state-sync-contact-remove";
 import { smbAppStateSyncErrorFixture } from "./smb-app-state-sync-error";
 import { smbMessageEchoFixture } from "./smb-message-echo";
+import { templateCategoryChangedFixture } from "./template-category-changed";
+import { templateCategoryScheduledFixture } from "./template-category-scheduled";
+import { templateComponentsUpdateFixture } from "./template-components-update";
+import { templateQualityUpdateFixture } from "./template-quality-update";
+import { templateStatusApprovedFixture } from "./template-status-approved";
+import { templateStatusRejectedFixture } from "./template-status-rejected";
 import { unknownPhoneNumberFixture } from "./unknown-phone-number";
 import { unsupportedMessageTypeFixture } from "./unsupported-message-type";
 
@@ -57,6 +63,12 @@ export { smbAppStateSyncContactAddFixture } from "./smb-app-state-sync-contact-a
 export { smbAppStateSyncContactRemoveFixture } from "./smb-app-state-sync-contact-remove";
 export { smbAppStateSyncErrorFixture } from "./smb-app-state-sync-error";
 export { smbMessageEchoFixture } from "./smb-message-echo";
+export { templateCategoryChangedFixture } from "./template-category-changed";
+export { templateCategoryScheduledFixture } from "./template-category-scheduled";
+export { templateComponentsUpdateFixture } from "./template-components-update";
+export { templateQualityUpdateFixture } from "./template-quality-update";
+export { templateStatusApprovedFixture } from "./template-status-approved";
+export { templateStatusRejectedFixture } from "./template-status-rejected";
 export { unknownPhoneNumberFixture } from "./unknown-phone-number";
 export { unsupportedMessageTypeFixture } from "./unsupported-message-type";
 export type * from "./types";
@@ -90,4 +102,14 @@ export const coexistenceWebhookFixtures = {
   malformedPayloadMissingObjectFixture,
   unknownPhoneNumberFixture,
   signatureTestPayloadFixture,
+};
+
+/** Template webhooks are addressed to a business account: no `metadata.phone_number_id`. */
+export const templateWebhookFixtures = {
+  templateStatusApprovedFixture,
+  templateStatusRejectedFixture,
+  templateQualityUpdateFixture,
+  templateCategoryScheduledFixture,
+  templateCategoryChangedFixture,
+  templateComponentsUpdateFixture,
 };

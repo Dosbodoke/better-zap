@@ -286,6 +286,23 @@ export {
   type WebhookProcessorConfig,
   type WebhookProcessorHooks,
 } from "./webhook/webhook-processor";
+export {
+  readTemplateCategoryUpdate,
+  readTemplateComponentsUpdate,
+  readTemplateQualityUpdate,
+  readTemplateStatusUpdate,
+  type TemplateCategoryUpdateContext,
+  type TemplateCategoryUpdateValue,
+  type TemplateComponentsUpdateContext,
+  type TemplateComponentsUpdateValue,
+  type TemplateQualityUpdateContext,
+  type TemplateQualityUpdateValue,
+  type TemplateStatusEvent,
+  type TemplateStatusReason,
+  type TemplateStatusUpdateContext,
+  type TemplateStatusUpdateValue,
+  type TemplateWebhookContext,
+} from "./webhook/template-events";
 
 export type {
   Awaitable,

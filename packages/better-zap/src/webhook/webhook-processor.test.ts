@@ -42,6 +42,10 @@ const mockOnCoexistenceAccountReconnected = vi.fn();
 const mockOnCoexistenceMessageEdit = vi.fn();
 const mockOnCoexistenceMessageRevoke = vi.fn();
 const mockOnCoexistenceUnsupportedMessage = vi.fn();
+const mockOnTemplateStatusUpdate = vi.fn();
+const mockOnTemplateQualityUpdate = vi.fn();
+const mockOnTemplateCategoryUpdate = vi.fn();
+const mockOnTemplateComponentsUpdate = vi.fn();
 const mockLogger = {
   logIncoming: vi.fn().mockResolvedValue(true),
   importMessage: vi.fn().mockResolvedValue("created"),
@@ -82,6 +86,10 @@ function createTestProcessor(overrides: Partial<WebhookProcessorConfig> = {}) {
       onCoexistenceMessageEdit: mockOnCoexistenceMessageEdit,
       onCoexistenceMessageRevoke: mockOnCoexistenceMessageRevoke,
       onCoexistenceUnsupportedMessage: mockOnCoexistenceUnsupportedMessage,
+      onTemplateStatusUpdate: mockOnTemplateStatusUpdate,
+      onTemplateQualityUpdate: mockOnTemplateQualityUpdate,
+      onTemplateCategoryUpdate: mockOnTemplateCategoryUpdate,
+      onTemplateComponentsUpdate: mockOnTemplateComponentsUpdate,
     },
     ...overrides,
   });
@@ -110,6 +118,30 @@ function makeWebhookPayload(overrides: any = {}, field = "messages") {
     ],
   };
 }
+
+function makeTemplateWebhookPayload(field: string, value: unknown, entryId = "102290129340398") {
+  return {
+    object: "whatsapp_business_account",
+    entry: [{ id: entryId, time: 1746169200, changes: [{ field, value }] }],
+  };
+}
+
+const templateStatusValue = {
+  event: "APPROVED",
+  message_template_id: 1689556908129832,
+  message_template_name: "order_confirmation",
+  message_template_language: "en-US",
+  reason: "NONE",
+  message_template_category: "UTILITY",
+};
+
+const templateQualityValue = {
+  previous_quality_score: "GREEN",
+  new_quality_score: "YELLOW",
+  message_template_id: 806312974732579,
+  message_template_name: "welcome_template",
+  message_template_language: "en-US",
+};
 
 function makeTextMessage(from = "5511999887766", body = "Oi") {
   return makeWebhookPayload({
@@ -1223,6 +1255,145 @@ describe("createWebhookProcessor", () => {
       await processor.process(payload);
 
       expect(mockOnMessage).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe("template webhooks", () => {
+    it("passes a status update to onTemplateStatusUpdate", async () => {
+      await processor.process(
+        makeTemplateWebhookPayload(
+          "message_template_status_update",
+          templateStatusValue,
+        ) as any,
+      );
+
+      expect(mockOnTemplateStatusUpdate).toHaveBeenCalledOnce();
+      expect(mockOnTemplateStatusUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          wabaId: "102290129340398",
+          templateName: "order_confirmation",
+          event: "APPROVED",
+        }),
+      );
+      expect(mockOnMessage).not.toHaveBeenCalled();
+      expect(mockOnStatusUpdate).not.toHaveBeenCalled();
+    });
+
+    it("passes a quality update to onTemplateQualityUpdate", async () => {
+      await processor.process(
+        makeTemplateWebhookPayload(
+          "message_template_quality_update",
+          templateQualityValue,
+        ) as any,
+      );
+
+      expect(mockOnTemplateQualityUpdate).toHaveBeenCalledOnce();
+      expect(mockOnTemplateQualityUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          previousQualityScore: "GREEN",
+          newQualityScore: "YELLOW",
+        }),
+      );
+    });
+
+    it("passes a category update to onTemplateCategoryUpdate", async () => {
+      await processor.process(
+        makeTemplateWebhookPayload("template_category_update", {
+          message_template_id: 278077987592734,
+          message_template_name: "welcome_template",
+          message_template_language: "en-US",
+          previous_category: "UTILITY",
+          new_category: "MARKETING",
+        }) as any,
+      );
+
+      expect(mockOnTemplateCategoryUpdate).toHaveBeenCalledOnce();
+      expect(mockOnTemplateCategoryUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ phase: "changed", currentCategory: "MARKETING" }),
+      );
+    });
+
+    it("passes a components update to onTemplateComponentsUpdate", async () => {
+      await processor.process(
+        makeTemplateWebhookPayload("message_template_components_update", {
+          message_template_id: 1315502779341834,
+          message_template_name: "order_shipped",
+          message_template_language: "en_US",
+          message_template_element: "Your order {{1}} has shipped.",
+        }) as any,
+      );
+
+      expect(mockOnTemplateComponentsUpdate).toHaveBeenCalledOnce();
+      expect(mockOnTemplateComponentsUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ body: "Your order {{1}} has shipped." }),
+      );
+    });
+
+    it("warns and calls no hook when a template webhook is malformed", async () => {
+      const { message_template_name: _, ...value } = templateStatusValue;
+
+      await processor.process(
+        makeTemplateWebhookPayload("message_template_status_update", value) as any,
+      );
+
+      expect(mockOnTemplateStatusUpdate).not.toHaveBeenCalled();
+      expect(mockLog.warn).toHaveBeenCalledWith("webhook.template_event_invalid", {
+        field: "message_template_status_update",
+        entryId: "102290129340398",
+      });
+    });
+
+    it("logs a template hook that rejects", async () => {
+      mockOnTemplateStatusUpdate.mockRejectedValueOnce(new Error("hook down"));
+
+      await expect(
+        processor.process(
+          makeTemplateWebhookPayload(
+            "message_template_status_update",
+            templateStatusValue,
+          ) as any,
+        ),
+      ).resolves.toBeUndefined();
+
+      expect(mockLog.error).toHaveBeenCalledWith(
+        "webhook.on_template_status_update_hook_failed",
+        expect.objectContaining({ message: "hook down" }),
+      );
+    });
+
+    it("keeps processing later template changes when a hook rejects", async () => {
+      mockOnTemplateStatusUpdate.mockRejectedValueOnce(new Error("hook down"));
+      const payload = makeTemplateWebhookPayload(
+        "message_template_status_update",
+        templateStatusValue,
+      );
+      payload.entry[0].changes.push({
+        field: "message_template_quality_update",
+        value: templateQualityValue,
+      });
+
+      await processor.process(payload as any);
+
+      expect(mockOnTemplateQualityUpdate).toHaveBeenCalledOnce();
+    });
+
+    it("ignores template webhooks when no template hook is set", async () => {
+      const processorWithoutTemplateHooks = createWebhookProcessor({
+        logger: mockLogger as any,
+        log: mockLog as any,
+        hooks: { onMessage: mockOnMessage, onStatusUpdate: mockOnStatusUpdate },
+      });
+
+      await expect(
+        processorWithoutTemplateHooks.process(
+          makeTemplateWebhookPayload(
+            "message_template_status_update",
+            templateStatusValue,
+          ) as any,
+        ),
+      ).resolves.toBeUndefined();
+
+      expect(mockLog.error).not.toHaveBeenCalled();
     });
   });
 });
