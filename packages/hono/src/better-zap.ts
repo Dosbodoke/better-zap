@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import {
   CoexistenceService,
   MessageLoggerService,
+  TemplateService,
   WhatsAppService,
 } from "better-zap";
 import type {
@@ -99,6 +100,9 @@ export function betterZap<
     createConversationSyncNotifier(conversationSync),
   );
   const whatsapp = new WhatsAppService(config, logger, log);
+  const templateService =
+    options.templateService ??
+    new TemplateService({ accessToken: config.token, wabaId: config.wabaId });
   const coexistence =
     options.coexistence && options.coexistence.enabled !== false
       ? options.coexistence.service ??
@@ -362,6 +366,15 @@ export function betterZap<
 
         return messages as UIMessage[];
       },
+    },
+    templates: {
+      list: (input) => templateService.list(input),
+      listAll: (input) => templateService.listAll(input),
+      get: (input) => templateService.get(input),
+      create: (input) => templateService.create(input),
+      update: (input) => templateService.update(input),
+      delete: (input) => templateService.delete(input),
+      deleteAllLanguages: (input) => templateService.deleteAllLanguages(input),
     },
   };
 

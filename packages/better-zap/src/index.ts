@@ -316,6 +316,7 @@ export type {
   BetterZapPluginInitContext,
   BetterZapPluginInitResult,
   BetterZapServices,
+  BetterZapTemplatesApi,
   BetterZapWebhookEventContext,
   BetterZapWebhookEventName,
   BetterZapWebhookEvents,
