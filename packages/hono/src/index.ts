@@ -1,5 +1,9 @@
 export { betterZap } from "./better-zap";
-export type { BetterZap, BetterZapConfig } from "./better-zap.types";
+export type {
+  BetterZap,
+  BetterZapConfig,
+  BetterZapVerifySignupState,
+} from "./better-zap.types";
 
 export {
   createWebhookHandler,

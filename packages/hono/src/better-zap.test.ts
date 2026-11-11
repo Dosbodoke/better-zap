@@ -1537,7 +1537,7 @@ describe("betterZap plugins", () => {
     expect(coexistenceStore.recordOnboardingSession).not.toHaveBeenCalled();
   });
 
-  it("rejects nonce and state mismatches before recording", async () => {
+  function makeSignupStateZap(verifySignupState?: (input: any) => any) {
     const coexistenceStore = makeCoexistenceStore();
     const service = {
       exchangeEmbeddedSignupCode: vi.fn(),
@@ -1553,6 +1553,7 @@ describe("betterZap plugins", () => {
       },
       coexistence: {
         service: service as any,
+        verifySignupState,
       },
       webhook: {
         onMessage: vi.fn().mockResolvedValue(undefined),
@@ -1560,25 +1561,110 @@ describe("betterZap plugins", () => {
       },
     });
 
-    const response = await sendRequest(
+    return { zap, coexistenceStore, service };
+  }
+
+  function postSignupCallback(
+    zap: ReturnType<typeof betterZap>,
+    body: unknown,
+    headers: Record<string, string> = {},
+  ) {
+    return sendRequest(
       zap,
       new Request(
         "http://localhost/api/whatsapp/coexistence/embedded-signup/callback",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            state: "actual-state",
-            expectedState: "expected-state",
-            session: { event: "CANCEL" },
-          }),
+          headers: { "Content-Type": "application/json", ...headers },
+          body: JSON.stringify(body),
         },
       ),
     );
+  }
+
+  it("ignores a caller-supplied expectedState", async () => {
+    const { zap, coexistenceStore } = makeSignupStateZap();
+
+    const response = await postSignupCallback(zap, {
+      state: "actual-state",
+      expectedState: "expected-state",
+      session: { event: "CANCEL" },
+    });
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toMatchObject({ status: "recorded" });
+    expect(coexistenceStore.recordOnboardingSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects the callback when verifySignupState returns false", async () => {
+    const verifySignupState = vi.fn().mockResolvedValue(false);
+    const { zap, coexistenceStore, service } =
+      makeSignupStateZap(verifySignupState);
+
+    const response = await postSignupCallback(zap, {
+      state: "s-1",
+      nonce: "n-1",
+      session: { event: "CANCEL" },
+    });
     const payload = await response.json();
 
     expect(response.status).toBe(400);
-    expect(payload).toEqual({ error: "state mismatch" });
+    expect(payload).toEqual({
+      error: "Invalid signup state",
+      code: "invalid_signup_state",
+    });
+    expect(service.exchangeEmbeddedSignupCode).not.toHaveBeenCalled();
+    expect(coexistenceStore.recordOnboardingSession).not.toHaveBeenCalled();
+  });
+
+  it("passes state, nonce and the request to verifySignupState", async () => {
+    const verifySignupState = vi.fn().mockResolvedValue(true);
+    const { zap } = makeSignupStateZap(verifySignupState);
+
+    await postSignupCallback(
+      zap,
+      { state: "s-1", nonce: "n-1", session: { event: "CANCEL" } },
+      { Cookie: "sid=abc" },
+    );
+
+    expect(verifySignupState).toHaveBeenCalledTimes(1);
+    const input = verifySignupState.mock.calls[0][0];
+    expect(input).toMatchObject({ state: "s-1", nonce: "n-1" });
+    expect(input.request).toBeInstanceOf(Request);
+    expect(input.request.headers.get("Cookie")).toBe("sid=abc");
+  });
+
+  it("continues when verifySignupState returns true", async () => {
+    const verifySignupState = vi.fn().mockResolvedValue(true);
+    const { zap, coexistenceStore } = makeSignupStateZap(verifySignupState);
+
+    const response = await postSignupCallback(
+      zap,
+      { state: "s-1", nonce: "n-1", session: { event: "CANCEL" } },
+      { Cookie: "sid=abc" },
+    );
+
+    expect(response.status).toBe(200);
+    expect(coexistenceStore.recordOnboardingSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("answers 500 when verifySignupState throws", async () => {
+    const verifySignupState = vi
+      .fn()
+      .mockRejectedValue(new Error("session store down"));
+    const { zap, coexistenceStore, service } =
+      makeSignupStateZap(verifySignupState);
+
+    const response = await postSignupCallback(zap, {
+      state: "s-1",
+      nonce: "n-1",
+      session: { event: "CANCEL" },
+    });
+    const payload = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(payload).toEqual({ error: "Signup state verification failed" });
     expect(service.exchangeEmbeddedSignupCode).not.toHaveBeenCalled();
     expect(coexistenceStore.recordOnboardingSession).not.toHaveBeenCalled();
   });

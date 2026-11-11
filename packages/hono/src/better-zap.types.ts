@@ -31,6 +31,23 @@ export type BetterZapAuthorizeAppRequest = (input: {
   env?: unknown;
 }) => boolean | Promise<boolean>;
 
+/**
+ * Checks the Embedded Signup `state` and `nonce` against values your server
+ * issued, for example ones stored in the user's session.
+ */
+export type BetterZapVerifySignupState = (input: {
+  /** `state` from the callback body. `undefined` when the client sent none. */
+  state: string | undefined;
+  /** `nonce` from the callback body. `undefined` when the client sent none. */
+  nonce: string | undefined;
+  /**
+   * The callback request, for reading cookies and headers. Its body has
+   * already been read; use `state` and `nonce` instead.
+   */
+  request: Request;
+  env?: unknown;
+}) => boolean | Promise<boolean>;
+
 export interface BetterZapConfig<
   TDatabase extends BetterZapDatabase = BetterZapDatabase,
   TPlugins extends readonly BetterZapPlugin<TDatabase, any, any>[] =
@@ -111,6 +128,15 @@ export interface BetterZapConfig<
      * instead of being silently ignored.
      */
     subscribeWabaAfterCodeExchange?: boolean;
+    /**
+     * Verifies the Embedded Signup `state` and `nonce` before anything is
+     * recorded or exchanged. Return `false` to reject the callback with `400`.
+     *
+     * Without it, `state` and `nonce` are stored with the onboarding session
+     * but not checked. Better Zap never compares them with values sent in the
+     * same request.
+     */
+    verifySignupState?: BetterZapVerifySignupState;
   };
   /**
    * Media download settings. Downloads only run when `database.media` is set.

@@ -284,6 +284,7 @@ export function betterZap<
       "subscribeWabaAfterCodeExchange",
       options.coexistence?.subscribeWabaAfterCodeExchange ?? true,
     );
+    c.set("verifySignupState", options.coexistence?.verifySignupState);
     c.set("mediaStore", database.media);
     c.set("mediaSignedUrlExpiresIn", options.media?.signedUrlExpiresIn);
     await next();

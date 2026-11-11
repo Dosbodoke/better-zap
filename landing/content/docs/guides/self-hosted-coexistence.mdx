@@ -96,6 +96,30 @@ provider or application vault. For simpler deployments, you can provide
 `accessToken` directly, but production apps usually need a credential provider
 that stores per-account tokens and returns only references.
 
+## Verifying the signup state
+
+The callback links a WhatsApp Business Account to whoever is signed in, so your
+app should prove the callback belongs to the signup flow that user started.
+Better Zap stores `state` and `nonce` with the onboarding session but does not
+check them unless you set `coexistence.verifySignupState`:
+
+```ts
+coexistence: {
+  appId: env.META_APP_ID,
+  appSecret: env.META_APP_SECRET,
+  credentials: createCredentialProvider(env),
+  // Your server issued `state` when the user opened the signup screen and
+  // stored it in their session. Compare it here.
+  verifySignupState: async ({ state, request }) => {
+    const session = await getSession(request, env);
+    return Boolean(state) && state === session?.signupState;
+  },
+},
+```
+
+The client must send that value as `state` in the callback body. A `false`
+result answers `400` with `code: "invalid_signup_state"`.
+
 ## App Routes
 
 These are server application routes, not Meta webhook routes. Protect them with
