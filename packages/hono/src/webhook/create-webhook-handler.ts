@@ -2,6 +2,7 @@ import { Hono, type Context, type ExecutionContext } from "hono";
 import { createWebhookProcessor, serializeError } from "better-zap";
 import type {
   BetterZapDatabase,
+  IncomingMessage,
   Logger,
   MessageLoggerService,
   WebhookMediaConfig,
@@ -36,6 +37,13 @@ export type WebhookConfig = WebhookProcessorHooks & {
    * Defaults to `c.executionCtx.waitUntil` when present, else `await`.
    */
   runInBackground?: (work: Promise<void>) => void | Promise<void>;
+  /**
+   * Turns an incoming message into the text stored as its `content` and
+   * passed to hooks as `ctx.content`. Also used for messages imported from
+   * coexistence history and echoes. Defaults to `getMessageContent`, which
+   * returns Brazilian Portuguese labels such as `[imagem]`.
+   */
+  resolveMessageContent?: (message: IncomingMessage) => string;
 };
 
 // ============================================
@@ -65,6 +73,7 @@ export function createWebhookHandler(
     log: config.log,
     database: config.database,
     media: config.media,
+    resolveMessageContent: config.resolveMessageContent,
     hooks: config,
   });
 

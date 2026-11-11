@@ -447,6 +447,28 @@ describe("WhatsAppService", () => {
       expect(body.template.components).toHaveLength(1);
     });
 
+    it("uses defaultTemplateLanguage when no language is passed", async () => {
+      const fetchMock = mockFetchOk();
+      vi.stubGlobal("fetch", fetchMock);
+
+      const { service } = makeService({ defaultTemplateLanguage: "en_US" });
+      await service.sendTemplate("5511999887766", "my_template");
+
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      expect(body.template.language.code).toBe("en_US");
+    });
+
+    it("prefers the language passed to the call over defaultTemplateLanguage", async () => {
+      const fetchMock = mockFetchOk();
+      vi.stubGlobal("fetch", fetchMock);
+
+      const { service } = makeService({ defaultTemplateLanguage: "en_US" });
+      await service.sendTemplate("5511999887766", "my_template", "es_AR");
+
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      expect(body.template.language.code).toBe("es_AR");
+    });
+
     it("logs failed sends when logging metadata is provided", async () => {
       const fetchMock = mockFetchError(
         500,

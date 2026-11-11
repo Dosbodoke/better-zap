@@ -163,6 +163,7 @@ export function betterZap<
     database,
     media,
     runInBackground: options.webhook.runInBackground,
+    resolveMessageContent: options.webhook.resolveMessageContent,
     ...composeWebhookHooks({
       plugins,
       userHooks: webhookHooks,

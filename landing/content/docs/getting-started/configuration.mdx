@@ -48,6 +48,7 @@ WhatsApp Cloud API credentials:
 | `appSecret` | `string` | App Secret from your Meta App Dashboard — used for HMAC-SHA256 signature verification |
 | `environment` | `string?` | Set to `"development"` to skip real API calls and return mock responses. Media downloads still run, since they send nothing |
 | `defaultCountry` | `"BR" \| false` | How numbers without a country code are read. Defaults to `"BR"`: a 10 or 11 digit number gets `55` in front. Set to `false` when you message numbers outside Brazil, and pass every number in international format |
+| `defaultTemplateLanguage` | `string?` | Language code used by template sends that pass none. Defaults to `"pt_BR"` |
 
 Better Zap stores one canonical phone per contact. Brazilian mobile numbers always use the 13-digit form with the ninth digit, in both directions. Apps outside Brazil should set `defaultCountry: false`, because with the default an 11-digit international number such as a US number without `+` is read as a Brazilian national number.
 
