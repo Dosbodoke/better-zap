@@ -132,7 +132,18 @@ export interface BetterZapConfig<
     signedUrlExpiresIn?: number;
   };
   basePath?: string;
-  authorizeAppRequest?: BetterZapAuthorizeAppRequest;
+  /**
+   * Guards every app route: everything under `basePath` except `/webhook`.
+   *
+   * - A function is called once per request. Return `true` to allow it.
+   *   `false` answers `401`, a throw answers `500`.
+   * - `"public"` turns the guard off. Use it only when something in front of
+   *   Better Zap already authenticates the request (a gateway, a private
+   *   network, your own middleware).
+   * - When omitted, app routes are closed and answer `401`. The webhook
+   *   routes keep working, so a webhook-only bot needs no value here.
+   */
+  authorizeAppRequest?: BetterZapAuthorizeAppRequest | "public";
   logger?: LoggerConfig;
 }
 

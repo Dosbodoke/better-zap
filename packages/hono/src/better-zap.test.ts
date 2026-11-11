@@ -542,6 +542,7 @@ describe("betterZap plugins", () => {
       .mockResolvedValue(conversation);
 
     const zap = betterZap({
+      authorizeAppRequest: "public",
       database: makeDatabase({ whatsappLog: store }),
       config: {
         token: "token",
@@ -772,8 +773,170 @@ describe("betterZap plugins", () => {
     );
   });
 
+  it("closes app routes when authorizeAppRequest is omitted", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const zap = betterZap({
+      database: makeDatabase(),
+      config: {
+        token: "token",
+        phoneId: "phone-id",
+        webhookToken: "verify-token",
+        appSecret: TEST_META_APP_SECRET,
+      },
+      webhook: {
+        onMessage: vi.fn().mockResolvedValue(undefined),
+        onStatusUpdate: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+
+    const response = await sendRequest(
+      zap,
+      new Request("http://localhost/api/whatsapp/send/text", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          to: "5511999887766",
+          body: "Hello!",
+        }),
+      }),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(payload).toEqual({
+      error: "Unauthorized",
+      code: "app_authorization_not_configured",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("closes read routes when authorizeAppRequest is omitted", async () => {
+    const zap = betterZap({
+      database: makeDatabase(),
+      config: {
+        token: "token",
+        phoneId: "phone-id",
+        webhookToken: "verify-token",
+        appSecret: TEST_META_APP_SECRET,
+      },
+      webhook: {
+        onMessage: vi.fn().mockResolvedValue(undefined),
+        onStatusUpdate: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+
+    const response = await sendRequest(
+      zap,
+      new Request("http://localhost/api/whatsapp/conversations"),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(payload).toEqual({
+      error: "Unauthorized",
+      code: "app_authorization_not_configured",
+    });
+  });
+
+  it("logs a warning when a closed app route is hit", async () => {
+    const log = vi.fn();
+
+    const zap = betterZap({
+      database: makeDatabase(),
+      config: {
+        token: "token",
+        phoneId: "phone-id",
+        webhookToken: "verify-token",
+        appSecret: TEST_META_APP_SECRET,
+      },
+      webhook: {
+        onMessage: vi.fn().mockResolvedValue(undefined),
+        onStatusUpdate: vi.fn().mockResolvedValue(undefined),
+      },
+      logger: {
+        log,
+      },
+    });
+
+    await sendRequest(
+      zap,
+      new Request("http://localhost/api/whatsapp/conversations"),
+    );
+
+    expect(log).toHaveBeenCalledWith(
+      "warn",
+      "app_api.authorization_not_configured",
+      expect.objectContaining({
+        method: "GET",
+        path: "/api/whatsapp/conversations",
+      }),
+    );
+  });
+
+  it("keeps webhook routes open when authorizeAppRequest is omitted", async () => {
+    const onMessage = vi.fn().mockResolvedValue(undefined);
+
+    const zap = betterZap({
+      database: makeDatabase(),
+      config: {
+        token: "token",
+        phoneId: "phone-id",
+        webhookToken: "verify-token",
+        appSecret: TEST_META_APP_SECRET,
+      },
+      webhook: {
+        onMessage,
+        onStatusUpdate: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+
+    const verification = await sendRequest(
+      zap,
+      new Request(
+        "http://localhost/api/whatsapp/webhook?hub.mode=subscribe&hub.verify_token=verify-token&hub.challenge=abc",
+      ),
+    );
+
+    expect(verification.status).toBe(200);
+    expect(await verification.text()).toBe("abc");
+
+    const delivery = await postWebhook(zap, makeTextMessage());
+
+    expect(delivery.status).toBe(200);
+    expect(onMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens app routes when authorizeAppRequest is "public"', async () => {
+    const zap = betterZap({
+      authorizeAppRequest: "public",
+      database: makeDatabase(),
+      config: {
+        token: "token",
+        phoneId: "phone-id",
+        webhookToken: "verify-token",
+        appSecret: TEST_META_APP_SECRET,
+      },
+      webhook: {
+        onMessage: vi.fn().mockResolvedValue(undefined),
+        onStatusUpdate: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+
+    const response = await sendRequest(
+      zap,
+      new Request("http://localhost/api/whatsapp/conversations"),
+    );
+
+    expect(response.status).toBe(200);
+  });
+
   it("returns 501 for coexistence app routes when coexistence is not configured", async () => {
     const zap = betterZap({
+      authorizeAppRequest: "public",
       database: makeDatabase(),
       config: {
         token: "token",
@@ -833,6 +996,7 @@ describe("betterZap plugins", () => {
     };
 
     const zap = betterZap({
+      authorizeAppRequest: "public",
       database: makeDatabase({ coexistence: coexistenceStore }),
       config: {
         token: "token",
@@ -979,6 +1143,7 @@ describe("betterZap plugins", () => {
     };
 
     const zap = betterZap({
+      authorizeAppRequest: "public",
       database: makeDatabase({ coexistence: coexistenceStore }),
       config: {
         token: "token",
@@ -1092,6 +1257,7 @@ describe("betterZap plugins", () => {
     };
 
     const zap = betterZap({
+      authorizeAppRequest: "public",
       database: makeDatabase({ coexistence: coexistenceStore }),
       config: {
         token: "token",
@@ -1155,6 +1321,7 @@ describe("betterZap plugins", () => {
     };
 
     const zap = betterZap({
+      authorizeAppRequest: "public",
       database: makeDatabase({ coexistence: coexistenceStore }),
       config: {
         token: "token",
@@ -1214,6 +1381,7 @@ describe("betterZap plugins", () => {
     };
 
     const zap = betterZap({
+      authorizeAppRequest: "public",
       database: makeDatabase({ coexistence: coexistenceStore }),
       config: {
         token: "token",
@@ -1265,6 +1433,7 @@ describe("betterZap plugins", () => {
       exchangeEmbeddedSignupCode: vi.fn(),
     };
     const zap = betterZap({
+      authorizeAppRequest: "public",
       database: makeDatabase({ coexistence: coexistenceStore }),
       config: {
         token: "token",
@@ -1317,6 +1486,7 @@ describe("betterZap plugins", () => {
       exchangeEmbeddedSignupCode: vi.fn(),
     };
     const zap = betterZap({
+      authorizeAppRequest: "public",
       database: makeDatabase({ coexistence: coexistenceStore }),
       config: {
         token: "token",
@@ -1373,6 +1543,7 @@ describe("betterZap plugins", () => {
       exchangeEmbeddedSignupCode: vi.fn(),
     };
     const zap = betterZap({
+      authorizeAppRequest: "public",
       database: makeDatabase({ coexistence: coexistenceStore }),
       config: {
         token: "token",
@@ -1417,6 +1588,7 @@ describe("betterZap plugins", () => {
       exchangeEmbeddedSignupCode: vi.fn(),
     };
     const zap = betterZap({
+      authorizeAppRequest: "public",
       database: makeDatabase(),
       config: {
         token: "token",
@@ -1463,6 +1635,7 @@ describe("betterZap plugins", () => {
       }),
     };
     const zap = betterZap({
+      authorizeAppRequest: "public",
       database: makeDatabase(),
       config: {
         token: "token",
@@ -1511,6 +1684,7 @@ describe("betterZap plugins", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const zap = betterZap({
+      authorizeAppRequest: "public",
       database: makeDatabase({ coexistence: coexistenceStore }),
       config: {
         token: "token",
@@ -1579,6 +1753,7 @@ describe("betterZap plugins", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const zap = betterZap({
+      authorizeAppRequest: "public",
       database: makeDatabase({ coexistence: coexistenceStore }),
       config: {
         token: "token",
@@ -1646,6 +1821,7 @@ describe("betterZap plugins", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const zap = betterZap({
+      authorizeAppRequest: "public",
       database: makeDatabase({ coexistence: coexistenceStore }),
       config: {
         token: "token",
@@ -1697,6 +1873,7 @@ describe("betterZap plugins", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const zap = betterZap({
+      authorizeAppRequest: "public",
       database: makeDatabase({ coexistence: coexistenceStore }),
       config: {
         token: "token",
@@ -1748,6 +1925,7 @@ describe("betterZap plugins", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const zap = betterZap({
+      authorizeAppRequest: "public",
       database: makeDatabase({ coexistence: coexistenceStore }),
       config: {
         token: "token",
@@ -1804,6 +1982,7 @@ describe("betterZap plugins", () => {
     });
 
     const zap = betterZap({
+      authorizeAppRequest: "public",
       database: makeDatabase({ coexistence: coexistenceStore }),
       config: {
         token: "token",
@@ -1892,6 +2071,7 @@ describe("betterZap plugins", () => {
     );
 
     const zap = betterZap({
+      authorizeAppRequest: "public",
       database: makeDatabase({ whatsappLog: store }),
       config: {
         token: "token",

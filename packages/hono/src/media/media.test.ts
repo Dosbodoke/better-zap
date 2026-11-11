@@ -926,7 +926,10 @@ describe("GET /api/whatsapp/media/:waMessageId", () => {
   it("returns 404 when no MediaStore is configured", async () => {
     stubMeta();
     const logs = createLogStore();
-    const { zap } = createZap({ database: { whatsappLog: logs.store } });
+    const { zap } = createZap({
+      database: { whatsappLog: logs.store },
+      extra: { authorizeAppRequest: "public" },
+    });
     await postWebhook(zap, messagesPayload(imageMessage));
 
     const response = await zap.handler(

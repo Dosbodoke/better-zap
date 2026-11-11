@@ -291,25 +291,42 @@ export function betterZap<
 
   app.route("/webhook", webhookRouter);
 
-  if (options.authorizeAppRequest) {
-    app.use("*", async (c, next) => {
-      try {
-        const allowed = await options.authorizeAppRequest?.({
-          request: c.req.raw,
-          env: c.env,
-        });
+  const authorizeAppRequest = options.authorizeAppRequest;
 
-        if (!allowed) {
-          return c.json({ error: "Unauthorized" }, 401);
-        }
+  // Registered after the webhook router and before every app route, so it
+  // guards the app routes only. A route registered above this line is public.
+  app.use("*", async (c, next) => {
+    if (authorizeAppRequest === "public") {
+      return next();
+    }
 
-        await next();
-      } catch (error) {
-        log.error("app_api.authorization_failed", serializeError(error));
-        return c.json({ error: "Authorization failed" }, 500);
+    if (typeof authorizeAppRequest !== "function") {
+      log.warn("app_api.authorization_not_configured", {
+        method: c.req.method,
+        path: c.req.path,
+      });
+      return c.json(
+        { error: "Unauthorized", code: "app_authorization_not_configured" },
+        401,
+      );
+    }
+
+    try {
+      const allowed = await authorizeAppRequest({
+        request: c.req.raw,
+        env: c.env,
+      });
+
+      if (!allowed) {
+        return c.json({ error: "Unauthorized" }, 401);
       }
-    });
-  }
+
+      await next();
+    } catch (error) {
+      log.error("app_api.authorization_failed", serializeError(error));
+      return c.json({ error: "Authorization failed" }, 500);
+    }
+  });
 
   app.post("/send/text", handleSendText);
   app.post("/send/template", createSendTemplateHandler(templates));
