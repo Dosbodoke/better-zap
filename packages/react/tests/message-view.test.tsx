@@ -171,6 +171,13 @@ describe("MessageView standalone (no WhatsappDashboard)", () => {
     expect(screen.queryByText("Better Zap")).toBeNull();
   });
 
+  it("MessageViewEmpty has no decorative border and keeps className", () => {
+    const { container } = render(<MessageViewEmpty className="custom-empty" />);
+    const root = container.firstElementChild;
+    expect(root?.className).not.toContain("border-");
+    expect(root?.className).toContain("custom-empty");
+  });
+
   it("MessageViewContent renders children standalone", () => {
     render(
       <MessageViewContent>
