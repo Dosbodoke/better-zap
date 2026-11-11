@@ -481,7 +481,7 @@ export function MessageViewEmpty({
   return (
     <div
       className={cn(
-        "relative flex flex-1 flex-col items-center justify-center bg-[#f0f2f5] text-[#667781] p-6 border-b-[6px] border-[#25d366]",
+        "relative flex flex-1 flex-col items-center justify-center bg-[#f0f2f5] text-[#667781] p-6",
         className,
       )}
       {...props}
