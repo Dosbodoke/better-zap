@@ -3,6 +3,7 @@ import type {
   MessageLoggerService,
   WhatsAppLogStore,
 } from "./services/message-logger.service";
+import type { TemplateService } from "./services/template.service";
 import type {
   OutgoingLoggingMetadata,
   WhatsAppService,
@@ -39,6 +40,11 @@ export interface BetterZapDatabase {
 export type BetterZapCoreConfig = WhatsAppConfig & {
   webhookToken: string;
   appSecret: string;
+  /**
+   * WhatsApp Business Account ID. `api.templates` uses it when a call passes
+   * no `wabaId`. Messaging does not need it.
+   */
+  wabaId?: string;
 };
 
 type UnionToIntersection<TUnion> = (
@@ -188,6 +194,12 @@ type BetterZapTemplateSendMethod<TTemplates extends TemplateRegistry> =
         opts: TypedTemplateSendOptions<TTemplates, TName>,
       ) => Promise<SendResult>;
 
+/** Template management methods. See `TemplateService`. */
+export type BetterZapTemplatesApi = Pick<
+  TemplateService,
+  "list" | "listAll" | "get" | "create" | "update" | "delete" | "deleteAllLanguages"
+>;
+
 export interface BetterZapApi<TTemplates extends TemplateRegistry = {}> {
   send: {
     text(
@@ -242,4 +254,10 @@ export interface BetterZapApi<TTemplates extends TemplateRegistry = {}> {
       opts?: { cursor?: string; limit?: number },
     ): Promise<UIMessage[]>;
   };
+  /**
+   * Create, list, edit and delete message templates in Meta.
+   * Not to be confused with the `templates` option of `betterZap()`, which is
+   * the typed registry used by `send.template`.
+   */
+  templates: BetterZapTemplatesApi;
 }

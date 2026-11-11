@@ -22,6 +22,43 @@ Every method also accepts `wabaId` and `accessToken`. A value passed to a call w
 
 Templates keep Meta's own shape: snake_case keys and upper-case values such as `"UTILITY"` and `"BODY"`. A template read with `get` can be changed and passed back to `update` as it is.
 
+## With betterZap()
+
+An app that uses `betterZap()` from `@better-zap/hono` does not need its own `TemplateService`. Set `config.wabaId` and call the same methods on `zap.api.templates`. It uses `config.token`.
+
+```ts
+import { betterZap } from "@better-zap/hono";
+
+const zap = betterZap({
+  database,
+  config: {
+    token: env.WHATSAPP_TOKEN,
+    phoneId: env.WHATSAPP_PHONE_ID,
+    webhookToken: env.WHATSAPP_VERIFY_TOKEN,
+    appSecret: env.WHATSAPP_APP_SECRET,
+    wabaId: env.WHATSAPP_BUSINESS_ACCOUNT_ID,
+  },
+  webhook: { /* ... */ },
+});
+
+const result = await zap.api.templates.create({
+  template: {
+    name: "order_confirmation",
+    language: "en_US",
+    category: "UTILITY",
+    components: [{ type: "BODY", text: "Your order is confirmed." }],
+  },
+});
+```
+
+Each method returns the same result as the `TemplateService` method of the same name. Without `config.wabaId`, a call that passes no `wabaId` returns a `configuration_error` failure; `betterZap()` itself starts without it. `environment: "development"` does not mock these calls: they always reach Meta.
+
+`api.templates` is server-side only. `betterZap()` adds no HTTP route and `createZapClient` has no method for it, because template management can delete a business's templates and app routes cannot yet be authorized per operation.
+
+`api.templates` manages templates in Meta. It is not the `templates` option of `betterZap()`, which is the typed registry that [`send.template`](/docs/messages/send-template) uses to send them.
+
+To manage [several business accounts](#several-business-accounts), pass your own service as the `templateService` option, for example a `TemplateService` with a `tokenProvider`.
+
 ## Methods
 
 ### `list`
