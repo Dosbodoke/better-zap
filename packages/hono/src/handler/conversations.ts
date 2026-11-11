@@ -1,6 +1,5 @@
 import type { Context } from "hono";
 import {
-  formatPhone,
   normalizeConversationRecord,
   normalizeConversationRecords,
   serializeError,
@@ -26,7 +25,7 @@ export async function handleGetConversation(c: Context<BetterZapEnv>) {
     }
 
     const store = c.get("store");
-    const normalized = formatPhone(decodeURIComponent(phone));
+    const normalized = c.get("whatsapp").normalizePhone(decodeURIComponent(phone));
     const conversation = await store.getConversationByPhone(normalized);
     if (!conversation) {
       return c.json({ error: "Conversation not found" }, 404);
@@ -47,7 +46,7 @@ export async function handleGetMessages(c: Context<BetterZapEnv>) {
     }
 
     const store = c.get("store");
-    const normalized = formatPhone(decodeURIComponent(phone));
+    const normalized = c.get("whatsapp").normalizePhone(decodeURIComponent(phone));
     const conversation = await store.getConversationByPhone(normalized);
     if (!conversation) {
       return c.json({ error: "Conversation not found" }, 404);

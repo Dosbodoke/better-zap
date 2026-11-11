@@ -585,6 +585,36 @@ describe("betterZap plugins", () => {
     });
   });
 
+  it("looks up a conversation by the normalized phone", async () => {
+    const store = makeStore();
+    store.getConversationByPhone = vi
+      .fn()
+      .mockResolvedValue(makeConversationRecord());
+
+    const zap = betterZap({
+      authorizeAppRequest: "public",
+      database: makeDatabase({ whatsappLog: store }),
+      config: {
+        token: "token",
+        phoneId: "phone-id",
+        webhookToken: "verify-token",
+        appSecret: TEST_META_APP_SECRET,
+      },
+      webhook: {
+        onMessage: vi.fn().mockResolvedValue(undefined),
+        onStatusUpdate: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+
+    const response = await sendRequest(
+      zap,
+      new Request("http://localhost/api/whatsapp/conversations/553188887777"),
+    );
+
+    expect(response.status).toBe(200);
+    expect(store.getConversationByPhone).toHaveBeenCalledWith("5531988887777");
+  });
+
   it("returns 401 and does not send to Meta when app API auth denies text sends", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);

@@ -264,6 +264,54 @@ describe("createWebhookProcessor", () => {
     expect(mockOnMessage).not.toHaveBeenCalled();
   });
 
+  it("imports history messages sent from a business number outside Brazil", async () => {
+    processor = createTestProcessor({
+      database: {
+        whatsappLog: {} as any,
+        coexistence: mockCoexistenceStore as any,
+      },
+    });
+
+    await processor.process(
+      makeWebhookPayload(
+        {
+          metadata: {
+            display_phone_number: "447911123456",
+            phone_number_id: "123456",
+          },
+          request_id: "req_history_uk",
+          history: [
+            {
+              messages: [
+                {
+                  from: "447911123456",
+                  to: "447700900123",
+                  id: "wamid.history.uk",
+                  timestamp: "1700000000",
+                  type: "text",
+                  text: { body: "sent from the app" },
+                },
+              ],
+            },
+          ],
+        },
+        "history",
+      ) as any,
+    );
+
+    expect(mockLogger.importMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        phone: "447700900123",
+        waMessageId: "wamid.history.uk",
+        direction: "outgoing",
+      }),
+    );
+    expect(mockLog.error).not.toHaveBeenCalledWith(
+      "webhook.coexistence_import_failed",
+      expect.anything(),
+    );
+  });
+
   it("calls history hooks but skips persistence when coexistence storage is absent", async () => {
     await processor.process(
       makeWebhookPayload(

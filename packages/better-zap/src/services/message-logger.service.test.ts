@@ -218,6 +218,72 @@ describe("MessageLoggerService.setMessageMedia", () => {
   });
 });
 
+describe("MessageLoggerService phone normalization", () => {
+  function setup() {
+    const { store } = createMemoryStore();
+    const createWhatsAppLog = vi.spyOn(store, "createWhatsAppLog");
+    const logger = new MessageLoggerService(store, noopLogger);
+    return { store, createWhatsAppLog, logger };
+  }
+
+  it("stores incoming 12-digit Brazilian mobile numbers with the ninth digit", async () => {
+    const { createWhatsAppLog, logger } = setup();
+
+    await logger.logIncoming({
+      phone: "553188887777",
+      waMessageId: "wamid.incoming",
+      content: "Oi",
+      sentAt: "2026-07-01T00:00:00.000Z",
+    });
+
+    expect(createWhatsAppLog).toHaveBeenCalledWith(
+      expect.objectContaining({ phone: "5531988887777" }),
+    );
+  });
+
+  it("stores imported 12-digit Brazilian mobile numbers with the ninth digit", async () => {
+    const { createWhatsAppLog, logger } = setup();
+
+    await logger.importMessage({ ...placeholder, phone: "553188887777" });
+
+    expect(createWhatsAppLog).toHaveBeenCalledWith(
+      expect.objectContaining({ phone: "5531988887777" }),
+    );
+  });
+
+  it("passes business-scoped user IDs through unchanged", async () => {
+    const { createWhatsAppLog, logger } = setup();
+
+    await logger.importMessage({
+      ...placeholder,
+      phone: "US.13491208655302741918",
+    });
+
+    expect(createWhatsAppLog).toHaveBeenCalledWith(
+      expect.objectContaining({ phone: "US.13491208655302741918" }),
+    );
+  });
+
+  it("looks up the free-form window by the normalized phone", async () => {
+    const { store, logger } = setup();
+
+    await logger.getFreeformMessageWindow("553188887777");
+
+    expect(store.getConversationByPhone).toHaveBeenCalledWith("5531988887777");
+  });
+
+  it("checks recent outgoing messages by the normalized phone", async () => {
+    const { store, logger } = setup();
+
+    await logger.hasRecentOutgoingMessage("553188887777");
+
+    expect(store.hasRecentOutgoingMessage).toHaveBeenCalledWith(
+      "5531988887777",
+      24,
+    );
+  });
+});
+
 describe("media placeholder helpers", () => {
   it("detects placeholder messages", () => {
     expect(isMediaPlaceholder({ type: "media_placeholder" })).toBe(true);

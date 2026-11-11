@@ -21,7 +21,6 @@ import type {
 import {
   createLogger,
   EMPTY_TEMPLATE_REGISTRY,
-  formatPhone,
   hasConfiguredTemplates,
   normalizeConversationRecord,
   normalizeConversationRecords,
@@ -438,7 +437,7 @@ export function betterZap<
         normalizeConversationRecords(await database.whatsappLog.getConversations()),
       get: async (phone: string) => {
         const conversation = await database.whatsappLog.getConversationByPhone(
-          formatPhone(phone),
+          whatsapp.normalizePhone(phone),
         );
         return conversation ? normalizeConversationRecord(conversation) : null;
       },
@@ -447,7 +446,7 @@ export function betterZap<
         opts?: { cursor?: string; limit?: number },
       ) => {
         const conversation = await database.whatsappLog.getConversationByPhone(
-          formatPhone(phone),
+          whatsapp.normalizePhone(phone),
         );
         if (!conversation) {
           return [];

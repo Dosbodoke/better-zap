@@ -105,8 +105,32 @@ describe("WhatsAppService", () => {
       expect(formatPhone("+55 (11) 99988-7766")).toBe("5511999887766");
     });
 
-    it("throws for non-Brazilian international numbers", () => {
-      expect(() => formatPhone("+1234567890123")).toThrow("[formatPhone]");
+    it("returns international numbers as digits", () => {
+      expect(formatPhone("+1234567890123")).toBe("1234567890123");
+    });
+  });
+
+  describe("normalizePhone", () => {
+    it("keeps numbers as given when defaultCountry is false", async () => {
+      const fetchMock = mockFetchOk();
+      vi.stubGlobal("fetch", fetchMock);
+
+      const { service } = makeService({ defaultCountry: false });
+      await service.sendTemplate("14155552671", "my_template", "en_US");
+
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      expect(body.to).toBe("14155552671");
+    });
+
+    it("reads national numbers as Brazilian by default", async () => {
+      const fetchMock = mockFetchOk();
+      vi.stubGlobal("fetch", fetchMock);
+
+      const { service } = makeService();
+      await service.sendTemplate("11999887766", "my_template", "pt_BR");
+
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      expect(body.to).toBe("5511999887766");
     });
   });
 

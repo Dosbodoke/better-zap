@@ -195,7 +195,12 @@ export {
   type LinkPreview,
 } from "./link-preview";
 
-export { formatPhone } from "./utils/phone";
+export {
+  formatPhone,
+  normalizePhone,
+  normalizeWaId,
+  type NormalizePhoneOptions,
+} from "./utils/phone";
 export {
   MEDIA_PLACEHOLDER_TYPE,
   hasPendingMedia,
