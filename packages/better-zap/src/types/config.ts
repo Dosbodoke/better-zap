@@ -12,4 +12,9 @@ export interface WhatsAppConfig {
    * See `NormalizePhoneOptions.defaultCountry`.
    */
   defaultCountry?: "BR" | false;
+  /**
+   * Language code `sendTemplate` uses when a call passes none.
+   * Defaults to `"pt_BR"`.
+   */
+  defaultTemplateLanguage?: string;
 }

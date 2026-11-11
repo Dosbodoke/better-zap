@@ -62,6 +62,31 @@ Better Zap extracts human-readable content from all WhatsApp message types. The 
 | `media_placeholder` | `[mídia]` |
 | any other type | `[<type>]`, for example `[contacts]` |
 
+### Custom labels
+
+The labels above are Brazilian Portuguese by default. Set `webhook.resolveMessageContent` to replace them: its return value is stored as the message's `content` and passed to hooks as `ctx.content`, for incoming messages and for messages imported from coexistence history.
+
+```ts
+import { betterZap } from "@better-zap/hono";
+import { getMessageContent } from "better-zap";
+
+const zap = betterZap({
+  // ...config
+  webhook: {
+    resolveMessageContent: (message) => {
+      if (message.type === "image") return message.image?.caption ?? "[image]";
+      if (message.type === "audio") return "[audio]";
+      if (message.type === "sticker") return "[sticker]";
+      return getMessageContent(message); // built-in label for everything else
+    },
+    onMessage: async (ctx) => {
+      // ctx.content is what resolveMessageContent returned
+    },
+    onStatusUpdate: async () => {},
+  },
+});
+```
+
 ## onStatusUpdate
 
 Called when a message you sent changes status (sent, delivered, read, or failed).

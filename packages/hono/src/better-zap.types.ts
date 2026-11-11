@@ -5,6 +5,7 @@ import type {
   BetterZapPlugin,
   BetterZapServices,
   BetterZapWebhookHooks,
+  IncomingMessage,
   InferBetterZapPluginContext,
   InferBetterZapPluginServices,
   LoggerConfig,
@@ -59,6 +60,13 @@ export interface BetterZapConfig<
      * long-running Node server pass `(work) => { void work; }`.
      */
     runInBackground?: (work: Promise<void>) => void | Promise<void>;
+    /**
+     * Turns an incoming message into the text stored as its `content` and
+     * passed to hooks as `ctx.content`. Also used for messages imported from
+     * coexistence history and echoes. Defaults to `getMessageContent`, which
+     * returns Brazilian Portuguese labels such as `[imagem]`.
+     */
+    resolveMessageContent?: (message: IncomingMessage) => string;
   };
   coexistence?: {
     enabled?: boolean;

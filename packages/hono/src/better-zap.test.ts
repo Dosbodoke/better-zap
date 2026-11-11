@@ -305,6 +305,61 @@ describe("betterZap plugins", () => {
     ]);
   });
 
+  it("uses webhook.resolveMessageContent for stored content and ctx.content", async () => {
+    const store = makeStore();
+    const onMessage = vi.fn().mockResolvedValue(undefined);
+
+    const zap = betterZap({
+      database: makeDatabase({ whatsappLog: store }),
+      config: {
+        token: "token",
+        phoneId: "phone-id",
+        webhookToken: "verify-token",
+        appSecret: TEST_META_APP_SECRET,
+      },
+      webhook: {
+        resolveMessageContent: () => "custom label",
+        onMessage,
+        onStatusUpdate: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+
+    const response = await postWebhook(zap, makeTextMessage());
+
+    expect(response.status).toBe(200);
+    expect(store.createWhatsAppLog).toHaveBeenCalledWith(
+      expect.objectContaining({ content: "custom label" }),
+    );
+    expect(onMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ content: "custom label" }),
+    );
+  });
+
+  it("keeps the built-in labels when resolveMessageContent is not set", async () => {
+    const onMessage = vi.fn().mockResolvedValue(undefined);
+
+    const zap = betterZap({
+      database: makeDatabase(),
+      config: {
+        token: "token",
+        phoneId: "phone-id",
+        webhookToken: "verify-token",
+        appSecret: TEST_META_APP_SECRET,
+      },
+      webhook: {
+        onMessage,
+        onStatusUpdate: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+
+    const response = await postWebhook(zap, makeTextMessage("Oi"));
+
+    expect(response.status).toBe(200);
+    expect(onMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ content: "Oi" }),
+    );
+  });
+
   it("isolates plugin hook failures and still invokes later hooks and the user webhook", async () => {
     const callOrder: string[] = [];
 

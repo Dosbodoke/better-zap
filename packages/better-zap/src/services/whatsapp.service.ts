@@ -51,6 +51,7 @@ export class WhatsAppService {
   private token: string;
   private isDev: boolean;
   private defaultCountry: "BR" | false;
+  private defaultTemplateLanguage: string;
   private logger: MessageLoggerService;
   private log: Logger;
 
@@ -63,6 +64,7 @@ export class WhatsAppService {
     this.token = config.token;
     this.isDev = config.environment === "development";
     this.defaultCountry = config.defaultCountry ?? "BR";
+    this.defaultTemplateLanguage = config.defaultTemplateLanguage ?? "pt_BR";
     this.logger = logger;
     this.log = log;
   }
@@ -127,7 +129,7 @@ export class WhatsAppService {
   async sendTemplate(
     to: string,
     templateName: string,
-    languageCode: string = "pt_BR",
+    languageCode: string = this.defaultTemplateLanguage,
     components?: TemplateComponent[],
     logging?: OutgoingLoggingMetadata,
   ): Promise<SendResult> {
