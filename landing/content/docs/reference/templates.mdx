@@ -156,6 +156,57 @@ Deletes the template in every language.
 await templates.deleteAllLanguages({ name: "order_confirmation" });
 ```
 
+## Media headers
+
+A template whose header is an image, a video or a document must be created with a sample file. Meta does not take the file in the `create` call. The file is first uploaded through Meta's Resumable Upload API, which returns a handle, and the handle goes into the header's `example.header_handle`. `uploadHeaderMedia` does the upload and returns the handle.
+
+```ts
+const upload = await templates.uploadHeaderMedia({
+  file: await fetch(sampleImageUrl).then((response) => response.blob()),
+  fileName: "order-banner.png",
+  fileType: "image/png",
+});
+if (!upload.success) throw new Error(upload.error);
+
+const result = await templates.create({
+  template: {
+    name: "order_shipped",
+    language: "en_US",
+    category: "UTILITY",
+    components: [
+      {
+        type: "HEADER",
+        format: "IMAGE",
+        example: { header_handle: [upload.data.handle] },
+      },
+      {
+        type: "BODY",
+        text: "Your order {{1}} has shipped.",
+        example: { body_text: [["A-1042"]] },
+      },
+    ],
+  },
+});
+```
+
+`file` is a `Blob`, an `ArrayBuffer` or a `Uint8Array`. `fileType` is one of `image/jpeg`, `image/jpg`, `image/png`, `video/mp4` and `application/pdf`. Meta enforces the size limit for each type and returns an error when a file is too large.
+
+The upload is addressed to the Meta **app**, not to the business account. Set the app id, shown at the top of the App Dashboard, once as `appId` in the constructor, or pass `appId` to the call:
+
+```ts
+const templates = new TemplateService({
+  accessToken: env.WHATSAPP_TOKEN,
+  wabaId: env.WHATSAPP_BUSINESS_ACCOUNT_ID,
+  appId: env.META_APP_ID,
+});
+```
+
+The service that `betterZap()` builds has no `appId`, so through `zap.api.templates` pass `appId` to `uploadHeaderMedia`, or pass your own `TemplateService` with `appId` as the `templateService` option.
+
+An edit replaces every component, so to edit a template that has a media header, upload the file again and send the new handle in the header together with the other components.
+
+Meta's upload guide asks for a user access token. If `uploadHeaderMedia` fails with a permission error while the other template calls work, try a token of that type.
+
 ## Validation
 
 `create` and `update` check a template against Meta's documented limits before they send it. Meta answers a malformed template with error `100` and little detail, and each attempt counts toward the 100 creations per hour, so the check returns every problem at once without calling Meta.
@@ -278,7 +329,3 @@ await templates.list({ wabaId: tenant.wabaId });
 ## Status changes
 
 Approval, rejection, pausing, quality changes and category changes are not returned by these methods. Meta sends them as webhooks, and Better Zap passes them to the `onTemplateStatusUpdate`, `onTemplateQualityUpdate`, `onTemplateCategoryUpdate` and `onTemplateComponentsUpdate` hooks. See [Template events](/docs/reference/webhook-events#template-events).
-
-## Not covered yet
-
-- Uploading media for an image, video or document header.

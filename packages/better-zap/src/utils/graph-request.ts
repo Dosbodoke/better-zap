@@ -21,6 +21,15 @@ export interface GraphRequestInput {
   /** Values that must never appear in a returned error string. */
   secrets?: Array<string | undefined>;
   includeHttpStatus?: boolean;
+  /** Extra request headers. They are added after the defaults and win on conflict. */
+  headers?: Record<string, string>;
+  /** Scheme of the Authorization header. Defaults to `"Bearer"`. */
+  authScheme?: "Bearer" | "OAuth";
+  /**
+   * Sent as the request body unchanged. When set, `body` is ignored and the
+   * default `Content-Type: application/json` header is not added.
+   */
+  rawBody?: BodyInit;
 }
 
 /** Sends one Graph API request. Never throws; every outcome is a result. */
@@ -48,10 +57,19 @@ export async function graphRequest<TData>(
     const response = await send(url.toString(), {
       method: input.method,
       headers: {
-        "Content-Type": "application/json",
-        ...(input.token ? { Authorization: `Bearer ${input.token}` } : {}),
+        ...(input.rawBody === undefined
+          ? { "Content-Type": "application/json" }
+          : {}),
+        ...(input.token
+          ? { Authorization: `${input.authScheme ?? "Bearer"} ${input.token}` }
+          : {}),
+        ...input.headers,
       },
-      ...(input.body ? { body: JSON.stringify(input.body) } : {}),
+      ...(input.rawBody !== undefined
+        ? { body: input.rawBody }
+        : input.body
+          ? { body: JSON.stringify(input.body) }
+          : {}),
     });
 
     let data: unknown = null;
@@ -62,7 +80,10 @@ export async function graphRequest<TData>(
     }
 
     if (!response.ok) {
-      const graphError = readGraphError(data);
+      // Meta can echo the token back, as in "Malformed access token <token>".
+      // Only strings are redacted, so codes and flags keep their meaning.
+      const secrets = [input.token ?? undefined, ...(input.secrets ?? [])];
+      const graphError = readGraphError(data, secrets);
       const diagnostics = buildFailureDiagnostics(response.status, graphError);
       return {
         success: false,
@@ -78,7 +99,7 @@ export async function graphRequest<TData>(
           ? { errorUserMessage: graphError.userMessage }
           : {}),
         httpStatus: response.status,
-        details: data,
+        details: redactBody(data, secrets),
         diagnostics,
       };
     }
@@ -111,6 +132,32 @@ export function redactSecrets(
   );
 }
 
+// Meta's error bodies are a few levels deep. Anything nested deeper than this
+// is dropped rather than walked, so a pathological body cannot exhaust the stack.
+const MAX_REDACT_DEPTH = 32;
+
+/** Copies a parsed JSON body with secrets removed from every string and key. */
+function redactBody(
+  data: unknown,
+  secrets: Array<string | undefined>,
+  depth = 0,
+): unknown {
+  if (typeof data === "string") return redactSecrets(data, secrets);
+  if (typeof data !== "object" || data === null) return data;
+  if (depth >= MAX_REDACT_DEPTH) return REDACTED;
+
+  if (Array.isArray(data)) {
+    return data.map((item) => redactBody(item, secrets, depth + 1));
+  }
+
+  return Object.fromEntries(
+    Object.entries(data).map(([key, value]) => [
+      redactSecrets(key, secrets),
+      redactBody(value, secrets, depth + 1),
+    ]),
+  );
+}
+
 type GraphErrorFields = {
   message?: string;
   code?: number;
@@ -122,7 +169,11 @@ type GraphErrorFields = {
   userMessage?: string;
 };
 
-function readGraphError(data: unknown): GraphErrorFields | null {
+/** Reads Meta's error object. Secrets are removed from its string fields. */
+function readGraphError(
+  data: unknown,
+  secrets: Array<string | undefined>,
+): GraphErrorFields | null {
   if (typeof data !== "object" || data === null) {
     return null;
   }
@@ -133,22 +184,20 @@ function readGraphError(data: unknown): GraphErrorFields | null {
   }
 
   const fields = error as Record<string, unknown>;
+  const text = (value: unknown) =>
+    typeof value === "string" ? redactSecrets(value, secrets) : undefined;
+
   return {
-    message: typeof fields.message === "string" ? fields.message : undefined,
+    message: text(fields.message),
     code: typeof fields.code === "number" ? fields.code : undefined,
     subcode:
       typeof fields.error_subcode === "number" ? fields.error_subcode : undefined,
-    type: typeof fields.type === "string" ? fields.type : undefined,
-    fbtraceId:
-      typeof fields.fbtrace_id === "string" ? fields.fbtrace_id : undefined,
+    type: text(fields.type),
+    fbtraceId: text(fields.fbtrace_id),
     isTransient:
       typeof fields.is_transient === "boolean" ? fields.is_transient : undefined,
-    userTitle:
-      typeof fields.error_user_title === "string"
-        ? fields.error_user_title
-        : undefined,
-    userMessage:
-      typeof fields.error_user_msg === "string" ? fields.error_user_msg : undefined,
+    userTitle: text(fields.error_user_title),
+    userMessage: text(fields.error_user_msg),
   };
 }
 

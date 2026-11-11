@@ -12,10 +12,12 @@ import {
   type MessageTemplateDefinition,
   type MessageTemplatePage,
   type MessageTemplateStatus,
+  TEMPLATE_HEADER_MEDIA_TYPES,
   type TemplateFailure,
+  type TemplateHeaderMediaType,
   type TemplateResult,
 } from "../types/template.types";
-import { graphRequest } from "../utils/graph-request";
+import { graphRequest, type GraphRequestInput } from "../utils/graph-request";
 import { defaultFetch } from "../utils/http";
 import { META_API_VERSION, META_BASE_URL } from "./coexistence.service";
 
@@ -28,6 +30,8 @@ export interface TemplateServiceConfig {
   tokenProvider?: MetaAccessTokenProvider;
   /** Business account used when a call passes none. */
   wabaId?: string;
+  /** Meta app id. Needed only by `uploadHeaderMedia`. */
+  appId?: string;
   graphApiVersion?: string;
   graphBaseUrl?: string;
   fetch?: typeof fetch;
@@ -52,6 +56,11 @@ export interface ListMessageTemplatesInput extends TemplateCallOptions {
   fields?: readonly string[];
 }
 
+type TemplateRequest = Pick<
+  GraphRequestInput,
+  "path" | "method" | "query" | "body" | "headers" | "authScheme" | "rawBody"
+>;
+
 type MessageTemplateListResponse = {
   data?: unknown;
   paging?: { cursors?: { before?: string; after?: string }; next?: unknown };
@@ -65,6 +74,7 @@ export class TemplateService {
   private readonly accessToken?: string;
   private readonly tokenProvider?: MetaAccessTokenProvider;
   private readonly wabaId?: string;
+  private readonly appId?: string;
   private readonly graphApiVersion: string;
   private readonly graphBaseUrl: string;
   private readonly fetchImpl: typeof fetch;
@@ -73,6 +83,7 @@ export class TemplateService {
     this.accessToken = config.accessToken;
     this.tokenProvider = config.tokenProvider;
     this.wabaId = config.wabaId;
+    this.appId = config.appId;
     this.graphApiVersion = config.graphApiVersion ?? META_API_VERSION;
     this.graphBaseUrl = config.graphBaseUrl ?? META_BASE_URL;
     this.fetchImpl = config.fetch ?? defaultFetch;
@@ -276,6 +287,90 @@ export class TemplateService {
     });
   }
 
+  /**
+   * Uploads a sample file for a media header and returns the handle to put in
+   * `example.header_handle`. Makes two requests to Meta.
+   */
+  async uploadHeaderMedia(
+    input: TemplateCallOptions & {
+      file: Blob | ArrayBuffer | Uint8Array;
+      fileName: string;
+      fileType: TemplateHeaderMediaType;
+      /** Overrides the service config for this call. */
+      appId?: string;
+    },
+  ): Promise<TemplateResult<{ handle: string }>> {
+    const options: Partial<typeof input> = input ?? {};
+    const appId = options.appId ?? this.appId;
+    if (appId === undefined || appId === null || appId === "") {
+      return {
+        success: false,
+        error: "Missing Meta app id (appId)",
+        diagnostics: { kind: "configuration_error", retryable: false },
+      };
+    }
+    if (!isNumericId(appId)) return invalidId("appId");
+    if (!(TEMPLATE_HEADER_MEDIA_TYPES as readonly unknown[]).includes(options.fileType)) {
+      return invalidInput(
+        `fileType must be one of ${TEMPLATE_HEADER_MEDIA_TYPES.join(", ")}`,
+      );
+    }
+    if (!isNonEmptyString(options.fileName)) return invalidInput("fileName is required");
+
+    const { file } = options;
+    let fileLength: number;
+    if (file instanceof Blob) {
+      fileLength = file.size;
+    } else if (file instanceof ArrayBuffer || file instanceof Uint8Array) {
+      fileLength = file.byteLength;
+    } else {
+      return invalidInput("file must be a Blob, ArrayBuffer or Uint8Array");
+    }
+    if (fileLength === 0) return invalidInput("file is empty");
+
+    const token = await this.resolveToken(options, options.wabaId ?? this.wabaId);
+    if (!token.success) return token;
+
+    const session = await this.request<{ id?: unknown } | null>(token.data, {
+      path: `/${appId}/uploads`,
+      method: "POST",
+      query: new URLSearchParams({
+        file_name: options.fileName,
+        file_length: String(fileLength),
+        file_type: options.fileType as TemplateHeaderMediaType,
+      }),
+    });
+    if (!session.success) return session;
+
+    // The id can carry a query string (`upload:<SESSION>?sig=...`), which
+    // becomes the query of the upload request.
+    const sessionId = session.data?.id;
+    if (
+      typeof sessionId !== "string" ||
+      !sessionId.startsWith("upload:") ||
+      /\s/.test(sessionId)
+    ) {
+      return malformedResponse("Upload session response did not include a session id");
+    }
+
+    const upload = await this.request<{ h?: unknown } | null>(token.data, {
+      path: `/${sessionId}`,
+      method: "POST",
+      authScheme: "OAuth",
+      headers: { file_offset: "0" },
+      // DOM typings reject a `Uint8Array` over an `ArrayBufferLike`; fetch takes it.
+      rawBody: file as BodyInit,
+    });
+    if (!upload.success) return upload;
+
+    const handle = upload.data?.h;
+    if (!isNonEmptyString(handle)) {
+      return malformedResponse("Upload response did not include a file handle");
+    }
+
+    return { success: true, data: { handle } };
+  }
+
   /** Returns the numeric business account id, or the failure to return instead. */
   private resolveWabaId(input: TemplateCallOptions): string | TemplateFailure {
     const wabaId = input.wabaId ?? this.wabaId;
@@ -294,26 +389,41 @@ export class TemplateService {
   private async send<TData>(
     input: TemplateCallOptions,
     wabaId: string | undefined,
-    request: {
-      path: string;
-      method: "GET" | "POST" | "DELETE";
-      query?: URLSearchParams;
-      body?: unknown;
-    },
+    request: TemplateRequest,
   ): Promise<TemplateResult<TData>> {
-    let token = input.accessToken ?? this.accessToken;
-    if (input.accessToken === undefined && this.tokenProvider) {
-      try {
-        token = await this.tokenProvider.getAccessToken({ wabaId });
-      } catch (error) {
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : "Access token lookup failed",
-          diagnostics: { kind: "credential_provider_error", retryable: false },
-        };
-      }
+    const token = await this.resolveToken(input, wabaId);
+    if (!token.success) return token;
+
+    return this.request(token.data, request);
+  }
+
+  /** `accessToken` on the call, then `tokenProvider`, then the configured token. */
+  private async resolveToken(
+    input: TemplateCallOptions,
+    wabaId: string | undefined,
+  ): Promise<TemplateResult<string | undefined>> {
+    if (input.accessToken !== undefined || !this.tokenProvider) {
+      return { success: true, data: input.accessToken ?? this.accessToken };
     }
 
+    try {
+      return {
+        success: true,
+        data: await this.tokenProvider.getAccessToken({ wabaId }),
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Access token lookup failed",
+        diagnostics: { kind: "credential_provider_error", retryable: false },
+      };
+    }
+  }
+
+  private async request<TData>(
+    token: string | undefined,
+    request: TemplateRequest,
+  ): Promise<TemplateResult<TData>> {
     const result = await graphRequest<TData>({
       fetch: this.fetchImpl,
       baseUrl: this.graphBaseUrl,
@@ -334,7 +444,7 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
 }
 
-function invalidId(field: "wabaId" | "templateId"): TemplateFailure {
+function invalidId(field: "wabaId" | "templateId" | "appId"): TemplateFailure {
   return invalidInput(`${field} must be a numeric id`);
 }
 
@@ -343,6 +453,14 @@ function invalidInput(error: string): TemplateFailure {
     success: false,
     error,
     diagnostics: { kind: "invalid_input", retryable: false },
+  };
+}
+
+function malformedResponse(error: string): TemplateFailure {
+  return {
+    success: false,
+    error,
+    diagnostics: { kind: "malformed_response", retryable: false },
   };
 }
 

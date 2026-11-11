@@ -2729,6 +2729,29 @@ describe("api.templates", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("uploads header media with the appId given on the call", async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: "upload:abc" }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ h: "4::handle" }), { status: 200 }),
+      );
+    const zap = makeZap({ wabaId: "111" });
+
+    const result = await zap.api.templates.uploadHeaderMedia({
+      appId: "999",
+      file: new Uint8Array([1, 2, 3]),
+      fileName: "a.png",
+      fileType: "image/png",
+    });
+
+    expect(result).toEqual({ success: true, data: { handle: "4::handle" } });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const [url] = fetchMock.mock.calls[0];
+    expect(new URL(String(url)).pathname).toMatch(/\/999\/uploads$/);
+  });
+
   it("exposes no template route", async () => {
     const zap = makeZap({ wabaId: "111", authorizeAppRequest: "public" });
 
