@@ -239,3 +239,36 @@ it("accepts a template id sent as a string", () => {
 
   expect(ctx?.templateId).toBe("123");
 });
+
+it("does not throw on a category timestamp that is out of range or not a number", () => {
+  for (const category_update_timestamp of [1e20, { toString: null }]) {
+    const ctx = readTemplateCategoryUpdate(
+      change("template_category_update", {
+        message_template_id: 123,
+        message_template_name: "welcome_template",
+        new_category: "UTILITY",
+        correct_category: "MARKETING",
+        category_update_timestamp,
+      }),
+      WABA_ID,
+    );
+
+    expect(ctx).toMatchObject({ phase: "scheduled", nextCategory: "MARKETING" });
+    expect(ctx?.scheduledFor).toBeUndefined();
+  }
+});
+
+it("does not throw on a button type that is not a string", () => {
+  const ctx = readTemplateComponentsUpdate(
+    change("message_template_components_update", {
+      message_template_id: 123,
+      message_template_name: "welcome_template",
+      message_template_buttons: [
+        { message_template_button_type: { toString: null } },
+      ],
+    }),
+    WABA_ID,
+  );
+
+  expect(ctx?.buttons).toEqual([{ type: "" }]);
+});

@@ -250,7 +250,7 @@ function readButton(button: RawValue): TemplateComponentsUpdateContext["buttons"
   const phoneNumber = readString(button.message_template_button_phone_number);
 
   return {
-    type: String(button.message_template_button_type ?? ""),
+    type: readString(button.message_template_button_type) ?? "",
     ...(text !== undefined ? { text } : {}),
     ...(url !== undefined ? { url } : {}),
     ...(phoneNumber !== undefined ? { phoneNumber } : {}),
@@ -262,9 +262,17 @@ function readQualityScore(score: unknown): MessageTemplateQualityScore {
 }
 
 function readUnixTimestamp(timestamp: unknown): string | undefined {
+  if (typeof timestamp !== "number" && typeof timestamp !== "string") {
+    return undefined;
+  }
+
   const seconds = Number(timestamp);
   if (!Number.isFinite(seconds) || seconds <= 0) return undefined;
-  return new Date(seconds * 1000).toISOString();
+
+  // A timestamp outside the range of `Date` gives an invalid date, and
+  // `toISOString` throws on one.
+  const date = new Date(seconds * 1000);
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }
 
 function readString(value: unknown): string | undefined {
