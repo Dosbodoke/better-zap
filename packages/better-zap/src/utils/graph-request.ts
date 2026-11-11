@@ -81,11 +81,9 @@ export async function graphRequest<TData>(
 
     if (!response.ok) {
       // Meta can echo the token back, as in "Malformed access token <token>".
-      const body = redactBody(data, [
-        input.token ?? undefined,
-        ...(input.secrets ?? []),
-      ]);
-      const graphError = readGraphError(body);
+      // Only strings are redacted, so codes and flags keep their meaning.
+      const secrets = [input.token ?? undefined, ...(input.secrets ?? [])];
+      const graphError = readGraphError(data, secrets);
       const diagnostics = buildFailureDiagnostics(response.status, graphError);
       return {
         success: false,
@@ -101,7 +99,7 @@ export async function graphRequest<TData>(
           ? { errorUserMessage: graphError.userMessage }
           : {}),
         httpStatus: response.status,
-        details: body,
+        details: redactBody(data, secrets),
         diagnostics,
       };
     }
@@ -134,19 +132,18 @@ export function redactSecrets(
   );
 }
 
-/** Removes secrets from a parsed JSON body. Returns the same value when it holds none. */
+/** Copies a parsed JSON body with secrets removed from every string and key. */
 function redactBody(data: unknown, secrets: Array<string | undefined>): unknown {
-  if (data === null || data === undefined) return data;
+  if (typeof data === "string") return redactSecrets(data, secrets);
+  if (Array.isArray(data)) return data.map((item) => redactBody(item, secrets));
+  if (typeof data !== "object" || data === null) return data;
 
-  const text = JSON.stringify(data);
-  const redacted = redactSecrets(text, secrets);
-  if (redacted === text) return data;
-
-  try {
-    return JSON.parse(redacted);
-  } catch {
-    return REDACTED;
-  }
+  return Object.fromEntries(
+    Object.entries(data).map(([key, value]) => [
+      redactSecrets(key, secrets),
+      redactBody(value, secrets),
+    ]),
+  );
 }
 
 type GraphErrorFields = {
@@ -160,7 +157,11 @@ type GraphErrorFields = {
   userMessage?: string;
 };
 
-function readGraphError(data: unknown): GraphErrorFields | null {
+/** Reads Meta's error object. Secrets are removed from its string fields. */
+function readGraphError(
+  data: unknown,
+  secrets: Array<string | undefined>,
+): GraphErrorFields | null {
   if (typeof data !== "object" || data === null) {
     return null;
   }
@@ -171,22 +172,20 @@ function readGraphError(data: unknown): GraphErrorFields | null {
   }
 
   const fields = error as Record<string, unknown>;
+  const text = (value: unknown) =>
+    typeof value === "string" ? redactSecrets(value, secrets) : undefined;
+
   return {
-    message: typeof fields.message === "string" ? fields.message : undefined,
+    message: text(fields.message),
     code: typeof fields.code === "number" ? fields.code : undefined,
     subcode:
       typeof fields.error_subcode === "number" ? fields.error_subcode : undefined,
-    type: typeof fields.type === "string" ? fields.type : undefined,
-    fbtraceId:
-      typeof fields.fbtrace_id === "string" ? fields.fbtrace_id : undefined,
+    type: text(fields.type),
+    fbtraceId: text(fields.fbtrace_id),
     isTransient:
       typeof fields.is_transient === "boolean" ? fields.is_transient : undefined,
-    userTitle:
-      typeof fields.error_user_title === "string"
-        ? fields.error_user_title
-        : undefined,
-    userMessage:
-      typeof fields.error_user_msg === "string" ? fields.error_user_msg : undefined,
+    userTitle: text(fields.error_user_title),
+    userMessage: text(fields.error_user_msg),
   };
 }
 

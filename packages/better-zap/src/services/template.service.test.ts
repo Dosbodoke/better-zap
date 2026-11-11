@@ -483,6 +483,30 @@ describe("TemplateService", () => {
     });
     expect(JSON.stringify(result)).not.toContain("token_1");
   });
+
+  it("keeps the error code and retry flag when a secret also matches other text", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse(
+        { error: { message: "Invalid 1", code: 190, is_transient: true } },
+        400,
+      ),
+    );
+    const service = new TemplateService({
+      accessToken: "1",
+      wabaId: "111",
+      fetch: fetchMock as unknown as typeof fetch,
+    });
+
+    const result = await service.list();
+
+    expect(result).toMatchObject({
+      success: false,
+      error: "Invalid [REDACTED]",
+      errorCode: 190,
+      details: { error: { message: "Invalid [REDACTED]", code: 190, is_transient: true } },
+      diagnostics: { kind: "graph_error", code: 190, retryable: true },
+    });
+  });
 });
 
 describe("TemplateService.uploadHeaderMedia", () => {
