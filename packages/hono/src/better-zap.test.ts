@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { defineTemplates } from "better-zap";
+import { messageEditFixture } from "@better-zap/fixtures";
 import type {
   BetterZapDatabase,
   CoexistenceStore,
@@ -349,6 +350,283 @@ describe("betterZap plugins", () => {
 
     expect(response.status).toBe(200);
     expect(callOrder).toEqual(["failing-plugin", "healthy-plugin", "user"]);
+  });
+
+  const pluginTestConfig = {
+    token: "token",
+    phoneId: "phone-id",
+    webhookToken: "verify-token",
+    appSecret: TEST_META_APP_SECRET,
+  };
+  const noopWebhook = {
+    onMessage: async () => {},
+    onStatusUpdate: async () => {},
+  };
+
+  it("runs plugin hooks for coexistence events before the user hook", async () => {
+    const callOrder: string[] = [];
+
+    const zap = betterZap({
+      database: makeDatabase(),
+      config: pluginTestConfig,
+      plugins: [
+        {
+          id: "plugin-one",
+          init() {
+            return { context: { pluginValue: "alpha" } };
+          },
+          hooks: {
+            onCoexistenceMessageEdit: async (ctx: any) => {
+              callOrder.push(`plugin:${ctx.pluginValue}`);
+            },
+          },
+        },
+      ] as const,
+      webhook: {
+        ...noopWebhook,
+        onCoexistenceMessageEdit: async (ctx) => {
+          callOrder.push(`user:${ctx.pluginValue}`);
+        },
+      },
+    });
+
+    const response = await postWebhook(zap, messageEditFixture);
+
+    expect(response.status).toBe(200);
+    expect(callOrder).toEqual(["plugin:alpha", "user:alpha"]);
+  });
+
+  it("isolates a failing plugin hook on a coexistence event", async () => {
+    const callOrder: string[] = [];
+    const log = vi.fn();
+
+    const zap = betterZap({
+      database: makeDatabase(),
+      config: pluginTestConfig,
+      plugins: [
+        {
+          id: "failing-plugin",
+          hooks: {
+            onCoexistenceMessageEdit: async () => {
+              callOrder.push("failing-plugin");
+              throw new Error("boom");
+            },
+          },
+        },
+        {
+          id: "healthy-plugin",
+          hooks: {
+            onCoexistenceMessageEdit: async () => {
+              callOrder.push("healthy-plugin");
+            },
+          },
+        },
+      ] as const,
+      webhook: {
+        ...noopWebhook,
+        onCoexistenceMessageEdit: async () => {
+          callOrder.push("user");
+        },
+      },
+      logger: { log },
+    });
+
+    const response = await postWebhook(zap, messageEditFixture);
+
+    expect(response.status).toBe(200);
+    expect(callOrder).toEqual(["failing-plugin", "healthy-plugin", "user"]);
+    expect(log).toHaveBeenCalledWith(
+      "error",
+      "plugin.on_coexistence_message_edit_failed",
+      expect.objectContaining({ pluginId: "failing-plugin" }),
+    );
+  });
+
+  it("keeps the message id and phone in plugin onMessage failure logs", async () => {
+    const log = vi.fn();
+
+    const zap = betterZap({
+      database: makeDatabase(),
+      config: pluginTestConfig,
+      plugins: [
+        {
+          id: "failing-plugin",
+          hooks: {
+            onMessage: async () => {
+              throw new Error("boom");
+            },
+          },
+        },
+      ] as const,
+      webhook: noopWebhook,
+      logger: { log },
+    });
+
+    await postWebhook(zap, makeTextMessage());
+
+    expect(log).toHaveBeenCalledWith(
+      "error",
+      "plugin.on_message_failed",
+      expect.objectContaining({
+        pluginId: "failing-plugin",
+        waMessageId: "wamid.incoming1",
+        phone: expect.any(String),
+      }),
+    );
+  });
+
+  it("throws on duplicate plugin ids", () => {
+    const initOne = vi.fn();
+    const initTwo = vi.fn();
+
+    expect(() =>
+      betterZap({
+        database: makeDatabase(),
+        config: pluginTestConfig,
+        plugins: [
+          { id: "same", init: initOne },
+          { id: "same", init: initTwo },
+        ] as const,
+        webhook: noopWebhook,
+      }),
+    ).toThrow('[betterZap] Duplicate plugin id "same"');
+    expect(initOne).not.toHaveBeenCalled();
+    expect(initTwo).not.toHaveBeenCalled();
+  });
+
+  it("throws when a plugin context key is reserved", () => {
+    expect(() =>
+      betterZap({
+        database: makeDatabase(),
+        config: pluginTestConfig,
+        plugins: [
+          {
+            id: "db-plugin",
+            init() {
+              return { context: { db: {} } };
+            },
+          },
+        ] as const,
+        webhook: noopWebhook,
+      }),
+    ).toThrow('[betterZap] Plugin "db-plugin": context key "db" is reserved');
+  });
+
+  it("throws when two plugins provide the same context key", () => {
+    expect(() =>
+      betterZap({
+        database: makeDatabase(),
+        config: pluginTestConfig,
+        plugins: [
+          {
+            id: "first-plugin",
+            init() {
+              return { context: { shared: 1 } };
+            },
+          },
+          {
+            id: "second-plugin",
+            init() {
+              return { context: { shared: 2 } };
+            },
+          },
+        ] as const,
+        webhook: noopWebhook,
+      }),
+    ).toThrow(
+      '[betterZap] Plugin "second-plugin": context key "shared" is already provided by plugin "first-plugin"',
+    );
+  });
+
+  it("throws when a plugin service is reserved", () => {
+    expect(() =>
+      betterZap({
+        database: makeDatabase(),
+        config: pluginTestConfig,
+        plugins: [
+          {
+            id: "whatsapp-plugin",
+            init() {
+              return { services: { whatsapp: {} } };
+            },
+          },
+        ] as const,
+        webhook: noopWebhook,
+      }),
+    ).toThrow(
+      '[betterZap] Plugin "whatsapp-plugin": service "whatsapp" is reserved',
+    );
+  });
+
+  it("throws when two plugins provide the same service", () => {
+    expect(() =>
+      betterZap({
+        database: makeDatabase(),
+        config: pluginTestConfig,
+        plugins: [
+          {
+            id: "first-plugin",
+            init() {
+              return { services: { mailer: 1 } };
+            },
+          },
+          {
+            id: "second-plugin",
+            init() {
+              return { services: { mailer: 2 } };
+            },
+          },
+        ] as const,
+        webhook: noopWebhook,
+      }),
+    ).toThrow(
+      '[betterZap] Plugin "second-plugin": service "mailer" is already provided by plugin "first-plugin"',
+    );
+  });
+
+  it("throws when init returns a promise", () => {
+    expect(() =>
+      betterZap({
+        database: makeDatabase(),
+        config: pluginTestConfig,
+        plugins: [
+          {
+            id: "async-plugin",
+            init: (async () => ({ context: {} })) as any,
+          },
+        ] as const,
+        webhook: noopWebhook,
+      }),
+    ).toThrow('[betterZap] Plugin "async-plugin": init() must be synchronous');
+  });
+
+  it("names the plugin when init throws", () => {
+    const original = new Error("boom");
+    let thrown: unknown;
+
+    try {
+      betterZap({
+        database: makeDatabase(),
+        config: pluginTestConfig,
+        plugins: [
+          {
+            id: "broken-plugin",
+            init() {
+              throw original;
+            },
+          },
+        ] as const,
+        webhook: noopWebhook,
+      });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).message).toContain(
+      'Plugin "broken-plugin": init() failed: boom',
+    );
+    expect((thrown as Error).cause).toBe(original);
   });
 
   it("serializes typed templates before sending to Meta", async () => {

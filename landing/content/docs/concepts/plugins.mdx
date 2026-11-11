@@ -7,7 +7,7 @@ Plugins let you extend Better Zap's functionality by injecting context, services
 
 ## Creating a Plugin
 
-A plugin is an object with an `id`, an optional `init` function, and optional hooks:
+A plugin is an object with an `id`, an optional `init` function, and optional hooks. A plugin can hook any webhook event, not only messages and statuses (see [Plugin Lifecycle](#plugin-lifecycle)):
 
 ```ts
 import type { BetterZapPlugin, BetterZapDatabase } from "better-zap";
@@ -62,13 +62,33 @@ zap.services.analytics.getReport();
 
 ## Plugin Lifecycle
 
-1. **`init()`** — Called once during `betterZap()` setup. Receives the database, config, core context, and core services. Returns additional context and services to merge.
+**`init()`** runs once, synchronously, when `betterZap()` is called. Plugins are initialized in array order. `init` receives the database, config, core context and core services, plus the context and services of the plugins before it, and returns more context and services to merge.
 
-2. **`hooks.onMessage()`** — Called for each incoming message, **before** your `webhook.onMessage` callback. Receives the full merged context.
+**Hooks** run for each webhook event, **before** your own `webhook` hook for the same event. They receive the event context merged with the Better Zap context (`db`, `api`, `logger`) and every plugin's context. A plugin can define any of these:
 
-3. **`hooks.onStatusUpdate()`** — Called for each status update, **before** your `webhook.onStatusUpdate` callback.
+| Hook | When it runs |
+| --- | --- |
+| `onMessage` | Once per incoming message, after SDK pre-processing |
+| `onStatusUpdate` | Once per delivery status update (sent → delivered → read → failed) |
+| `onCoexistenceHistory` | Once per history webhook, after SDK pre-processing |
+| `onSmbAppStateSync` | Once per SMB app state sync webhook, after SDK pre-processing |
+| `onSmbMessageEcho` | Once per app message echo webhook, after SDK pre-processing |
+| `onCoexistenceAccountUpdate` | Once per coexistence account lifecycle webhook |
+| `onCoexistenceAccountOffboarded` | Once per coexistence offboarding lifecycle webhook |
+| `onCoexistenceAccountReconnected` | Once per coexistence background reconnection lifecycle webhook |
+| `onCoexistenceMessageEdit` | For coexistence message edit webhooks |
+| `onCoexistenceMessageRevoke` | For coexistence message revoke webhooks |
+| `onCoexistenceUnsupportedMessage` | When a coexistence webhook contains unsupported or error content |
 
-Plugins are initialized sequentially in the order they appear in the array. Each plugin's context is available to subsequent plugins.
+## Rules
+
+- Plugin ids must be unique.
+- `init` must be synchronous. If a plugin needs asynchronous setup, create the client lazily inside a service.
+- A plugin cannot return the context keys `db`, `api` or `logger`, the service keys `whatsapp` or `logger`, or a key another plugin already returned. `betterZap()` throws at startup if it does, and the error names the plugin.
+- For each event, plugin hooks run in array order, before your own hook.
+- A plugin hook that throws is logged as `plugin.<event>_failed` (for example `plugin.on_coexistence_message_edit_failed`) and does not stop the other plugins or your hook.
+- `onMessage` and `onStatusUpdate` run after Better Zap has stored the message or applied the status, so they observe it and cannot cancel it. A repeated delivery of the same message, or a status that does not move the message forward, runs neither hook.
+- The coexistence hooks run on every delivery. The history and message echo contexts report how many messages were new and how many were duplicates.
 
 ## Type Inference
 

@@ -2,29 +2,18 @@ import { Hono, type Context, type ExecutionContext } from "hono";
 import { createWebhookProcessor, serializeError } from "better-zap";
 import type {
   BetterZapDatabase,
-  CoexistenceAccountOffboardedContext,
-  CoexistenceAccountReconnectedContext,
-  CoexistenceAccountUpdateContext,
-  CoexistenceHistoryContext,
-  CoexistenceMessageEditContext,
-  CoexistenceMessageRevokeContext,
-  CoexistenceUnsupportedMessageContext,
   Logger,
-  MessageContext,
   MessageLoggerService,
-  SmbAppStateSyncContext,
-  SmbMessageEchoContext,
-  StatusContext,
-  WebhookError,
   WebhookMediaConfig,
   WebhookPayload,
+  WebhookProcessorHooks,
 } from "better-zap";
 import { verifyMetaWebhookSignature } from "./signature-verification";
 
 /**
  * Configuration for {@link createWebhookHandler}.
  */
-export type WebhookConfig = {
+export type WebhookConfig = WebhookProcessorHooks & {
   /** Token for the Meta verification challenge (`GET /webhook`). */
   verifyToken: string;
   /** App secret used for HMAC-SHA256 signature verification. */
@@ -41,43 +30,6 @@ export type WebhookConfig = {
    * replaces a placeholder. Omit to keep only the text label and media id.
    */
   media?: WebhookMediaConfig;
-  /** Called once per incoming message, after SDK pre-processing. */
-  onMessage: (ctx: MessageContext) => Promise<void>;
-  /** Called once per delivery status update (sent → delivered → read → failed). */
-  onStatusUpdate: (ctx: StatusContext) => Promise<void>;
-  /** Called once per history webhook after SDK pre-processing. */
-  onCoexistenceHistory?: (ctx: CoexistenceHistoryContext) => Promise<void>;
-  /** Called once per SMB app state sync webhook after SDK pre-processing. */
-  onSmbAppStateSync?: (ctx: SmbAppStateSyncContext) => Promise<void>;
-  /** Called once per app message echo webhook after SDK pre-processing. */
-  onSmbMessageEcho?: (ctx: SmbMessageEchoContext) => Promise<void>;
-  /** Called once per coexistence account lifecycle webhook. */
-  onCoexistenceAccountUpdate?: (
-    ctx: CoexistenceAccountUpdateContext,
-  ) => Promise<void>;
-  /** Called once per coexistence offboarding lifecycle webhook. */
-  onCoexistenceAccountOffboarded?: (
-    ctx: CoexistenceAccountOffboardedContext,
-  ) => Promise<void>;
-  /** Called once per coexistence background reconnection lifecycle webhook. */
-  onCoexistenceAccountReconnected?: (
-    ctx: CoexistenceAccountReconnectedContext,
-  ) => Promise<void>;
-  /** Called for coexistence message edit webhooks. */
-  onCoexistenceMessageEdit?: (ctx: CoexistenceMessageEditContext) => Promise<void>;
-  /** Called for coexistence message revoke webhooks. */
-  onCoexistenceMessageRevoke?: (
-    ctx: CoexistenceMessageRevokeContext,
-  ) => Promise<void>;
-  /** Called when a coexistence webhook contains unsupported/error content. */
-  onCoexistenceUnsupportedMessage?: (
-    ctx: CoexistenceUnsupportedMessageContext,
-  ) => Promise<void>;
-  /**
-   * Called for Meta platform-level errors.
-   * @default Uses the configured {@link WebhookConfig.log} logger's {@code error} method.
-   */
-  onError?: (error: WebhookError) => void;
   /**
    * How to run dispatch after responding to Meta. Meta enforces a 20s timeout,
    * so this must return immediately in production.

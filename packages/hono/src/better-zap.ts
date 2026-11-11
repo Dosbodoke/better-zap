@@ -5,16 +5,12 @@ import {
   WhatsAppService,
 } from "better-zap";
 import type {
-  BetterZapContext,
   BetterZapCoreContext,
   BetterZapCoreServices,
   BetterZapDatabase,
   BetterZapPlugin,
-  InferBetterZapPluginContext,
   InferBetterZapPluginServices,
-  MessageContext,
   OutgoingLoggingMetadata,
-  StatusContext,
   TemplateComponent,
   TemplateRegistry,
 } from "better-zap";
@@ -32,11 +28,7 @@ import type {
   BetterZapApi,
   BetterZapConfig,
 } from "./better-zap.types";
-import {
-  initializePlugins,
-  runPluginMessageHooks,
-  runPluginStatusHooks,
-} from "./plugins/runtime";
+import { composeWebhookHooks, initializePlugins } from "./plugins/runtime";
 import type {
   Conversation,
   SendInteractiveMediaCarouselData,
@@ -171,104 +163,12 @@ export function betterZap<
     database,
     media,
     runInBackground: options.webhook.runInBackground,
-    onMessage: async (ctx) => {
-      const hookContext = {
-        ...ctx,
-        ...pluginRuntime.context,
-      } as MessageContext &
-        BetterZapContext<TDatabase, Record<string, unknown>>;
-
-      await runPluginMessageHooks({
-        plugins,
-        ctx: hookContext,
-        log,
-      });
-
-      await webhookHooks.onMessage(
-        hookContext as MessageContext &
-          BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>,
-      );
-    },
-    onStatusUpdate: async (ctx) => {
-      const hookContext = {
-        ...ctx,
-        ...pluginRuntime.context,
-      } as StatusContext & BetterZapContext<TDatabase, Record<string, unknown>>;
-
-      await runPluginStatusHooks({
-        plugins,
-        ctx: hookContext,
-        log,
-      });
-
-      await webhookHooks.onStatusUpdate(
-        hookContext as StatusContext &
-          BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>,
-      );
-    },
-    onCoexistenceHistory: async (ctx) => {
-      await webhookHooks.onCoexistenceHistory?.({
-        ...ctx,
-        ...pluginRuntime.context,
-      } as typeof ctx &
-        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>);
-    },
-    onSmbAppStateSync: async (ctx) => {
-      await webhookHooks.onSmbAppStateSync?.({
-        ...ctx,
-        ...pluginRuntime.context,
-      } as typeof ctx &
-        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>);
-    },
-    onSmbMessageEcho: async (ctx) => {
-      await webhookHooks.onSmbMessageEcho?.({
-        ...ctx,
-        ...pluginRuntime.context,
-      } as typeof ctx &
-        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>);
-    },
-    onCoexistenceAccountUpdate: async (ctx) => {
-      await webhookHooks.onCoexistenceAccountUpdate?.({
-        ...ctx,
-        ...pluginRuntime.context,
-      } as typeof ctx &
-        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>);
-    },
-    onCoexistenceAccountOffboarded: async (ctx) => {
-      await webhookHooks.onCoexistenceAccountOffboarded?.({
-        ...ctx,
-        ...pluginRuntime.context,
-      } as typeof ctx &
-        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>);
-    },
-    onCoexistenceAccountReconnected: async (ctx) => {
-      await webhookHooks.onCoexistenceAccountReconnected?.({
-        ...ctx,
-        ...pluginRuntime.context,
-      } as typeof ctx &
-        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>);
-    },
-    onCoexistenceMessageEdit: async (ctx) => {
-      await webhookHooks.onCoexistenceMessageEdit?.({
-        ...ctx,
-        ...pluginRuntime.context,
-      } as typeof ctx &
-        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>);
-    },
-    onCoexistenceMessageRevoke: async (ctx) => {
-      await webhookHooks.onCoexistenceMessageRevoke?.({
-        ...ctx,
-        ...pluginRuntime.context,
-      } as typeof ctx &
-        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>);
-    },
-    onCoexistenceUnsupportedMessage: async (ctx) => {
-      await webhookHooks.onCoexistenceUnsupportedMessage?.({
-        ...ctx,
-        ...pluginRuntime.context,
-      } as typeof ctx &
-        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>);
-    },
+    ...composeWebhookHooks({
+      plugins,
+      userHooks: webhookHooks,
+      context: pluginRuntime.context,
+      log,
+    }),
   });
 
   const app = new Hono<BetterZapEnv>().basePath(basePath);

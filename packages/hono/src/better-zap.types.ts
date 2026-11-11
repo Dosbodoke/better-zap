@@ -1,29 +1,18 @@
 import type {
   BetterZapApi,
-  BetterZapContext,
   BetterZapCoreConfig,
   BetterZapDatabase,
   BetterZapPlugin,
   BetterZapServices,
+  BetterZapWebhookHooks,
   InferBetterZapPluginContext,
   InferBetterZapPluginServices,
   LoggerConfig,
-  MessageContext,
-  StatusContext,
   TemplateRegistry,
 } from "better-zap";
 import type {
   CoexistenceCredentialProvider,
   CoexistenceService,
-  CoexistenceAccountOffboardedContext,
-  CoexistenceAccountReconnectedContext,
-  CoexistenceAccountUpdateContext,
-  CoexistenceHistoryContext,
-  CoexistenceMessageEditContext,
-  CoexistenceMessageRevokeContext,
-  CoexistenceUnsupportedMessageContext,
-  SmbAppStateSyncContext,
-  SmbMessageEchoContext,
 } from "better-zap";
 
 export type BetterZapAuthorizeAppRequest = (input: {
@@ -59,51 +48,10 @@ export interface BetterZapConfig<
   plugins?: TPlugins;
   templates?: TTemplates;
   conversationSync?: DurableObjectNamespace<any>;
-  webhook: {
-    onMessage: (
-      ctx: MessageContext &
-        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>,
-    ) => Promise<void>;
-    onStatusUpdate: (
-      ctx: StatusContext &
-        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>,
-    ) => Promise<void>;
-    onCoexistenceHistory?: (
-      ctx: CoexistenceHistoryContext &
-        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>,
-    ) => Promise<void>;
-    onSmbAppStateSync?: (
-      ctx: SmbAppStateSyncContext &
-        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>,
-    ) => Promise<void>;
-    onSmbMessageEcho?: (
-      ctx: SmbMessageEchoContext &
-        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>,
-    ) => Promise<void>;
-    onCoexistenceAccountUpdate?: (
-      ctx: CoexistenceAccountUpdateContext &
-        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>,
-    ) => Promise<void>;
-    onCoexistenceAccountOffboarded?: (
-      ctx: CoexistenceAccountOffboardedContext &
-        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>,
-    ) => Promise<void>;
-    onCoexistenceAccountReconnected?: (
-      ctx: CoexistenceAccountReconnectedContext &
-        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>,
-    ) => Promise<void>;
-    onCoexistenceMessageEdit?: (
-      ctx: CoexistenceMessageEditContext &
-        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>,
-    ) => Promise<void>;
-    onCoexistenceMessageRevoke?: (
-      ctx: CoexistenceMessageRevokeContext &
-        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>,
-    ) => Promise<void>;
-    onCoexistenceUnsupportedMessage?: (
-      ctx: CoexistenceUnsupportedMessageContext &
-        BetterZapContext<TDatabase, InferBetterZapPluginContext<TPlugins>>,
-    ) => Promise<void>;
+  webhook: BetterZapWebhookHooks<
+    TDatabase,
+    InferBetterZapPluginContext<TPlugins>
+  > & {
     /**
      * Runs webhook processing (hooks, then media downloads) after Meta gets
      * its `200 OK`. Defaults to `executionCtx.waitUntil` on Workers. Without
