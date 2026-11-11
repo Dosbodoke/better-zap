@@ -90,7 +90,7 @@ export default { fetch: zap.handler };
 
 ### `api`
 
-A programmatic API for sending messages and querying conversations from your server code. No HTTP calls — it uses the services directly.
+A programmatic API for sending messages, querying conversations and managing message templates from your server code. No HTTP calls — it uses the services directly.
 
 ```ts
 // Send a text message
@@ -108,9 +108,12 @@ const conversations = await zap.api.conversations.list();
 const messages = await zap.api.conversations.messages("+5511999998888", {
   limit: 50,
 });
+
+// Manage templates in Meta (needs config.wabaId)
+const approved = await zap.api.templates.list({ status: "APPROVED" });
 ```
 
-See [Messages](/docs/messages/send-text) and [Conversations API](/docs/reference/conversations) for the full reference.
+See [Messages](/docs/messages/send-text), [Conversations API](/docs/reference/conversations) and [Template Management](/docs/reference/templates#with-betterzap) for the full reference.
 
 ### `services`
 

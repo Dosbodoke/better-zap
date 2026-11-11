@@ -14,6 +14,7 @@ import type {
 import type {
   CoexistenceCredentialProvider,
   CoexistenceService,
+  TemplateService,
 } from "better-zap";
 
 export type BetterZapAuthorizeAppRequest = (input: {
@@ -94,6 +95,12 @@ export interface BetterZapConfig<
      */
     verifySignupState?: BetterZapVerifySignupState;
   };
+  /**
+   * The service behind `api.templates`. Defaults to one built from
+   * `config.token` and `config.wabaId`. Pass your own to manage several
+   * business accounts (a `TemplateService` with a `tokenProvider`).
+   */
+  templateService?: TemplateService;
   /**
    * Media download settings. Downloads only run when `database.media` is set.
    */
