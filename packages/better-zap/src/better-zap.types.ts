@@ -22,7 +22,7 @@ import type {
   TemplateParams,
   TemplateRegistry,
 } from "./template-registry";
-import type { MessageContext, StatusContext } from "./events";
+import type { WebhookProcessorHooks } from "./webhook/webhook-processor";
 
 export interface BetterZapDatabase {
   whatsappLog: WhatsAppLogStore;
@@ -91,25 +91,57 @@ export interface BetterZapPluginInitContext<
   log: Logger;
 }
 
+/**
+ * Every webhook event an app or a plugin can hook. Derived from the
+ * processor's hook list, so a new event is declared in one place.
+ */
+export type BetterZapWebhookEvents = Omit<WebhookProcessorHooks, "onError">;
+
+export type BetterZapWebhookEventName = keyof BetterZapWebhookEvents;
+
+/** The context the processor passes to one event's hook. */
+export type BetterZapWebhookEventContext<
+  TName extends BetterZapWebhookEventName,
+> = Parameters<NonNullable<BetterZapWebhookEvents[TName]>>[0];
+
+/**
+ * Hook signatures for every webhook event, with the Better Zap context (`db`,
+ * `api`, `logger` and the plugin context) merged into each event's context.
+ * `onMessage` and `onStatusUpdate` are required and the rest are optional,
+ * as in `WebhookProcessorHooks`.
+ */
+export type BetterZapWebhookHooks<
+  TDatabase extends BetterZapDatabase = BetterZapDatabase,
+  TPluginContext extends Record<string, unknown> = {},
+> = {
+  [TName in keyof BetterZapWebhookEvents]: (
+    ctx: BetterZapWebhookEventContext<TName> &
+      BetterZapContext<TDatabase, TPluginContext>,
+  ) => Promise<void>;
+};
+
 export interface BetterZapPlugin<
   TDatabase extends BetterZapDatabase = BetterZapDatabase,
   TContext extends Record<string, unknown> = {},
   TServices extends Record<string, unknown> = {},
 > {
+  /** Unique among the plugins passed to `betterZap()`. */
   id: string;
+  /**
+   * Runs once, synchronously, when `betterZap()` is called. Plugins run in
+   * array order and each sees the context and services of the ones before it.
+   * Returned keys must not collide with core keys or another plugin's keys.
+   */
   init?: (
     ctx: BetterZapPluginInitContext<TDatabase>,
   ) => BetterZapPluginInitResult<TContext, TServices> | void;
-  hooks?: {
-    onMessage?: (
-      ctx: MessageContext &
-        BetterZapContext<TDatabase, Record<string, unknown> & TContext>,
-    ) => Promise<void>;
-    onStatusUpdate?: (
-      ctx: StatusContext &
-        BetterZapContext<TDatabase, Record<string, unknown> & TContext>,
-    ) => Promise<void>;
-  };
+  /**
+   * Webhook hooks. For each event, plugin hooks run in array order before the
+   * app's own hook. A hook that throws is logged and does not stop the others.
+   */
+  hooks?: Partial<
+    BetterZapWebhookHooks<TDatabase, Record<string, unknown> & TContext>
+  >;
 }
 
 export type InferBetterZapPluginContext<TPlugins> = Simplify<

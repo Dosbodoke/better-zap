@@ -265,6 +265,11 @@ export type {
   BetterZapPluginInitContext,
   BetterZapPluginInitResult,
   BetterZapServices,
+  BetterZapWebhookEventContext,
+  BetterZapWebhookEventName,
+  BetterZapWebhookEvents,
+  BetterZapWebhookHooks,
   InferBetterZapPluginContext,
   InferBetterZapPluginServices,
 } from "./better-zap.types";
+export { WEBHOOK_EVENT_NAMES } from "./webhook/event-names";
