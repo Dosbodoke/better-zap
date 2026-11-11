@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { defineTemplates } from "better-zap";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { defineTemplates, TemplateService } from "better-zap";
 import { messageEditFixture } from "@better-zap/fixtures";
 import type {
   BetterZapDatabase,
@@ -2616,5 +2616,107 @@ describe("betterZap plugins", () => {
           24 * 60 * 60 * 1000,
       ).toISOString(),
     });
+  });
+});
+
+describe("api.templates", () => {
+  const fetchMock = vi.fn<typeof fetch>(async () =>
+    new Response(JSON.stringify({ data: [] }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }),
+  );
+
+  function makeZap(
+    options: {
+      wabaId?: string;
+      templateService?: TemplateService;
+      authorizeAppRequest?: "public";
+    } = {},
+  ) {
+    return betterZap({
+      authorizeAppRequest: options.authorizeAppRequest,
+      database: makeDatabase(),
+      config: {
+        token: "token",
+        phoneId: "phone-id",
+        webhookToken: "verify-token",
+        appSecret: TEST_META_APP_SECRET,
+        wabaId: options.wabaId,
+      },
+      templateService: options.templateService,
+      webhook: {
+        onMessage: vi.fn().mockResolvedValue(undefined),
+        onStatusUpdate: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+  }
+
+  beforeEach(() => {
+    fetchMock.mockClear();
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("lists templates with config.token and config.wabaId", async () => {
+    const zap = makeZap({ wabaId: "111" });
+
+    const result = await zap.api.templates.list();
+
+    expect(result.success).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(new URL(String(url)).pathname).toMatch(/\/111\/message_templates$/);
+    expect(init).toMatchObject({
+      headers: { Authorization: "Bearer token" },
+    });
+  });
+
+  it("returns a configuration_error without config.wabaId", async () => {
+    const zap = makeZap();
+
+    const result = await zap.api.templates.list();
+
+    expect(result).toMatchObject({
+      success: false,
+      diagnostics: { kind: "configuration_error" },
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("uses the templateService option when given", async () => {
+    const serviceFetch = vi.fn<typeof fetch>(async () =>
+      new Response(JSON.stringify({ data: [] }), { status: 200 }),
+    );
+    const zap = makeZap({
+      wabaId: "111",
+      templateService: new TemplateService({
+        accessToken: "other",
+        wabaId: "222",
+        fetch: serviceFetch,
+      }),
+    });
+
+    await zap.api.templates.list();
+
+    expect(serviceFetch).toHaveBeenCalledTimes(1);
+    const [url] = serviceFetch.mock.calls[0];
+    expect(new URL(String(url)).pathname).toMatch(/\/222\/message_templates$/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("exposes no template route", async () => {
+    const zap = makeZap({ wabaId: "111", authorizeAppRequest: "public" });
+
+    const response = await sendRequest(
+      zap,
+      new Request("http://localhost/api/whatsapp/templates"),
+    );
+
+    expect(response.status).toBe(404);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
