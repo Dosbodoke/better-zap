@@ -1,3 +1,8 @@
+import {
+  validateMessageTemplate,
+  validateMessageTemplateComponents,
+  type MessageTemplateIssue,
+} from "../template-validation";
 import type { MetaAccessTokenProvider } from "../types/coexistence.types";
 import {
   DEFAULT_MESSAGE_TEMPLATE_FIELDS,
@@ -159,8 +164,13 @@ export class TemplateService {
     });
   }
 
+  /** Validates the template first unless `validate` is `false`. */
   async create(
-    input: TemplateCallOptions & { template: MessageTemplateDefinition },
+    input: TemplateCallOptions & {
+      template: MessageTemplateDefinition;
+      /** Defaults to `true`. `false` sends the template without local validation. */
+      validate?: boolean;
+    },
   ): Promise<
     TemplateResult<{
       id: string;
@@ -180,6 +190,10 @@ export class TemplateService {
     if (!Array.isArray(template.components) || template.components.length === 0) {
       return invalidInput("template.components is required");
     }
+    if (input.validate !== false) {
+      const issues = validateMessageTemplate(template);
+      if (issues.length > 0) return invalidTemplate(issues);
+    }
 
     return this.send(input, wabaId, {
       path: `/${wabaId}/message_templates`,
@@ -196,8 +210,14 @@ export class TemplateService {
     });
   }
 
+  /** Validates `changes.components`, when given, unless `validate` is `false`. */
   async update(
-    input: TemplateCallOptions & { templateId: string; changes: MessageTemplateChanges },
+    input: TemplateCallOptions & {
+      templateId: string;
+      changes: MessageTemplateChanges;
+      /** Defaults to `true`. `false` sends the components without local validation. */
+      validate?: boolean;
+    },
   ): Promise<TemplateResult<{ success: boolean }>> {
     if (!isNumericId(input.templateId)) return invalidId("templateId");
 
@@ -210,6 +230,12 @@ export class TemplateService {
       return invalidInput(
         "changes must include components, category or message_send_ttl_seconds",
       );
+    }
+    if (input.validate !== false && body.components !== undefined) {
+      const issues = validateMessageTemplateComponents(body.components, {
+        category: body.category,
+      });
+      if (issues.length > 0) return invalidTemplate(issues);
     }
 
     return this.send(input, input.wabaId ?? this.wabaId, {
@@ -318,6 +344,10 @@ function invalidInput(error: string): TemplateFailure {
     error,
     diagnostics: { kind: "invalid_input", retryable: false },
   };
+}
+
+function invalidTemplate(issues: MessageTemplateIssue[]): TemplateFailure {
+  return { ...invalidInput(`Invalid template: ${issues[0]!.message}`), issues };
 }
 
 /** Copies only the listed keys, leaving out the ones that are `undefined`. */
