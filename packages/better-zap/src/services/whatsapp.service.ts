@@ -4,7 +4,7 @@
  */
 
 import type { WhatsAppConfig } from "../types/config";
-import { formatPhone } from "../utils/phone";
+import { normalizePhone } from "../utils/phone";
 import { delay } from "../utils/delay";
 import type {
   WhatsAppTextMessage,
@@ -50,6 +50,7 @@ export class WhatsAppService {
   private baseUrl: string;
   private token: string;
   private isDev: boolean;
+  private defaultCountry: "BR" | false;
   private logger: MessageLoggerService;
   private log: Logger;
 
@@ -61,8 +62,14 @@ export class WhatsAppService {
     this.baseUrl = `${META_BASE_URL}/${META_API_VERSION}/${config.phoneId}/messages`;
     this.token = config.token;
     this.isDev = config.environment === "development";
+    this.defaultCountry = config.defaultCountry ?? "BR";
     this.logger = logger;
     this.log = log;
+  }
+
+  /** Canonical form of a phone number supplied by the app, using this service's `defaultCountry`. */
+  normalizePhone(phone: string): string {
+    return normalizePhone(phone, { defaultCountry: this.defaultCountry });
   }
 
   /** Send a text message within the 24h free-form message window only. */
@@ -71,7 +78,7 @@ export class WhatsAppService {
     body: string,
     logging?: Omit<OutgoingLoggingMetadata, "content">,
   ): Promise<SendResult> {
-    const normalizedPhone = formatPhone(to);
+    const normalizedPhone = this.normalizePhone(to);
     const freeformMessageWindow = await this.logger.getFreeformMessageWindow(
       normalizedPhone,
     );
@@ -126,7 +133,7 @@ export class WhatsAppService {
   ): Promise<SendResult> {
     const payload: WhatsAppTemplateMessage = {
       messaging_product: "whatsapp",
-      to: formatPhone(to),
+      to: this.normalizePhone(to),
       type: "template",
       template: {
         name: templateName,
@@ -148,7 +155,7 @@ export class WhatsAppService {
     const payload: WhatsAppInteractiveButtonsMessage = {
       messaging_product: "whatsapp",
       recipient_type: "individual",
-      to: formatPhone(to),
+      to: this.normalizePhone(to),
       type: "interactive",
       interactive: {
         type: "button",
@@ -183,7 +190,7 @@ export class WhatsAppService {
     const payload: WhatsAppInteractiveListMessage = {
       messaging_product: "whatsapp",
       recipient_type: "individual",
-      to: formatPhone(to),
+      to: this.normalizePhone(to),
       type: "interactive",
       interactive: {
         type: "list",
@@ -239,7 +246,7 @@ export class WhatsAppService {
     const payload: WhatsAppInteractiveMediaCarouselMessage = {
       messaging_product: "whatsapp",
       recipient_type: "individual",
-      to: formatPhone(to),
+      to: this.normalizePhone(to),
       type: "interactive",
       interactive: {
         type: "carousel",
@@ -267,7 +274,7 @@ export class WhatsAppService {
     const payload: WhatsAppLocationMessage = {
       messaging_product: "whatsapp",
       recipient_type: "individual",
-      to: formatPhone(to),
+      to: this.normalizePhone(to),
       type: "location",
       location: { latitude, longitude, name, address },
     };
@@ -343,7 +350,7 @@ export class WhatsAppService {
     const payload: WhatsAppReactionMessage = {
       messaging_product: "whatsapp",
       recipient_type: "individual",
-      to: formatPhone(to),
+      to: this.normalizePhone(to),
       type: "reaction",
       reaction: {
         message_id: messageId,

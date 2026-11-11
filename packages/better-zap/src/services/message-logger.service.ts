@@ -16,6 +16,7 @@ import type { SyncEvent } from "../types/sync-events";
 import { type Logger, serializeError } from "../logger";
 import { hasPendingMedia } from "../utils/media-placeholder";
 import { asRecord, mergeDefined } from "../utils/record";
+import { normalizeWaId } from "../utils/phone";
 import { tryCatch } from "../utils/result";
 import { getMessageMedia } from "../media/message-media";
 import type { MessageMedia } from "../media/types";
@@ -171,7 +172,7 @@ export class MessageLoggerService {
   }
 
   async getConversationByPhone(phone: string): Promise<Conversation | null> {
-    const conversation = await this.store.getConversationByPhone(phone);
+    const conversation = await this.store.getConversationByPhone(normalizeWaId(phone));
     return conversation ? normalizeConversationRecord(conversation) : null;
   }
 
@@ -214,7 +215,7 @@ export class MessageLoggerService {
     metadata?: Record<string, any>;
   }): Promise<string> {
     const { record: inserted } = await this.store.createWhatsAppLog({
-      phone: params.phone,
+      phone: normalizeWaId(params.phone),
       userId: params.userId,
       direction: "outgoing",
       messageType: params.messageType,
@@ -284,7 +285,7 @@ export class MessageLoggerService {
     phone: string,
     withinHours: number = 24,
   ): Promise<boolean> {
-    return this.store.hasRecentOutgoingMessage(phone, withinHours);
+    return this.store.hasRecentOutgoingMessage(normalizeWaId(phone), withinHours);
   }
 
   /**
@@ -299,7 +300,7 @@ export class MessageLoggerService {
     metadata?: Record<string, unknown>;
   }): Promise<boolean> {
     const { record: inserted, created } = await this.store.createWhatsAppLog({
-      phone: params.phone,
+      phone: normalizeWaId(params.phone),
       contactName: params.senderName,
       waMessageId: params.waMessageId,
       direction: "incoming",
@@ -344,7 +345,7 @@ export class MessageLoggerService {
    */
   async importMessage(params: ImportMessageParams): Promise<ImportMessageResult> {
     const { record, created } = await this.store.createWhatsAppLog({
-      phone: params.phone,
+      phone: normalizeWaId(params.phone),
       contactName: params.senderName,
       waMessageId: params.waMessageId,
       direction: params.direction,

@@ -1,4 +1,4 @@
-import { formatPhone } from "../utils/phone";
+import { normalizeWaId } from "../utils/phone";
 import { isMediaPlaceholder } from "../utils/media-placeholder";
 import { type Logger, serializeError } from "../logger";
 import type { BetterZapDatabase } from "../better-zap.types";
@@ -1258,7 +1258,7 @@ function resolveMessageDirection(
     return "incoming";
   }
 
-  return formatPhone(message.from) === formatPhone(businessDisplayPhoneNumber)
+  return normalizeWaId(message.from) === normalizeWaId(businessDisplayPhoneNumber)
     ? "outgoing"
     : "incoming";
 }
