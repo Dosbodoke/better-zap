@@ -146,6 +146,7 @@ describe("createWebhookProcessor", () => {
     vi.clearAllMocks();
     mockLogger.logIncoming.mockResolvedValue(true);
     mockLogger.importMessage.mockResolvedValue("created");
+    mockLogger.updateStatus.mockResolvedValue(true);
     mockCoexistenceStore.updateSyncJobByRequestId.mockResolvedValue(undefined);
     mockCoexistenceStore.upsertContact.mockResolvedValue(undefined);
     mockCoexistenceStore.removeContact.mockResolvedValue(undefined);
@@ -1092,6 +1093,88 @@ describe("createWebhookProcessor", () => {
       );
       expect(mockOnMessage).not.toHaveBeenCalled();
       expect(mockLogger.logIncoming).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("failure isolation", () => {
+    it("keeps processing later messages when one fails to store", async () => {
+      const payload = makeTextMessage();
+      const messages = payload.entry[0].changes[0].value.messages;
+      messages[0].id = "wamid.a";
+      messages.push({ ...messages[0], id: "wamid.b" });
+      mockLogger.logIncoming.mockRejectedValueOnce(new Error("db down"));
+
+      await processor.process(payload as any);
+
+      expect(mockOnMessage).toHaveBeenCalledOnce();
+      expect(mockOnMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: expect.objectContaining({ id: "wamid.b" }),
+        }),
+      );
+      expect(mockLog.error).toHaveBeenCalledWith(
+        "webhook.message_failed",
+        expect.objectContaining({ waMessageId: "wamid.a" }),
+      );
+    });
+
+    it("keeps processing later statuses when one fails to store", async () => {
+      const payload = makeStatusUpdate("delivered", "w-1");
+      const statuses = payload.entry[0].changes[0].value.statuses;
+      statuses.push({ ...statuses[0], id: "w-2" });
+      mockLogger.updateStatus.mockRejectedValueOnce(new Error("db down"));
+
+      await processor.process(payload as any);
+
+      expect(mockOnStatusUpdate).toHaveBeenCalledOnce();
+      expect(mockLog.error).toHaveBeenCalledWith(
+        "webhook.status_failed",
+        expect.objectContaining({ waMessageId: "w-1" }),
+      );
+    });
+
+    it("applies a status with an invalid timestamp using the current time", async () => {
+      const payload = makeStatusUpdate("delivered", "w-1");
+      payload.entry[0].changes[0].value.statuses[0].timestamp = "not-a-number";
+
+      await expect(
+        processor.process(payload as any),
+      ).resolves.toBeUndefined();
+
+      expect(mockLogger.updateStatus).toHaveBeenCalledOnce();
+      expect(mockLogger.updateStatus.mock.calls[0][2]).toMatch(
+        /^\d{4}-\d{2}-\d{2}T/,
+      );
+      expect(mockOnStatusUpdate).toHaveBeenCalledOnce();
+      expect(mockLog.warn).toHaveBeenCalledWith(
+        "webhook.status_invalid_timestamp",
+        { waMessageId: "w-1" },
+      );
+    });
+
+    it("keeps processing later changes when one change throws", async () => {
+      const payload: any = makeTextMessage();
+      payload.entry[0].changes.unshift({ field: "messages", value: null });
+
+      await processor.process(payload);
+
+      expect(mockOnMessage).toHaveBeenCalledOnce();
+      expect(mockLog.error).toHaveBeenCalledWith(
+        "webhook.change_failed",
+        expect.objectContaining({ entryId: "entry-1", field: "messages" }),
+      );
+    });
+
+    it("keeps processing later entries when one entry's change throws", async () => {
+      const payload: any = makeTextMessage();
+      payload.entry.unshift({
+        id: "entry-0",
+        changes: [{ field: "messages", value: null }],
+      });
+
+      await processor.process(payload);
+
+      expect(mockOnMessage).toHaveBeenCalledOnce();
     });
   });
 });
