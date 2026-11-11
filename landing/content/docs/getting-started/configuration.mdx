@@ -130,6 +130,12 @@ All API routes are mounted under this path:
 - `GET  {basePath}/conversations/:phone` — Get conversation
 - `GET  {basePath}/conversations/:phone/messages` — Paginated messages
 - `GET  {basePath}/media/:waMessageId` — Stored media file
+- `POST {basePath}/coexistence/embedded-signup/callback` — Completes Embedded Signup
+- `GET  {basePath}/coexistence/phone-numbers/:phoneNumberId/status` — Phone number coexistence status
+- `POST {basePath}/coexistence/phone-numbers/:phoneNumberId/sync/contacts` — Request contact sync
+- `POST {basePath}/coexistence/phone-numbers/:phoneNumberId/sync/history` — Request history sync
+
+The coexistence routes are described in [Self-hosted Coexistence](/docs/guides/self-hosted-coexistence).
 
 ### `authorizeAppRequest` (optional)
 

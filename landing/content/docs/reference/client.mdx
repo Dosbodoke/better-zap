@@ -28,28 +28,32 @@ const zapClient = createZapClient({
 | `baseURL` | `string` | `window.location.origin` | API server URL |
 | `basePath` | `string` | `"/api/whatsapp"` | Must match your server's `basePath` |
 | `fetch` | `typeof fetch` | `globalThis.fetch` | Custom fetch implementation |
+| `transport` | `ZapTransport` | none | How requests authenticate to your Better Zap routes |
 | `templates` | `TemplateRegistry` | `{}` | Template registry for type inference only |
 
-### Authorization Headers
+### Authentication
 
-`createZapClient()` does not have a first-class auth option. If your server uses `authorizeAppRequest`, pass a custom `fetch` that adds the authorization header for app API requests:
+Use `transport` to choose how requests authenticate to your Better Zap routes:
 
 ```ts
-const zapClient = createZapClient({
-  baseURL: "https://api.example.com",
-  fetch: (input, init) => {
-    const headers = new Headers(init?.headers);
-    headers.set("Authorization", `Bearer ${appApiToken}`);
+import { createZapClient, sessionTransport, apiKeyTransport } from "better-zap/client";
 
-    return fetch(input, {
-      ...init,
-      headers,
-    });
-  },
+// Browser: your server owns the session; the client sends cookies.
+const browserClient = createZapClient({ transport: sessionTransport() });
+
+// Server to server: send a bearer token that your authorizeAppRequest checks.
+const serverClient = createZapClient({
+  baseURL: "https://api.example.com",
+  transport: apiKeyTransport(process.env.APP_API_TOKEN!),
+});
+
+// Anything else, e.g. a rotating token.
+const customClient = createZapClient({
+  transport: { headers: async () => ({ Authorization: `Bearer ${await getToken()}` }) },
 });
 ```
 
-Keep WhatsApp and Meta credentials on your server. Browser clients should only receive application-scoped credentials that your server is prepared to authorize.
+Keep WhatsApp and Meta credentials on your server. Browser clients should only receive application-scoped credentials that your server is prepared to authorize. Never put an API key in browser code; use `sessionTransport()` there.
 
 ## Typed Templates
 
@@ -57,10 +61,10 @@ Pass your template registry for compile-time type checking:
 
 ```ts
 import { createZapClient } from "better-zap/client";
-import type { templates } from "./templates";
+import type { AppWhatsAppTemplates } from "./templates";
 
 const zapClient = createZapClient({
-  templates: {} as typeof templates,
+  templates: {} as AppWhatsAppTemplates,
 });
 
 // Now template names and params are type-checked

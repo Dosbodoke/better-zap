@@ -29,13 +29,12 @@ await zap.api.send.reaction("+5511999998888", "wamid.HBgLNTUxMTk...", "");
 
 ## Typing Indicator
 
-Show a typing indicator (composing bubble) to let the user know you're processing their message:
+Show a typing indicator (composing bubble) to let the user know you're processing their message. It is available inside webhook hooks as `ctx.api.typingIndicator(messageId, action?)`:
 
-```ts
-await zap.api.send.typingIndicator("+5511999998888");
-```
+- `messageId` is the ID of the message you are answering.
+- `action` is `"typing_on"` (the default) or `"typing_off"`.
 
-The typing indicator disappears automatically after a few seconds or when you send a message. This is useful for bot flows where processing takes a moment:
+The typing indicator disappears after 25 seconds or when you send a message. This is useful for bot flows where processing takes a moment:
 
 ```ts
 webhook: {
@@ -55,10 +54,16 @@ All send methods return a `SendResult`:
 
 ```ts
 interface SendResult {
-  messaging_product: "whatsapp";
-  contacts: Array<{ input: string; wa_id: string }>;
-  messages: Array<{ id: string }>;
+  success: boolean;
+  messageId?: string;  // Meta's message ID, on success
+  error?: string;
+  errorCode?: number;  // Meta's error code
+  code?: string;       // Better Zap's code, e.g. "CONTEXT_WINDOW_CLOSED"
+  httpStatus?: number;
+  details?: Record<string, any>;
 }
 ```
+
+A failed send is returned as `{ success: false, ... }` instead of throwing, so check `success`.
 
 In development mode (`environment: "development"`), mock responses are returned without calling the Meta API.

@@ -72,14 +72,16 @@ await zap.api.send.interactiveMediaCarousel({
   cards: [
     {
       header: { type: "image", link: "https://example.com/product1.jpg" },
-      body: "Product A — $29.99",
-      buttons: [{ type: "quick_reply", id: "buy_a", title: "Buy Now" }],
+      bodyText: "Product A — $29.99",
+      button: { displayText: "Buy now", url: "https://example.com/products/a" },
     },
     {
       header: { type: "image", link: "https://example.com/product2.jpg" },
-      body: "Product B — $49.99",
-      buttons: [{ type: "quick_reply", id: "buy_b", title: "Buy Now" }],
+      bodyText: "Product B — $49.99",
+      button: { displayText: "Buy now", url: "https://example.com/products/b" },
     },
   ],
 });
 ```
+
+A carousel needs 2 to 10 cards. `header.type` is `"image"` or `"video"`, `bodyText` is optional, and each card has exactly one button that opens a URL.
