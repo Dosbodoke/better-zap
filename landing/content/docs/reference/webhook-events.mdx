@@ -120,6 +120,67 @@ sent → delivered → read
 
 The logger service enforces this: a message that's already `read` won't regress to `delivered`.
 
+## Template events
+
+Meta reviews a template after you create or edit it, and can later pause it, disable it, change its category or lower its quality score. Each change arrives as a webhook and is passed to one of four optional hooks:
+
+| Hook | When it runs |
+| --- | --- |
+| `onTemplateStatusUpdate` | Meta approves, rejects, pauses, disables or otherwise changes a template's status (`message_template_status_update`) |
+| `onTemplateQualityUpdate` | A template's quality score changes (`message_template_quality_update`) |
+| `onTemplateCategoryUpdate` | Meta announces or applies a category change (`template_category_update`) |
+| `onTemplateComponentsUpdate` | A template's content is edited (`message_template_components_update`) |
+
+```ts
+webhook: {
+  onMessage: async () => {},
+  onStatusUpdate: async () => {},
+  onTemplateStatusUpdate: async (ctx) => {
+    if (ctx.event === "APPROVED") {
+      await markTemplateReady(ctx.wabaId, ctx.templateName, ctx.templateLanguage);
+    }
+    if (ctx.event === "REJECTED") {
+      // ctx.reason is e.g. "INVALID_FORMAT"; Meta's details are in ctx.value.rejection_info
+      await notifyRejection(ctx.templateName, ctx.reason, ctx.value.rejection_info);
+    }
+  },
+}
+```
+
+Better Zap stores nothing for these events. If you keep a local copy of your templates, update it in the hook.
+
+### Template Context
+
+Every template hook receives:
+
+| Property | Type | Description |
+| --- | --- | --- |
+| `wabaId` | `string` | The business account that owns the template (the webhook entry id) |
+| `templateId` | `string` | Template id |
+| `templateName` | `string` | Template name |
+| `templateLanguage` | `string` | Language code with `-` replaced by `_`, e.g. `en_US`. Empty when Meta sends none |
+| `value` | `object` | The payload exactly as Meta sent it |
+| `change` | `WebhookChange` | The raw webhook change |
+
+Through `betterZap()`, the context also has `db`, `api`, `logger` and your plugins' context. Each hook adds:
+
+| Hook | Properties |
+| --- | --- |
+| `onTemplateStatusUpdate` | `event` (`APPROVED`, `REJECTED`, `PAUSED`, `DISABLED`, ...), `reason` (`null` when Meta sends none or `NONE`), `category` |
+| `onTemplateQualityUpdate` | `previousQualityScore`, `newQualityScore` (`GREEN`, `YELLOW`, `RED` or `UNKNOWN`; a missing score is `UNKNOWN`) |
+| `onTemplateCategoryUpdate` | `phase` (`"scheduled"` or `"changed"`), `currentCategory`, `previousCategory` (when changed), `nextCategory` and `scheduledFor` (when scheduled) |
+| `onTemplateComponentsUpdate` | `body`, `header`, `footer`, `buttons` (`{ type, text?, url?, phoneNumber? }[]`) |
+
+### Notes
+
+- Subscribe your app to the four webhook fields above in Meta's App Dashboard. The access token needs the `whatsapp_business_management` permission.
+- These webhooks belong to a business account, not a phone number. Use `ctx.wabaId`; there is no phone number id.
+- In an announced category change, `currentCategory` is the template's category today and `nextCategory` is the one Meta will apply at `scheduledFor`.
+- `templateId` is a string, but Meta sends it as a JSON number. For very large ids, prefer matching on `templateName` plus `templateLanguage`.
+- A template webhook without a template id or name is logged as `webhook.template_event_invalid` and skipped. A hook that throws is logged and does not stop the rest of the webhook.
+
+The readers behind these hooks (`readTemplateStatusUpdate`, `readTemplateQualityUpdate`, `readTemplateCategoryUpdate`, `readTemplateComponentsUpdate`) are exported from `better-zap` for apps that handle raw payloads themselves.
+
 ## Processing Model
 
 Better Zap's webhook is designed for reliability:

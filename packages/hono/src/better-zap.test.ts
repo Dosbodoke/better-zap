@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defineTemplates, TemplateService } from "better-zap";
-import { messageEditFixture } from "@better-zap/fixtures";
+import {
+  messageEditFixture,
+  templateStatusApprovedFixture,
+} from "@better-zap/fixtures";
 import type {
   BetterZapDatabase,
   CoexistenceStore,
@@ -494,6 +497,24 @@ describe("betterZap plugins", () => {
       "error",
       "plugin.on_coexistence_message_edit_failed",
       expect.objectContaining({ pluginId: "failing-plugin" }),
+    );
+  });
+
+  it("passes template status webhooks to webhook.onTemplateStatusUpdate", async () => {
+    const onTemplateStatusUpdate = vi.fn();
+
+    const zap = betterZap({
+      database: makeDatabase(),
+      config: pluginTestConfig,
+      webhook: { ...noopWebhook, onTemplateStatusUpdate },
+    });
+
+    const response = await postWebhook(zap, templateStatusApprovedFixture);
+
+    expect(response.status).toBe(200);
+    expect(onTemplateStatusUpdate).toHaveBeenCalledOnce();
+    expect(onTemplateStatusUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ templateName: "order_confirmation" }),
     );
   });
 

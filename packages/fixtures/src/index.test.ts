@@ -22,6 +22,7 @@ import {
   smbAppStateSyncContactAddFixture,
   smbAppStateSyncContactRemoveFixture,
   smbMessageEchoFixture,
+  templateWebhookFixtures,
   unknownPhoneNumberFixture,
 } from "./index";
 
@@ -56,6 +57,16 @@ describe("@better-zap/fixtures exports", () => {
       expect(fixture.entry[0]?.changes[0]?.value.messaging_product).toBe(
         "whatsapp",
       );
+    }
+  });
+
+  it("exports template webhook payloads addressed to a business account", () => {
+    for (const fixture of Object.values(templateWebhookFixtures)) {
+      expect(fixture.object).toBe("whatsapp_business_account");
+      expect(fixture.entry[0]?.id).toBeTruthy();
+      expect(
+        typeof fixture.entry[0]?.changes[0]?.value.message_template_name,
+      ).toBe("string");
     }
   });
 

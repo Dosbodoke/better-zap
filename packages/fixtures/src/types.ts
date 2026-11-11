@@ -82,3 +82,12 @@ export type CoexistenceError = {
   message?: string;
   error_data?: Record<string, unknown>;
 };
+
+export type TemplateWebhookPayload = {
+  object: "whatsapp_business_account";
+  entry: Array<{
+    id: string;
+    time?: number;
+    changes: Array<{ field: string; value: Record<string, unknown> }>;
+  }>;
+};

@@ -35,6 +35,16 @@ import type {
   WebhookPayload,
 } from "../types/whatsapp.types";
 import { getMessageContent as defaultGetMessageContent } from "./message-content";
+import {
+  readTemplateCategoryUpdate,
+  readTemplateComponentsUpdate,
+  readTemplateQualityUpdate,
+  readTemplateStatusUpdate,
+  type TemplateCategoryUpdateContext,
+  type TemplateComponentsUpdateContext,
+  type TemplateQualityUpdateContext,
+  type TemplateStatusUpdateContext,
+} from "./template-events";
 import type { WebhookMediaConfig } from "../media/store-message-media";
 import { createMediaQueue, type MediaQueue } from "../media/media-queue";
 
@@ -177,6 +187,14 @@ export interface WebhookProcessorHooks {
   onCoexistenceUnsupportedMessage?: (
     ctx: CoexistenceUnsupportedMessageContext,
   ) => Promise<void>;
+  /** Called when Meta approves, rejects, pauses, disables or otherwise changes a template's status. */
+  onTemplateStatusUpdate?: (ctx: TemplateStatusUpdateContext) => Promise<void>;
+  /** Called when a template's quality score changes. */
+  onTemplateQualityUpdate?: (ctx: TemplateQualityUpdateContext) => Promise<void>;
+  /** Called when Meta announces or applies a template category change. */
+  onTemplateCategoryUpdate?: (ctx: TemplateCategoryUpdateContext) => Promise<void>;
+  /** Called when a template's content is edited. */
+  onTemplateComponentsUpdate?: (ctx: TemplateComponentsUpdateContext) => Promise<void>;
   /**
    * Called for Meta platform-level errors.
    * @default Uses the configured {@link WebhookProcessorConfig.log} logger's {@code error} method.
@@ -289,7 +307,7 @@ async function processEntry(
 ): Promise<void> {
   for (const change of entry.changes) {
     try {
-      await processChange(change, config, log);
+      await processChange(change, entry.id, config, log);
     } catch (error) {
       log.error("webhook.change_failed", {
         entryId: entry.id,
@@ -303,6 +321,7 @@ async function processEntry(
 /** Routes webhook changes to field-specific processors. */
 async function processChange(
   change: WebhookChange,
+  entryId: string,
   config: ProcessorRuntime,
   log: Logger,
 ): Promise<void> {
@@ -328,9 +347,72 @@ async function processChange(
     case "account_reconnected":
       await processAccountReconnectedChange(change, config, log);
       return;
+    case "message_template_status_update":
+    case "message_template_quality_update":
+    case "template_category_update":
+    case "message_template_components_update":
+      await processTemplateChange(change, entryId, config, log);
+      return;
     default:
       log.debug("webhook.unknown_field_ignored", { field: change.field });
       return;
+  }
+}
+
+/**
+ * Passes a template webhook to its hook. These webhooks are addressed to the
+ * business account: `entryId` is the WABA id and there is no phone number id.
+ */
+async function processTemplateChange(
+  change: WebhookChange,
+  entryId: string,
+  config: ProcessorRuntime,
+  log: Logger,
+): Promise<void> {
+  const logInvalid = () =>
+    log.warn("webhook.template_event_invalid", { field: change.field, entryId });
+
+  switch (change.field) {
+    case "message_template_status_update": {
+      const ctx = readTemplateStatusUpdate(change, entryId);
+      if (!ctx) return logInvalid();
+      await runOptionalHook(
+        () => config.hooks.onTemplateStatusUpdate?.(ctx),
+        "webhook.on_template_status_update_hook_failed",
+        log,
+      );
+      return;
+    }
+    case "message_template_quality_update": {
+      const ctx = readTemplateQualityUpdate(change, entryId);
+      if (!ctx) return logInvalid();
+      await runOptionalHook(
+        () => config.hooks.onTemplateQualityUpdate?.(ctx),
+        "webhook.on_template_quality_update_hook_failed",
+        log,
+      );
+      return;
+    }
+    case "template_category_update": {
+      const ctx = readTemplateCategoryUpdate(change, entryId);
+      if (!ctx) return logInvalid();
+      await runOptionalHook(
+        () => config.hooks.onTemplateCategoryUpdate?.(ctx),
+        "webhook.on_template_category_update_hook_failed",
+        log,
+      );
+      return;
+    }
+    case "message_template_components_update": {
+      const ctx = readTemplateComponentsUpdate(change, entryId);
+      if (!ctx) return logInvalid();
+      await runOptionalHook(
+        () => config.hooks.onTemplateComponentsUpdate?.(ctx),
+        "webhook.on_template_components_update_hook_failed",
+        log,
+      );
+      return;
+    }
   }
 }
 

@@ -13,6 +13,10 @@ export const WEBHOOK_EVENT_NAMES = [
   "onCoexistenceMessageEdit",
   "onCoexistenceMessageRevoke",
   "onCoexistenceUnsupportedMessage",
+  "onTemplateStatusUpdate",
+  "onTemplateQualityUpdate",
+  "onTemplateCategoryUpdate",
+  "onTemplateComponentsUpdate",
 ] as const satisfies readonly BetterZapWebhookEventName[];
 
 // Fails to compile when a hook is added to WebhookProcessorHooks but not here.
