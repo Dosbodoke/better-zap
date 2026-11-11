@@ -30,18 +30,30 @@ const zap = betterZap({
 
 ## Authorization
 
-Meta webhook routes must stay public so Meta can verify and deliver events. App API routes should be protected when your handler is reachable from browsers or the public internet.
-
-Use `authorizeAppRequest` to authorize non-webhook API requests:
+Meta webhook routes must stay public so Meta can verify and deliver events. Every other route is an app route, and app routes answer `401` until you set `authorizeAppRequest`. A webhook-only bot needs nothing here: its webhook routes keep working without the option.
 
 ```ts
-authorizeAppRequest?: (input: {
+authorizeAppRequest?: BetterZapAuthorizeAppRequest | "public";
+
+type BetterZapAuthorizeAppRequest = (input: {
   request: Request;
   env?: unknown;
 }) => boolean | Promise<boolean>;
 ```
 
-The hook runs for:
+An app route behaves like this for each value:
+
+| `authorizeAppRequest` | Response | Log |
+| --- | --- | --- |
+| function returning `true` | the route handler runs | none |
+| function returning `false` | `401` `{ "error": "Unauthorized" }` | none |
+| function that throws | `500` `{ "error": "Authorization failed" }` | `app_api.authorization_failed` (error) |
+| `"public"` | the route handler runs | none |
+| omitted | `401` `{ "error": "Unauthorized", "code": "app_authorization_not_configured" }` | `app_api.authorization_not_configured` (warn) |
+
+Use `"public"` only when something in front of Better Zap already authenticates the request, such as a gateway, a private network or your own middleware.
+
+The option guards:
 
 - `POST /send/text`
 - `POST /send/template`
@@ -51,10 +63,12 @@ The hook runs for:
 - `GET /conversations/:phone`
 - `GET /conversations/:phone/messages`
 - `GET /media/:waMessageId`
+- `POST /coexistence/embedded-signup/callback`
+- `GET /coexistence/phone-numbers/:phoneNumberId/status`
+- `POST /coexistence/phone-numbers/:phoneNumberId/sync/contacts`
+- `POST /coexistence/phone-numbers/:phoneNumberId/sync/history`
 
-It does not run for `GET /webhook` or `POST /webhook`.
-
-If the hook returns `false`, the API route returns `401` with `{ error: "Unauthorized" }`. If the hook throws, the API route returns `500` with `{ error: "Authorization failed" }`.
+It never applies to `GET /webhook` or `POST /webhook`.
 
 ## Return Value
 

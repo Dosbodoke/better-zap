@@ -2,6 +2,19 @@
 
 Hono runtime and webhook adapter for Better Zap.
 
+## App routes
+
+Every route under `basePath` except `/webhook` is an app route: sending
+messages, reading conversations and media, and the coexistence routes.
+
+- App routes are closed by default. Without `authorizeAppRequest` they answer
+  `401` with `code: "app_authorization_not_configured"`. The webhook routes
+  keep working, so a webhook-only bot needs no change.
+- Pass a function as `authorizeAppRequest` to check each request. Return `true`
+  to allow it.
+- Pass `authorizeAppRequest: "public"` only when something in front of Better
+  Zap already authenticates the request.
+
 ## Coexistence webhooks
 
 `createWebhookHandler()` passes payloads to `createWebhookProcessor()` from

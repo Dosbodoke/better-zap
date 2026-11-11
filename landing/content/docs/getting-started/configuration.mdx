@@ -128,6 +128,19 @@ All API routes are mounted under this path:
 - `GET  {basePath}/conversations/:phone/messages` — Paginated messages
 - `GET  {basePath}/media/:waMessageId` — Stored media file
 
+### `authorizeAppRequest` (optional)
+
+Guards the app routes: every route under `basePath` except the two webhook routes. Until you set it, app routes answer `401`, so nobody can send messages or read conversations through your API by default. Pass a function that returns `true` for requests you allow, or `"public"` if something in front of Better Zap already authenticates them. A webhook-only bot can leave it out.
+
+```ts
+authorizeAppRequest: ({ request }) => {
+  const authorization = request.headers.get("Authorization");
+  return authorization === `Bearer ${env.APP_API_TOKEN}`;
+},
+```
+
+See [Authorization](/docs/reference/server#authorization) for every response and log.
+
 ### `templates` (optional)
 
 A template registry created with `defineTemplates()`. Enables type-safe template sending.
