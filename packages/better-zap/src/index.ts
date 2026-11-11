@@ -140,6 +140,40 @@ export {
   type CoexistenceServiceConfig,
 } from "./services/coexistence.service";
 export {
+  TemplateService,
+  type ListMessageTemplatesInput,
+  type TemplateCallOptions,
+  type TemplateServiceConfig,
+} from "./services/template.service";
+export { DEFAULT_MESSAGE_TEMPLATE_FIELDS } from "./types/template.types";
+export type {
+  MessageTemplate,
+  MessageTemplateBodyComponent,
+  MessageTemplateButton,
+  MessageTemplateButtonsComponent,
+  MessageTemplateCategory,
+  MessageTemplateChanges,
+  MessageTemplateComponent,
+  MessageTemplateDefinition,
+  MessageTemplateFooterComponent,
+  MessageTemplateHeaderComponent,
+  MessageTemplateNamedExample,
+  MessageTemplateOtherButton,
+  MessageTemplateOtherComponent,
+  MessageTemplatePage,
+  MessageTemplateParameterFormat,
+  MessageTemplateQualityScore,
+  MessageTemplateStatus,
+  TemplateFailure,
+  TemplateFailureKind,
+  TemplateResult,
+} from "./types/template.types";
+export type {
+  MetaGraphFailure,
+  MetaGraphResult,
+  MetaGraphSuccess,
+} from "./types/graph.types";
+export {
   createCoexistenceEmbeddedSignupConfig,
   launchCoexistenceEmbeddedSignup,
   normalizeCoexistenceSessionEvent,

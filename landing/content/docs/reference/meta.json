@@ -1,4 +1,4 @@
 {
   "title": "Reference",
-  "pages": ["server", "client", "webhook-events", "conversations"]
+  "pages": ["server", "templates", "client", "webhook-events", "conversations"]
 }
