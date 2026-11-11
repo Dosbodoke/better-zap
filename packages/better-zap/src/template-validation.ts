@@ -106,25 +106,28 @@ export function validateMessageTemplate(
       "Template language is missing; it must be a language code such as en_US.",
     );
   }
-  const category = template.category;
-  if (typeof category !== "string" || !CATEGORIES.includes(category)) {
+  // Meta accepts the category and the parameter format in either case.
+  const category = upper(template.category);
+  if (!CATEGORIES.includes(category)) {
     addIssue(
       issues,
       "category_invalid",
       "category",
-      `Template category must be MARKETING, UTILITY or AUTHENTICATION; got ${describe(category)}.`,
+      `Template category must be MARKETING, UTILITY or AUTHENTICATION; got ${describe(template.category)}.`,
     );
   }
 
   // Authentication templates use a different component model that is not checked.
   if (category === "AUTHENTICATION") return issues;
 
-  const parameterFormat =
-    (template.parameter_format as MessageTemplateParameterFormat | undefined) ?? "POSITIONAL";
   issues.push(
     ...validateMessageTemplateComponents(
       template.components as MessageTemplateComponent[],
-      { category: category as MessageTemplateCategory, parameterFormat },
+      {
+        category: category as MessageTemplateCategory,
+        parameterFormat: (upper(template.parameter_format) ||
+          "POSITIONAL") as MessageTemplateParameterFormat,
+      },
     ),
   );
   return issues;
@@ -139,10 +142,16 @@ export function validateMessageTemplateComponents(
     parameterFormat?: MessageTemplateParameterFormat;
   } = {},
 ): MessageTemplateIssue[] {
-  if (options?.category === "AUTHENTICATION") return [];
-
   const list: unknown[] = Array.isArray(components) ? components : [];
-  const format = options?.parameterFormat ?? inferParameterFormat(list);
+  const category = upper(options?.category);
+  // An edit usually carries no category, so an authentication template is
+  // also recognised by its one-time password button.
+  if (category === "AUTHENTICATION" || (!category && hasOtpButton(list))) {
+    return [];
+  }
+
+  const format = (upper(options?.parameterFormat) ||
+    inferParameterFormat(list)) as MessageTemplateParameterFormat;
   const issues: MessageTemplateIssue[] = [];
   const seen = new Set<string>();
 
@@ -542,6 +551,20 @@ function inferParameterFormat(components: unknown[]): MessageTemplateParameterFo
   return "POSITIONAL";
 }
 
+/** Every authentication template has a one-time password (`OTP`) button. */
+function hasOtpButton(components: unknown[]): boolean {
+  return components.some((value) => {
+    const component = asObject(value);
+    if (!component || upper(component.type) !== "BUTTONS") return false;
+
+    const buttons = component.buttons;
+    return (
+      Array.isArray(buttons) &&
+      buttons.some((button) => upper(asObject(button)?.type) === "OTP")
+    );
+  });
+}
+
 /** Adds the issue unless one with the same code and path is already there. */
 function addIssue(
   issues: MessageTemplateIssue[],
@@ -570,7 +593,8 @@ function listVariables(names: string[]): string {
 }
 
 function describe(value: unknown): string {
-  return typeof value === "string" ? `"${value}"` : String(value);
+  if (typeof value === "string") return `"${value}"`;
+  return value === undefined || value === null ? "nothing" : `a ${typeof value}`;
 }
 
 /** Counts characters rather than UTF-16 code units, so an emoji counts once. */
@@ -578,8 +602,9 @@ function characterCount(text: string): number {
   return Array.from(text).length;
 }
 
+/** Upper-cases a string. Anything else reads as `""`, so a value from JSON cannot make this throw. */
 function upper(value: unknown): string {
-  return String(value).toUpperCase();
+  return typeof value === "string" ? value.toUpperCase() : "";
 }
 
 function asObject(value: unknown): LooseObject | undefined {

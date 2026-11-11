@@ -254,6 +254,31 @@ describe("validateMessageTemplate", () => {
     expect(result.map((issue) => issue.code)).toEqual(["name_invalid", "language_missing"]);
   });
 
+  it("accepts a lower-case category and parameter format", () => {
+    const named = {
+      name: "welcome",
+      language: "en_US",
+      category: "marketing",
+      parameter_format: "named",
+      components: [
+        {
+          type: "BODY",
+          text: "Hi {{first_name}}",
+          example: { body_text_named_params: [{ param_name: "first_name", example: "Pablo" }] },
+        },
+      ],
+    };
+    const authentication = {
+      name: "login_code",
+      language: "en_US",
+      category: "authentication",
+      components: [{ type: "body" }, { type: "footer", code_expiration_minutes: 5 }],
+    };
+
+    expect(validateMessageTemplate(named as never)).toEqual([]);
+    expect(validateMessageTemplate(authentication as never)).toEqual([]);
+  });
+
   it("ignores component and button types it does not model", () => {
     const definition = valid() as Loose;
     definition.components.push({ type: "CAROUSEL", cards: [] });
@@ -317,6 +342,18 @@ describe("validateMessageTemplate", () => {
           { type: null },
         ],
       },
+      // JSON can carry an object whose `toString` is not a function.
+      {
+        name: "a",
+        language: "en",
+        category: { toString: null },
+        parameter_format: { toString: null },
+        components: [
+          { type: { toString: null }, format: { toString: null } },
+          { type: "HEADER", format: { toString: null } },
+          { type: "BUTTONS", buttons: [{ type: { toString: null } }] },
+        ],
+      },
     ];
 
     for (const definition of malformed) {
@@ -348,6 +385,21 @@ describe("validateMessageTemplateComponents", () => {
 
   it("checks nothing for an authentication template", () => {
     expect(validateMessageTemplateComponents([], { category: "AUTHENTICATION" })).toEqual([]);
+  });
+
+  it("recognises an authentication template by its OTP button when no category is given", () => {
+    const components = [
+      { type: "BODY", add_security_recommendation: true },
+      { type: "FOOTER", code_expiration_minutes: 10 },
+      { type: "BUTTONS", buttons: [{ type: "OTP", otp_type: "COPY_CODE" }] },
+    ];
+
+    expect(validateMessageTemplateComponents(components as never)).toEqual([]);
+    expect(
+      validateMessageTemplateComponents(components as never, { category: "MARKETING" }).map(
+        (issue) => issue.code,
+      ),
+    ).toEqual(["body_text_empty", "footer_text_empty"]);
   });
 
   it("never throws on components that are not an array", () => {

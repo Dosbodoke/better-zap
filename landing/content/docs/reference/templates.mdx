@@ -171,7 +171,7 @@ The limits are exported as `MESSAGE_TEMPLATE_LIMITS`. Lengths are counted in cha
 
 The check also requires a body, at most one header, body, footer and buttons component, an uploaded handle for an image, video, document or GIF header, positional variables numbered from `{{1}}` without gaps, named variables in lower case, and an example for every header, body and URL variable.
 
-It does not check authentication templates beyond the name, language and category, or components other than the header, body, footer and buttons: carousels, limited-time offers, flows and other types pass through unchecked. It does not check content against Meta's policies.
+It does not check authentication templates beyond the name, language and category, or components other than the header, body, footer and buttons: carousels, limited-time offers, flows and other types pass through unchecked. When no category is given, as in most edits, components with a one-time password (`OTP`) button are treated as an authentication template. It does not check content against Meta's policies.
 
 ## Results
 
