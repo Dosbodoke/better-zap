@@ -459,3 +459,210 @@ describe("TemplateService", () => {
     });
   });
 });
+
+describe("TemplateService.uploadHeaderMedia", () => {
+  function setupUpload(responses: Response[]) {
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => responses.shift()!);
+    const service = new TemplateService({
+      accessToken: "token_1",
+      appId: "999",
+      fetch: fetchMock as unknown as typeof fetch,
+    });
+    return { fetchMock, service };
+  }
+
+  const png = { fileName: "a.png", fileType: "image/png" } as const;
+
+  it("starts a session, uploads the bytes and returns the handle", async () => {
+    const { fetchMock, service } = setupUpload([
+      jsonResponse({ id: "upload:abc?sig=xyz" }),
+      jsonResponse({ h: "4::handle" }),
+    ]);
+    const file = new Uint8Array([1, 2, 3]);
+
+    const result = await service.uploadHeaderMedia({ ...png, file });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const sessionUrl = new URL(fetchMock.mock.calls[0]![0]);
+    expect(sessionUrl.pathname).toBe("/v25.0/999/uploads");
+    expect(Object.fromEntries(sessionUrl.searchParams)).toEqual({
+      file_name: "a.png",
+      file_length: "3",
+      file_type: "image/png",
+    });
+    expect(fetchMock.mock.calls[0]![1]).toMatchObject({
+      method: "POST",
+      headers: { Authorization: "Bearer token_1" },
+    });
+
+    const uploadUrl = new URL(fetchMock.mock.calls[1]![0]);
+    expect(uploadUrl.pathname).toBe("/v25.0/upload:abc");
+    expect(uploadUrl.searchParams.get("sig")).toBe("xyz");
+    const uploadInit = fetchMock.mock.calls[1]![1]!;
+    expect(uploadInit.method).toBe("POST");
+    expect(uploadInit.headers).toEqual({
+      Authorization: "OAuth token_1",
+      file_offset: "0",
+    });
+    expect(uploadInit.body).toBe(file);
+
+    expect(result).toEqual({ success: true, data: { handle: "4::handle" } });
+  });
+
+  it("accepts a Blob and sends its size as file_length", async () => {
+    const { fetchMock, service } = setupUpload([
+      jsonResponse({ id: "upload:abc" }),
+      jsonResponse({ h: "4::handle" }),
+    ]);
+    const file = new Blob([new Uint8Array(5)], { type: "image/png" });
+
+    const result = await service.uploadHeaderMedia({ ...png, file });
+
+    expect(result.success).toBe(true);
+    expect(new URL(fetchMock.mock.calls[0]![0]).searchParams.get("file_length")).toBe("5");
+    expect(fetchMock.mock.calls[1]![1]!.body).toBe(file);
+  });
+
+  it("fails with a configuration error when no appId is set", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({}));
+    const service = new TemplateService({ accessToken: "token_1", fetch: fetchMock });
+
+    const result = await service.uploadHeaderMedia({ ...png, file: new Uint8Array([1]) });
+
+    expect(result).toEqual({
+      success: false,
+      error: "Missing Meta app id (appId)",
+      diagnostics: { kind: "configuration_error", retryable: false },
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a file type Meta does not accept before calling Meta", async () => {
+    const { fetchMock, service } = setupUpload([]);
+
+    const result = await service.uploadHeaderMedia({
+      file: new Uint8Array([1]),
+      fileName: "a.gif",
+      fileType: "image/gif" as "image/png",
+    });
+
+    expect(result).toEqual({
+      success: false,
+      error:
+        "fileType must be one of image/jpeg, image/jpg, image/png, video/mp4, application/pdf",
+      diagnostics: { kind: "invalid_input", retryable: false },
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects an empty file before calling Meta", async () => {
+    const { fetchMock, service } = setupUpload([]);
+
+    const result = await service.uploadHeaderMedia({ ...png, file: new Uint8Array() });
+
+    expect(result).toEqual({
+      success: false,
+      error: "file is empty",
+      diagnostics: { kind: "invalid_input", retryable: false },
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects untyped input before calling Meta without throwing", async () => {
+    const { fetchMock, service } = setupUpload([]);
+    const upload = (input: Record<string, unknown>) =>
+      service.uploadHeaderMedia({
+        ...png,
+        file: new Uint8Array([1]),
+        ...input,
+      } as Parameters<TemplateService["uploadHeaderMedia"]>[0]);
+    const hostile = { toString: null };
+
+    for (const file of [undefined, null, "abc", { size: 3 }, hostile]) {
+      expect(await upload({ file })).toMatchObject({
+        error: "file must be a Blob, ArrayBuffer or Uint8Array",
+        diagnostics: { kind: "invalid_input" },
+      });
+    }
+    for (const fileName of [undefined, "", 42, hostile]) {
+      expect(await upload({ fileName })).toMatchObject({
+        error: "fileName is required",
+        diagnostics: { kind: "invalid_input" },
+      });
+    }
+    for (const appId of [999, "99/../uploads", hostile]) {
+      expect(await upload({ appId })).toMatchObject({
+        error: "appId must be a numeric id",
+        diagnostics: { kind: "invalid_input" },
+      });
+    }
+    expect(await upload({ fileType: hostile })).toMatchObject({
+      diagnostics: { kind: "invalid_input" },
+    });
+    expect(
+      await service.uploadHeaderMedia(
+        undefined as unknown as Parameters<TemplateService["uploadHeaderMedia"]>[0],
+      ),
+    ).toMatchObject({ diagnostics: { kind: "invalid_input" } });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("returns malformed_response when the session has no usable id", async () => {
+    for (const body of [{}, { id: "abc" }, { id: "upload:a b" }]) {
+      const { fetchMock, service } = setupUpload([jsonResponse(body)]);
+
+      const result = await service.uploadHeaderMedia({ ...png, file: new Uint8Array([1]) });
+
+      expect(result).toEqual({
+        success: false,
+        error: "Upload session response did not include a session id",
+        diagnostics: { kind: "malformed_response", retryable: false },
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("returns the failure when starting the session fails", async () => {
+    const { fetchMock, service } = setupUpload([
+      jsonResponse({ error: { message: "Invalid OAuth access token", code: 190 } }, 401),
+    ]);
+
+    const result = await service.uploadHeaderMedia({ ...png, file: new Uint8Array([1]) });
+
+    expect(result).toMatchObject({
+      success: false,
+      error: "Invalid OAuth access token",
+      errorCode: 190,
+      httpStatus: 401,
+      diagnostics: { kind: "graph_error", code: 190 },
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns malformed_response when the upload has no handle", async () => {
+    const { fetchMock, service } = setupUpload([
+      jsonResponse({ id: "upload:abc" }),
+      jsonResponse({}),
+    ]);
+
+    const result = await service.uploadHeaderMedia({ ...png, file: new Uint8Array([1]) });
+
+    expect(result).toEqual({
+      success: false,
+      error: "Upload response did not include a file handle",
+      diagnostics: { kind: "malformed_response", retryable: false },
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("lets a call override the configured appId", async () => {
+    const { fetchMock, service } = setupUpload([
+      jsonResponse({ id: "upload:abc" }),
+      jsonResponse({ h: "4::handle" }),
+    ]);
+
+    await service.uploadHeaderMedia({ ...png, file: new Uint8Array([1]), appId: "777" });
+
+    expect(new URL(fetchMock.mock.calls[0]![0]).pathname).toBe("/v25.0/777/uploads");
+  });
+});

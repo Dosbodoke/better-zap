@@ -21,6 +21,15 @@ export interface GraphRequestInput {
   /** Values that must never appear in a returned error string. */
   secrets?: Array<string | undefined>;
   includeHttpStatus?: boolean;
+  /** Extra request headers. They are added after the defaults and win on conflict. */
+  headers?: Record<string, string>;
+  /** Scheme of the Authorization header. Defaults to `"Bearer"`. */
+  authScheme?: "Bearer" | "OAuth";
+  /**
+   * Sent as the request body unchanged. When set, `body` is ignored and the
+   * default `Content-Type: application/json` header is not added.
+   */
+  rawBody?: BodyInit;
 }
 
 /** Sends one Graph API request. Never throws; every outcome is a result. */
@@ -48,10 +57,19 @@ export async function graphRequest<TData>(
     const response = await send(url.toString(), {
       method: input.method,
       headers: {
-        "Content-Type": "application/json",
-        ...(input.token ? { Authorization: `Bearer ${input.token}` } : {}),
+        ...(input.rawBody === undefined
+          ? { "Content-Type": "application/json" }
+          : {}),
+        ...(input.token
+          ? { Authorization: `${input.authScheme ?? "Bearer"} ${input.token}` }
+          : {}),
+        ...input.headers,
       },
-      ...(input.body ? { body: JSON.stringify(input.body) } : {}),
+      ...(input.rawBody !== undefined
+        ? { body: input.rawBody }
+        : input.body
+          ? { body: JSON.stringify(input.body) }
+          : {}),
     });
 
     let data: unknown = null;

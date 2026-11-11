@@ -47,6 +47,17 @@ export interface MessageTemplateHeaderComponent {
   };
 }
 
+/** File types Meta accepts as the sample file of a media header. */
+export const TEMPLATE_HEADER_MEDIA_TYPES = [
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "video/mp4",
+  "application/pdf",
+] as const;
+
+export type TemplateHeaderMediaType = (typeof TEMPLATE_HEADER_MEDIA_TYPES)[number];
+
 export interface MessageTemplateBodyComponent {
   type: "BODY";
   /** At most 1024 characters. */

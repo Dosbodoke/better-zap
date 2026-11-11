@@ -197,7 +197,14 @@ type BetterZapTemplateSendMethod<TTemplates extends TemplateRegistry> =
 /** Template management methods. See `TemplateService`. */
 export type BetterZapTemplatesApi = Pick<
   TemplateService,
-  "list" | "listAll" | "get" | "create" | "update" | "delete" | "deleteAllLanguages"
+  | "list"
+  | "listAll"
+  | "get"
+  | "create"
+  | "update"
+  | "delete"
+  | "deleteAllLanguages"
+  | "uploadHeaderMedia"
 >;
 
 export interface BetterZapApi<TTemplates extends TemplateRegistry = {}> {

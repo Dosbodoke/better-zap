@@ -375,6 +375,7 @@ export function betterZap<
       update: (input) => templateService.update(input),
       delete: (input) => templateService.delete(input),
       deleteAllLanguages: (input) => templateService.deleteAllLanguages(input),
+      uploadHeaderMedia: (input) => templateService.uploadHeaderMedia(input),
     },
   };
 

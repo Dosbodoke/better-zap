@@ -145,7 +145,10 @@ export {
   type TemplateCallOptions,
   type TemplateServiceConfig,
 } from "./services/template.service";
-export { DEFAULT_MESSAGE_TEMPLATE_FIELDS } from "./types/template.types";
+export {
+  DEFAULT_MESSAGE_TEMPLATE_FIELDS,
+  TEMPLATE_HEADER_MEDIA_TYPES,
+} from "./types/template.types";
 export type {
   MessageTemplate,
   MessageTemplateBodyComponent,
@@ -166,6 +169,7 @@ export type {
   MessageTemplateStatus,
   TemplateFailure,
   TemplateFailureKind,
+  TemplateHeaderMediaType,
   TemplateResult,
 } from "./types/template.types";
 export type {
