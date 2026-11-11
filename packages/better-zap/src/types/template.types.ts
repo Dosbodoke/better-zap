@@ -3,6 +3,7 @@ import type {
   CoexistenceGraphFailureKind,
 } from "./coexistence.types";
 import type { MetaGraphFailure } from "./graph.types";
+import type { MessageTemplateIssue } from "../template-validation";
 
 export type MessageTemplateCategory = "MARKETING" | "UTILITY" | "AUTHENTICATION";
 
@@ -145,6 +146,8 @@ export interface TemplateFailure extends Omit<MetaGraphFailure, "diagnostics"> {
   diagnostics: Omit<CoexistenceGraphErrorDiagnostics, "kind"> & {
     kind: TemplateFailureKind;
   };
+  /** Present when a template failed local validation. */
+  issues?: MessageTemplateIssue[];
 }
 
 export type TemplateResult<TData> =

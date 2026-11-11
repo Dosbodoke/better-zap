@@ -18,7 +18,13 @@ const template: MessageTemplate = {
   language: "en_US",
   status: "APPROVED",
   category: "UTILITY",
-  components: [{ type: "BODY", text: "Order {{1}} confirmed." }],
+  components: [
+    {
+      type: "BODY",
+      text: "Order {{1}} confirmed.",
+      example: { body_text: [["A-100"]] },
+    },
+  ],
 };
 
 const definition: MessageTemplateDefinition = {
@@ -252,6 +258,77 @@ describe("TemplateService", () => {
       diagnostics: { kind: "invalid_input", retryable: false },
     });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a create that fails validation before calling Meta", async () => {
+    const { fetchMock, service } = setup();
+
+    const result = await service.create({
+      template: { ...definition, components: [{ type: "BODY", text: "x".repeat(1025) }] },
+    });
+
+    expect(result).toMatchObject({
+      success: false,
+      error: "Invalid template: Body text is 1025 characters; the limit is 1024.",
+      diagnostics: { kind: "invalid_input", retryable: false },
+      issues: [expect.objectContaining({ code: "body_text_too_long" })],
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("skips create validation when validate is false", async () => {
+    const { fetchMock, service } = setup([
+      jsonResponse({ id: "999", status: "PENDING", category: "UTILITY" }),
+    ]);
+
+    const result = await service.create({
+      template: { ...definition, components: [{ type: "BODY", text: "x".repeat(1025) }] },
+      validate: false,
+    });
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects updated components that fail validation before calling Meta", async () => {
+    const { fetchMock, service } = setup();
+
+    const result = await service.update({
+      templateId: "222",
+      changes: { components: [{ type: "FOOTER", text: "Thanks" }] },
+    });
+
+    expect(result).toMatchObject({
+      success: false,
+      diagnostics: { kind: "invalid_input", retryable: false },
+      issues: [expect.objectContaining({ code: "components_missing_body" })],
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does not validate an update without components", async () => {
+    const { fetchMock, service } = setup();
+
+    const result = await service.update({
+      templateId: "222",
+      changes: { category: "MARKETING" },
+    });
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(callBody(fetchMock)).toEqual({ category: "MARKETING" });
+    expect(result).toEqual({ success: true, data: { success: true } });
+  });
+
+  it("skips update validation when validate is false", async () => {
+    const { fetchMock, service } = setup();
+
+    await service.update({
+      templateId: "222",
+      changes: { components: [{ type: "FOOTER", text: "Thanks" }] },
+      validate: false,
+    });
+
+    expect(fetchMock).toHaveBeenCalledOnce();
   });
 
   it("deletes one language by id and name", async () => {

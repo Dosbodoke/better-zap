@@ -119,6 +119,60 @@ Deletes the template in every language.
 await templates.deleteAllLanguages({ name: "order_confirmation" });
 ```
 
+## Validation
+
+`create` and `update` check a template against Meta's documented limits before they send it. Meta answers a malformed template with error `100` and little detail, and each attempt counts toward the 100 creations per hour, so the check returns every problem at once without calling Meta.
+
+```ts
+const result = await templates.create({ template });
+
+if (!result.success && result.issues) {
+  result.issues;
+  // [{
+  //   code: "body_text_too_long",
+  //   path: "components[1].text",
+  //   message: "Body text is 1031 characters; the limit is 1024.",
+  // }]
+}
+```
+
+`error` is then `"Invalid template: "` followed by the first issue's message, and `diagnostics.kind` is `"invalid_input"`. `update` checks only `changes.components`, and only when it is given. Pass `validate: false` to either method to skip the check and let Meta decide.
+
+### In a form
+
+`validateMessageTemplate` is the same check as a plain function. It has no server dependencies, so a template editor in the browser can run it on every change. It returns `[]` when nothing is wrong. `code` is stable for your own logic, `path` points at the field, and `message` is one English sentence you can show.
+
+```ts
+import { extractTemplateVariables, validateMessageTemplate } from "better-zap";
+
+const issues = validateMessageTemplate(draft);
+// Show each message next to the field its path names, such as "components[1].text".
+
+// One example input per body variable: "Hi {{1}}, order {{2}}" → ["1", "2"]
+const variables = extractTemplateVariables(bodyText);
+```
+
+`validateMessageTemplateComponents(components, { category, parameterFormat })` checks only the components, for an edit where the name and language are fixed. Without `parameterFormat` it assumes `NAMED` when any header or body variable is not a number.
+
+### Limits
+
+The limits are exported as `MESSAGE_TEMPLATE_LIMITS`. Lengths are counted in characters.
+
+| Field | Limit |
+| --- | --- |
+| Name | 512 characters: lower-case letters, digits and underscores |
+| Body text | 1024 characters |
+| Text header | 60 characters and 1 variable |
+| Footer | 60 characters |
+| Button text | 25 characters |
+| URL button | 2000 characters and 1 variable |
+| Phone number button | 20 characters |
+| Buttons | 10 in total, 2 URL, 1 phone number, 1 copy code; quick replies next to each other |
+
+The check also requires a body, at most one header, body, footer and buttons component, an uploaded handle for an image, video, document or GIF header, positional variables numbered from `{{1}}` without gaps, named variables in lower case, and an example for every header, body and URL variable.
+
+It does not check authentication templates beyond the name, language and category, or components other than the header, body, footer and buttons: carousels, limited-time offers, flows and other types pass through unchecked. It does not check content against Meta's policies.
+
 ## Results
 
 No method throws. Each returns a result:
@@ -136,6 +190,8 @@ type TemplateResult<TData> =
       httpStatus?: number;
       details?: unknown;
       diagnostics: { kind: TemplateFailureKind; retryable: boolean /* ... */ };
+      /** Present when the template failed local validation. */
+      issues?: MessageTemplateIssue[];
     };
 ```
 
@@ -145,7 +201,7 @@ type TemplateResult<TData> =
 
 | `kind` | Meaning |
 | --- | --- |
-| `invalid_input` | The input was rejected before any request: an id that is not numeric, a missing name, or empty changes |
+| `invalid_input` | The input was rejected before any request: an id that is not numeric, a missing name, empty changes, or a template that failed [validation](#validation) (with `issues`) |
 | `configuration_error` | No `wabaId` or no access token |
 | `credential_provider_error` | `tokenProvider` threw |
 | `graph_error` | Meta returned an error |

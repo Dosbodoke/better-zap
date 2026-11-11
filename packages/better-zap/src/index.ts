@@ -174,6 +174,14 @@ export type {
   MetaGraphSuccess,
 } from "./types/graph.types";
 export {
+  MESSAGE_TEMPLATE_LIMITS,
+  extractTemplateVariables,
+  validateMessageTemplate,
+  validateMessageTemplateComponents,
+  type MessageTemplateIssue,
+  type MessageTemplateIssueCode,
+} from "./template-validation";
+export {
   createCoexistenceEmbeddedSignupConfig,
   launchCoexistenceEmbeddedSignup,
   normalizeCoexistenceSessionEvent,
