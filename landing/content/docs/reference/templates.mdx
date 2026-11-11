@@ -1,0 +1,188 @@
+---
+title: Template Management
+description: Create, list, read, edit and delete WhatsApp message templates from your server with TemplateService.
+---
+
+`TemplateService` from `better-zap` creates, reads, edits and deletes message templates through Meta's template management API. It is a server-side class. It adds no HTTP routes: your app calls it from its own server code, for example from a dashboard's backend, and decides who may use it.
+
+## Setup
+
+The access token needs the `whatsapp_business_management` permission. The WhatsApp Business Account ID is shown in WhatsApp Manager under account settings, and in the App Dashboard on the WhatsApp **API Setup** page.
+
+```ts
+import { TemplateService } from "better-zap";
+
+const templates = new TemplateService({
+  accessToken: env.WHATSAPP_TOKEN,
+  wabaId: env.WHATSAPP_BUSINESS_ACCOUNT_ID,
+});
+```
+
+Every method also accepts `wabaId` and `accessToken`. A value passed to a call wins over the constructor's for that call.
+
+Templates keep Meta's own shape: snake_case keys and upper-case values such as `"UTILITY"` and `"BODY"`. A template read with `get` can be changed and passed back to `update` as it is.
+
+## Methods
+
+### `list`
+
+Returns one page. Filters are optional.
+
+```ts
+const result = await templates.list({ status: "APPROVED", language: "pt_BR", limit: 50 });
+
+if (result.success) {
+  result.data.templates; // MessageTemplate[]
+  result.data.paging; // { before?, after?, hasNextPage }
+}
+```
+
+Pass `after: result.data.paging.after` to read the next page.
+
+### `listAll`
+
+Follows the page cursors and returns every template. It reads 100 templates per page and stops after `maxPages` pages (default 100), with `truncated: true` when more remain.
+
+```ts
+const result = await templates.listAll({ category: "MARKETING" });
+
+if (result.success) {
+  result.data.templates;
+  result.data.truncated;
+}
+```
+
+### `get`
+
+```ts
+const result = await templates.get({ templateId: "1234567890" });
+```
+
+### `create`
+
+```ts
+const result = await templates.create({
+  template: {
+    name: "order_confirmation",
+    language: "en_US",
+    category: "UTILITY",
+    components: [
+      {
+        type: "BODY",
+        text: "Your order {{1}} is confirmed.",
+        example: { body_text: [["A-1042"]] },
+      },
+      { type: "FOOTER", text: "Thanks for shopping with us" },
+    ],
+  },
+});
+
+if (result.success) {
+  result.data; // { id, status, category }
+}
+```
+
+Meta reviews a new template before it can be sent. `status` is usually `"PENDING"` at first.
+
+### `update`
+
+`components` replaces every component of the template.
+
+```ts
+const result = await templates.update({
+  templateId: "1234567890",
+  changes: {
+    components: [
+      {
+        type: "BODY",
+        text: "Order {{1}} is confirmed and on its way.",
+        example: { body_text: [["A-1042"]] },
+      },
+    ],
+  },
+});
+```
+
+### `delete`
+
+Deletes one language of a template. It needs both the id and the name.
+
+```ts
+await templates.delete({ templateId: "1234567890", name: "order_confirmation" });
+```
+
+### `deleteAllLanguages`
+
+Deletes the template in every language.
+
+```ts
+await templates.deleteAllLanguages({ name: "order_confirmation" });
+```
+
+## Results
+
+No method throws. Each returns a result:
+
+```ts
+type TemplateResult<TData> =
+  | { success: true; data: TData }
+  | {
+      success: false;
+      error: string;
+      errorCode?: number;
+      errorSubcode?: number;
+      errorUserTitle?: string;
+      errorUserMessage?: string;
+      httpStatus?: number;
+      details?: unknown;
+      diagnostics: { kind: TemplateFailureKind; retryable: boolean /* ... */ };
+    };
+```
+
+`errorUserTitle` and `errorUserMessage` are Meta's explanation for a person, such as "Content in This Language Already Exists". Show those in your UI. `error` is Meta's technical message.
+
+`diagnostics.kind` tells failures apart:
+
+| `kind` | Meaning |
+| --- | --- |
+| `invalid_input` | The input was rejected before any request: an id that is not numeric, a missing name, or empty changes |
+| `configuration_error` | No `wabaId` or no access token |
+| `credential_provider_error` | `tokenProvider` threw |
+| `graph_error` | Meta returned an error |
+| `http_error` | A non-2xx response without a Graph error body |
+| `network_error` | The request did not complete |
+| `malformed_response` | Meta answered with an unexpected body |
+
+The service never retries. `create` in particular is not safe to repeat blindly.
+
+## Several business accounts
+
+A multi-tenant app can work in either of two ways:
+
+- One `TemplateService` per business account, each with its own `accessToken` and `wabaId`.
+- One service with a `tokenProvider`, passing `wabaId` on each call. The provider receives that `wabaId` and returns the token for it.
+
+```ts
+const templates = new TemplateService({
+  tokenProvider: {
+    getAccessToken: ({ wabaId }) => tokens.forBusinessAccount(wabaId),
+  },
+});
+
+await templates.list({ wabaId: tenant.wabaId });
+```
+
+> **`get` and `update` address a template by its id only.** When one token can reach several business accounts, check that the template belongs to the current tenant before you edit it, for example by finding it in `list` for that tenant's `wabaId`.
+
+## Meta's limits
+
+- An edit replaces all components.
+- Only `APPROVED`, `REJECTED` and `PAUSED` templates can be edited.
+- An approved template can be edited once per 24 hours and 10 times per 30 days, and its category cannot be changed.
+- Deleting an approved template blocks its name for 30 days. A `DISABLED` template cannot be deleted.
+- A business account can create 100 templates per hour.
+
+## Not covered yet
+
+- Uploading media for an image, video or document header.
+- Template webhooks, such as status and quality changes.
