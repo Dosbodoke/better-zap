@@ -37,6 +37,15 @@ export async function runCli(argv: string[] = process.argv.slice(2)): Promise<vo
   });
   const result = await runGenerateCommand(options);
 
+  for (const template of result.skipped) {
+    console.warn(
+      `[better-zap] Skipped ${template.name} (${template.language}): ${template.reason}`,
+    );
+  }
+  for (const warning of result.warnings) {
+    console.warn(`[better-zap] ${warning}`);
+  }
+
   if (options.check) {
     console.log(
       `[better-zap] ${result.output} is up to date (${result.templateCount} templates).`,
@@ -53,7 +62,7 @@ function printHelp(): void {
   console.log(`better-zap
 
 Usage:
-  better-zap generate [--access-token <token>] [--waba-id <id>] [--output <path>] [--api-version <version>] [--check]
+  better-zap generate [--access-token <token>] [--waba-id <id>] [--output <path>] [--api-version <version>] [--default-language <code>] [--all-statuses] [--check]
 
 Options:
   --access-token   Meta access token. Falls back to WHATSAPP_TOKEN or META_ACCESS_TOKEN.
@@ -61,6 +70,10 @@ Options:
   --output         Output path for the generated registry file.
   --api-version    Graph API version. Defaults to v25.0.
   --config         Optional config file path. Also auto-discovers better-zap.config.(mjs|js|json).
+  --default-language
+                   Language to use for a template that exists in several. Defaults to the
+                   language code that sorts first.
+  --all-statuses   Keep templates of every status. By default only APPROVED and PAUSED are kept.
   --check          Validate that the generated file is already up to date.
   --help           Show this help message.
 `);

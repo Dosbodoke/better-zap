@@ -4,7 +4,7 @@ Framework-agnostic Better Zap core.
 
 ## Includes
 
-- typed template registry DSL
+- typed template registry DSL, and `templateDefinitionFromMeta(template)` to build a registry entry from a template read from Meta at runtime
 - typed client
 - Meta send service
 - logging primitives and message log store interfaces
