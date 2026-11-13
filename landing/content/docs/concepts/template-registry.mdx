@@ -107,6 +107,8 @@ This generates a TypeScript file with `defineTemplates()` populated from your ac
 | `--output` | Output file path | None; required. Also read from the config file's `output` or `$BETTER_ZAP_TEMPLATE_OUTPUT` |
 | `--api-version` | Meta Graph API version | `v25.0` |
 | `--config` | Config file path | Auto-discovered |
+| `--default-language` | Language to use for a template that exists in several | The language code that sorts first |
+| `--all-statuses` | Keep templates of every status | `false`: only `APPROVED` and `PAUSED` |
 | `--check` | Validate file is up to date (CI mode) | `false` |
 
 The access token, the account ID and the output path are all required. The command fails if any of them is missing.
@@ -125,8 +127,21 @@ export default {
   wabaId: process.env.WHATSAPP_BUSINESS_ACCOUNT_ID,
   output: "src/templates.ts",
   apiVersion: "v25.0",
+  defaultLanguage: "pt_BR",
+  allStatuses: false,
 };
 ```
+
+A flag wins over the config file.
+
+### What is skipped
+
+The command prints one warning per template it leaves out, then writes the file with the rest. It leaves out:
+
+- **Templates in other statuses.** Only `APPROVED` and `PAUSED` templates, and entries without a status, are generated. Pass `--all-statuses` to keep pending, rejected and every other status. A `PAUSED` template is kept so that code which sends it still compiles while Meta pauses it; Meta rejects sends while it is paused, so check its status before you rely on it.
+- **Templates the registry cannot express.** A template with a component other than header, body, footer and buttons (such as a carousel), a header format other than text, image, video, document and location (such as GIF), or a button other than quick reply, URL and phone number (such as flow, copy code or catalog). A phone-number button takes no value when the message is sent, so it adds no parameter, but it still counts in the index of the buttons after it.
+
+A template name exists once in the registry, with one `language`. When a template exists in several languages, the generator uses `--default-language` if the template has it, and otherwise the language code that sorts first (`en_US` before `pt_BR`), so the file does not depend on the order Meta returns templates in. When the other languages have different parameters, it prints a warning. To send another language, pass `language` to `send.template`; its parameters must match the generated entry.
 
 ### Generated Output
 
@@ -146,6 +161,32 @@ export type AppWhatsAppTemplates = typeof whatsappTemplates;
 ```
 
 Import it with `import { whatsappTemplates } from "./templates";` and pass it as `templates: whatsappTemplates`.
+
+## Building a definition at runtime
+
+`templateDefinitionFromMeta` applies the generator's conversion to one template you read at runtime, for example with [`TemplateService`](/docs/reference/templates) `get` or `list`. It returns `{ supported: true, definition }` or `{ supported: false, reason }` and never throws. Parameter names are the ones the generator writes: `body_1`, `body_first_name`, `header_image`, `button_0_payload`.
+
+```ts
+import { serializeTemplateFromRegistry, templateDefinitionFromMeta } from "better-zap";
+
+const found = await zap.api.templates.get({ templateId: "1234567890" });
+
+if (found.success) {
+  const template = found.data;
+  const result = templateDefinitionFromMeta(template);
+
+  if (result.supported) {
+    const { language, components } = serializeTemplateFromRegistry(
+      { [template.name]: result.definition },
+      template.name,
+      { params: { body_1: "Pablo" } },
+    );
+    await zap.api.send.templateRaw("+5511999998888", template.name, { language, components });
+  }
+}
+```
+
+The definition describes the template; it does not check that the template can be sent. Check `template.status` first: Meta rejects a template that is not `APPROVED`.
 
 ## Raw Template Sending
 

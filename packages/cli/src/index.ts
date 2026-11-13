@@ -1,4 +1,5 @@
 export {
+  buildTemplateRegistry,
   fetchAllMetaTemplates,
   generateTemplateRegistryFileContent,
   normalizeMetaTemplates,
@@ -6,4 +7,5 @@ export {
   resolveGenerateOptions,
   runGenerateCommand,
   writeGeneratedTemplateFile,
+  type SkippedTemplate,
 } from "./template-generator";

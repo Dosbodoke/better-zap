@@ -234,6 +234,10 @@ export type {
   TemplateParams,
   TemplateRegistry,
 } from "./template-registry";
+export {
+  templateDefinitionFromMeta,
+  type TemplateDefinitionFromMetaResult,
+} from "./template-definition";
 
 export {
   firstLinkIn,

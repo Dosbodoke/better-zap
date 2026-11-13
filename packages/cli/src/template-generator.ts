@@ -1,9 +1,14 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import type { TemplateRegistry } from "better-zap";
+import {
+  templateDefinitionFromMeta,
+  type MessageTemplate,
+  type TemplateRegistry,
+} from "better-zap";
 
 const DEFAULT_API_VERSION = "v25.0";
+const DEFAULT_INCLUDED_STATUSES = ["APPROVED", "PAUSED"];
 const DEFAULT_CONFIG_FILES = [
   "better-zap.config.mjs",
   "better-zap.config.js",
@@ -18,6 +23,10 @@ type GenerateOptions = {
   accessToken?: string;
   apiVersion?: string;
   check?: boolean;
+  /** Language to prefer when a template exists in several. */
+  defaultLanguage?: string;
+  /** Keep templates of every status, not only `APPROVED` and `PAUSED`. */
+  allStatuses?: boolean;
   fetchImpl?: typeof fetch;
   output: string;
   wabaId?: string;
@@ -36,6 +45,8 @@ type GenerateConfigFile = {
   accessToken?: string;
   wabaId?: string;
   apiVersion?: string;
+  defaultLanguage?: string;
+  allStatuses?: boolean;
 };
 
 type MetaTemplateButton = {
@@ -56,7 +67,17 @@ type MetaTemplateComponent = {
 type MetaTemplate = {
   name?: string;
   language?: string;
+  status?: string;
   components?: MetaTemplateComponent[];
+};
+
+export type SkippedTemplate = { name: string; language: string; reason: string };
+
+type BuildTemplateRegistryOptions = {
+  /** Language to prefer when a template exists in several. */
+  defaultLanguage?: string;
+  /** Statuses to keep. Defaults to `["APPROVED", "PAUSED"]`. `"all"` keeps every status. */
+  includeStatuses?: readonly string[] | "all";
 };
 
 type MetaTemplatesResponse = {
@@ -139,6 +160,11 @@ export async function resolveGenerateOptions({
     ),
     output,
     check: Boolean(flags.check),
+    defaultLanguage: firstDefined(
+      asString(flags["default-language"]),
+      templatesConfig.defaultLanguage,
+    ),
+    allStatuses: Boolean(flags["all-statuses"] ?? templatesConfig.allStatuses),
   };
 }
 
@@ -182,13 +208,63 @@ export async function fetchAllMetaTemplates({
 export function normalizeMetaTemplates(
   metaTemplates: MetaTemplate[],
 ): TemplateRegistry {
-  const normalizedEntries = metaTemplates
-    .map(
-      (template) => [template.name, normalizeMetaTemplate(template)] as const,
-    )
-    .sort(([left], [right]) => (left ?? "").localeCompare(right ?? ""));
+  return buildTemplateRegistry(metaTemplates).registry;
+}
 
-  return Object.fromEntries(normalizedEntries);
+export function buildTemplateRegistry(
+  metaTemplates: MetaTemplate[],
+  options: BuildTemplateRegistryOptions = {},
+): { registry: TemplateRegistry; skipped: SkippedTemplate[]; warnings: string[] } {
+  const includeStatuses = options.includeStatuses ?? DEFAULT_INCLUDED_STATUSES;
+  const skipped: SkippedTemplate[] = [];
+  const definitionsByName = new Map<string, TemplateRegistry[string][]>();
+
+  for (const template of metaTemplates) {
+    if (!template.name || !template.language) {
+      throw new Error(
+        "[better-zap generate] Template entry is missing name or language.",
+      );
+    }
+    const { name, language } = template;
+
+    const status = toUpper(template.status);
+    if (status && !isStatusIncluded(status, includeStatuses)) {
+      skipped.push({ name, language, reason: `status ${status}` });
+      continue;
+    }
+
+    const result = templateDefinitionFromMeta(
+      template as Pick<MessageTemplate, "language" | "components">,
+    );
+    if (!result.supported) {
+      skipped.push({ name, language, reason: result.reason });
+      continue;
+    }
+
+    const definitions = definitionsByName.get(name) ?? [];
+    definitions.push(result.definition);
+    definitionsByName.set(name, definitions);
+  }
+
+  const warnings: string[] = [];
+  const entries = [...definitionsByName]
+    .map(([name, definitions]) => {
+      const chosen = chooseLanguage(definitions, options.defaultLanguage);
+      for (const other of definitions) {
+        if (
+          other !== chosen &&
+          JSON.stringify(other.components) !== JSON.stringify(chosen.components)
+        ) {
+          warnings.push(
+            `Template "${name}": languages ${chosen.language} and ${other.language} have different parameters; the registry uses ${chosen.language}.`,
+          );
+        }
+      }
+      return [name, chosen] as const;
+    })
+    .sort(([left], [right]) => left.localeCompare(right));
+
+  return { registry: Object.fromEntries(entries), skipped, warnings };
 }
 
 export function generateTemplateRegistryFileContent(
@@ -245,11 +321,18 @@ export async function writeGeneratedTemplateFile({
 export async function runGenerateCommand({
   accessToken,
   apiVersion = DEFAULT_API_VERSION,
+  allStatuses = false,
   check = false,
+  defaultLanguage,
   fetchImpl = fetch,
   output,
   wabaId,
-}: GenerateOptions): Promise<{ output: string; templateCount: number }> {
+}: GenerateOptions): Promise<{
+  output: string;
+  templateCount: number;
+  skipped: SkippedTemplate[];
+  warnings: string[];
+}> {
   if (!accessToken || !wabaId || !output) {
     throw new Error(
       "[better-zap generate] Missing required options. Expected access token, WABA ID, and output path.",
@@ -262,7 +345,10 @@ export async function runGenerateCommand({
     fetchImpl,
     wabaId,
   });
-  const registry = normalizeMetaTemplates(templates);
+  const { registry, skipped, warnings } = buildTemplateRegistry(templates, {
+    defaultLanguage,
+    includeStatuses: allStatuses ? "all" : undefined,
+  });
   const content = generateTemplateRegistryFileContent(registry);
 
   await writeGeneratedTemplateFile({
@@ -274,6 +360,8 @@ export async function runGenerateCommand({
   return {
     output,
     templateCount: Object.keys(registry).length,
+    skipped,
+    warnings,
   };
 }
 
@@ -303,185 +391,34 @@ async function loadConfigFile(configPath: string): Promise<GenerateConfigFile> {
   return module.default ?? module;
 }
 
-function normalizeMetaTemplate(
-  template: MetaTemplate,
+function isStatusIncluded(
+  status: string,
+  includeStatuses: readonly string[] | "all",
+): boolean {
+  return (
+    includeStatuses === "all" ||
+    includeStatuses.some((included) => toUpper(included) === status)
+  );
+}
+
+/**
+ * Uses `defaultLanguage` when the template has it, otherwise the language code
+ * that sorts first, so the result does not depend on the order Meta returns.
+ */
+function chooseLanguage(
+  definitions: TemplateRegistry[string][],
+  defaultLanguage: string | undefined,
 ): TemplateRegistry[string] {
-  if (!template.name || !template.language) {
-    throw new Error(
-      "[better-zap generate] Template entry is missing name or language.",
-    );
-  }
-
-  const normalizedComponents = [];
-  for (const component of template.components ?? []) {
-    const type = toUpper(component.type);
-
-    if (type === "BODY") {
-      normalizedComponents.push(normalizeBodyComponent(component));
-      continue;
-    }
-
-    if (type === "HEADER") {
-      normalizedComponents.push(normalizeHeaderComponent(component));
-      continue;
-    }
-
-    if (type === "BUTTONS") {
-      normalizedComponents.push(...normalizeButtonsComponent(component));
-      continue;
-    }
-
-    if (type === "FOOTER") {
-      continue;
-    }
-
-    throw new Error(
-      `[better-zap generate] Unsupported template component type "${component.type}" in "${template.name}".`,
-    );
-  }
-
-  return {
-    language: template.language,
-    components: normalizedComponents,
-  };
-}
-
-function normalizeBodyComponent(
-  component: MetaTemplateComponent,
-): NonNullable<TemplateRegistry[string]["components"]>[number] {
-  return {
-    type: "body",
-    parameters: extractPlaceholderTokens(component.text).map((token, index) =>
-      createTextParameterDefinition("body", token, index + 1),
-    ),
-  };
-}
-
-function normalizeHeaderComponent(
-  component: MetaTemplateComponent,
-): NonNullable<TemplateRegistry[string]["components"]>[number] {
-  const format = toUpper(component.format ?? "TEXT");
-
-  if (format === "LOCATION") {
-    return {
-      type: "header",
-      parameters: [{ name: "header_location", type: "location" }],
-    };
-  }
-
-  if (format === "TEXT") {
-    return {
-      type: "header",
-      parameters: extractPlaceholderTokens(component.text).map((token, index) =>
-        createTextParameterDefinition("header", token, index + 1),
-      ),
-    };
-  }
-
-  if (format === "IMAGE" || format === "VIDEO" || format === "DOCUMENT") {
-    return {
-      type: "header",
-      parameters: [
-        {
-          name: `header_${format.toLowerCase()}`,
-          type: format.toLowerCase() as "image" | "video" | "document",
-        },
-      ],
-    };
-  }
-
-  throw new Error(
-    `[better-zap generate] Unsupported header format "${component.format}".`,
+  const preferred = definitions.find(
+    (definition) => definition.language === defaultLanguage,
   );
-}
-
-function normalizeButtonsComponent(
-  component: MetaTemplateComponent,
-): NonNullable<TemplateRegistry[string]["components"]> {
-  return (component.buttons ?? []).map((button, index) =>
-    normalizeButton(button, index),
-  );
-}
-
-function normalizeButton(
-  button: MetaTemplateButton,
-  index: number,
-): NonNullable<TemplateRegistry[string]["components"]>[number] {
-  const type = toUpper(button.type);
-
-  if (type === "QUICK_REPLY") {
-    return {
-      type: "button",
-      subType: "quick_reply",
-      index: String(index),
-      parameters: [{ name: `button_${index}_payload`, type: "payload" }],
-    };
+  if (preferred) {
+    return preferred;
   }
 
-  if (type === "URL") {
-    const tokens = extractPlaceholderTokens(button.url);
-    return {
-      type: "button",
-      subType: "url",
-      index: String(index),
-      parameters: tokens.map((token, tokenIndex) =>
-        createTextParameterDefinition(
-          `button_${index}_text`,
-          token,
-          tokenIndex + 1,
-        ),
-      ),
-    };
-  }
-
-  throw new Error(
-    `[better-zap generate] Unsupported button type "${button.type}" at index ${index}.`,
-  );
-}
-
-function extractPlaceholderTokens(value: string | undefined): string[] {
-  if (typeof value !== "string" || value.length === 0) {
-    return [];
-  }
-
-  const tokens: string[] = [];
-  const matcher = /\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g;
-  for (const match of value.matchAll(matcher)) {
-    tokens.push(match[1]);
-  }
-  return tokens;
-}
-
-function createTextParameterName(
-  prefix: string,
-  token: string | undefined,
-  position: number,
-): string {
-  if (token && !/^\d+$/.test(token)) {
-    return `${prefix}_${sanitizeName(token)}`;
-  }
-
-  return `${prefix}_${position}`;
-}
-
-function createTextParameterDefinition(
-  prefix: string,
-  token: string | undefined,
-  position: number,
-): {
-  name: string;
-  parameterName?: string;
-  type: "text";
-} {
-  return {
-    name: createTextParameterName(prefix, token, position),
-    ...(token && !/^\d+$/.test(token) ? { parameterName: token } : {}),
-    type: "text",
-  };
-}
-
-function sanitizeName(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9_]+/g, "_");
+  return [...definitions].sort((left, right) =>
+    left.language < right.language ? -1 : left.language > right.language ? 1 : 0,
+  )[0]!;
 }
 
 function toUpper(value: string | undefined): string {
