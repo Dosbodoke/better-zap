@@ -1,5 +1,23 @@
 # @better-zap/react
 
+## 25.0.4
+
+### Patch Changes
+
+- 3b51745: `MessageViewEmpty`, the welcome screen `<MessageView />` shows when no conversation is selected, no longer draws a 6px green bottom border. The strip carried no meaning and looked like a progress or connection indicator. Pass `className` to add your own border.
+- Updated dependencies [75ae858]
+- Updated dependencies [0dfb258]
+- Updated dependencies [6065912]
+- Updated dependencies [0c224f9]
+- Updated dependencies [4ba5840]
+- Updated dependencies [cbe7c99]
+- Updated dependencies [0238b9e]
+- Updated dependencies [382ac26]
+- Updated dependencies [4c91167]
+- Updated dependencies [2d02c6e]
+- Updated dependencies [7446341]
+  - better-zap@25.0.4
+
 ## 25.0.3
 
 ### Patch Changes

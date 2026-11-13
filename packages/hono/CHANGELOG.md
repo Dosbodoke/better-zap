@@ -1,5 +1,46 @@
 # @better-zap/hono
 
+## 25.0.4
+
+### Patch Changes
+
+- 75ae858: `betterZap().api.templates` creates, lists, edits and deletes message templates, using `config.token` and the new optional `config.wabaId`. It is server-side only; no HTTP route is added. Pass `templateService` to manage several business accounts.
+
+  The `BetterZapApi` type gains a required `templates` member. If you build a `BetterZapApi` object by hand, such as a test double, add `templates` to it.
+
+- 0dfb258: Two Portuguese defaults can now be changed. `webhook.resolveMessageContent` replaces the built-in labels (`[imagem]`, `[áudio]`, ...) used for a message's stored `content` and for `ctx.content`; the core processor already supported this, but `betterZap()` and `createWebhookHandler()` did not pass it through. `config.defaultTemplateLanguage` sets the language code `sendTemplate` uses when a call passes none. Both default to the previous behavior.
+- 3f1867b: **Breaking:** app routes are now closed unless `authorizeAppRequest` is set. Before, leaving the option out left `/send/*`, `/conversations`, `/media` and the coexistence routes open to anyone. They now answer `401` with `code: "app_authorization_not_configured"`. Pass a function to authorize each request, or `authorizeAppRequest: "public"` if something in front of Better Zap already authenticates it. Webhook routes are not affected, so webhook-only bots need no change.
+- 0c224f9: Inbound and outbound messages now use the same phone key. Before, replies were keyed by the 13-digit Brazilian number while incoming messages were stored under Meta's `wa_id`, which for many Brazilian numbers has 12 digits. A reply to such a contact could fail with `CONTEXT_WINDOW_CLOSED`, and the contact could get two conversations. Every phone that reaches the store is now normalized: Brazilian mobile numbers always use the 13-digit form.
+
+  **Existing data:** if your store has conversations or messages saved under a 12-digit Brazilian mobile number (`55` + area code + 8 digits starting with 6 to 9), rewrite them to the 13-digit form by inserting `9` after the area code, merging with the 13-digit conversation where one already exists.
+
+  Numbers from other countries are no longer rejected. `formatPhone` no longer throws and is deprecated in favor of the new `normalizePhone` and `normalizeWaId`. A Brazilian landline no longer gets a ninth digit added. Apps that message numbers outside Brazil should set the new `config.defaultCountry: false` and pass numbers in international format.
+
+- 4ba5840: Plugins can now hook every webhook event, not only `onMessage` and `onStatusUpdate`: `onCoexistenceHistory`, `onSmbAppStateSync`, `onSmbMessageEcho`, the account lifecycle events, message edits and revokes, and unsupported messages. Plugin hooks run in array order before the app's own hook, and a failing one is logged without stopping the rest, as before.
+
+  `betterZap()` now throws at startup when two plugins share an `id`, when a plugin returns a context or service key that better-zap or another plugin already provides (`db`, `api`, `logger`, `whatsapp`), or when `init()` returns a Promise. Before, these were accepted and the later value silently won, or the result was silently dropped.
+
+  New exports from `better-zap`: `WEBHOOK_EVENT_NAMES` and the types `BetterZapWebhookEvents`, `BetterZapWebhookEventName`, `BetterZapWebhookEventContext` and `BetterZapWebhookHooks`.
+
+- 0238b9e: `TemplateService.uploadHeaderMedia` uploads the sample image, video or PDF that a media-header template needs and returns the handle for `example.header_handle`. It needs the Meta app id, set once as `appId` in the service config or per call.
+
+  Failures from `TemplateService` and `CoexistenceService` no longer contain the access token when Meta echoes it in an error message: it is replaced with `[REDACTED]` in `error`, `errorUserTitle`, `errorUserMessage` and `details`.
+
+- 4c91167: Meta's template webhooks now reach four new optional hooks instead of being ignored: `onTemplateStatusUpdate` (approved, rejected, paused, disabled, ...), `onTemplateQualityUpdate`, `onTemplateCategoryUpdate` and `onTemplateComponentsUpdate`. They work in `createWebhookProcessor`, in `betterZap({ webhook })` and in plugins. Each receives the business account id as `wabaId`. `@better-zap/fixtures` adds `templateWebhookFixtures`.
+- 5719baa: The Embedded Signup callback no longer compares `state` and `nonce` with `expectedState` and `expectedNonce` from the same request body. That check could never fail, so it protected nothing. Those two body fields are now ignored. To verify the state, set the new `coexistence.verifySignupState` option: it receives `state`, `nonce` and the request, and returning `false` rejects the callback with `400` and `code: "invalid_signup_state"`.
+- Updated dependencies [75ae858]
+- Updated dependencies [0dfb258]
+- Updated dependencies [6065912]
+- Updated dependencies [0c224f9]
+- Updated dependencies [4ba5840]
+- Updated dependencies [cbe7c99]
+- Updated dependencies [0238b9e]
+- Updated dependencies [382ac26]
+- Updated dependencies [4c91167]
+- Updated dependencies [2d02c6e]
+- Updated dependencies [7446341]
+  - better-zap@25.0.4
+
 ## 25.0.3
 
 ### Patch Changes
