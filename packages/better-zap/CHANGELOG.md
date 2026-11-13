@@ -1,5 +1,42 @@
 # better-zap
 
+## 25.0.4
+
+### Patch Changes
+
+- 75ae858: `betterZap().api.templates` creates, lists, edits and deletes message templates, using `config.token` and the new optional `config.wabaId`. It is server-side only; no HTTP route is added. Pass `templateService` to manage several business accounts.
+
+  The `BetterZapApi` type gains a required `templates` member. If you build a `BetterZapApi` object by hand, such as a test double, add `templates` to it.
+
+- 0dfb258: Two Portuguese defaults can now be changed. `webhook.resolveMessageContent` replaces the built-in labels (`[imagem]`, `[áudio]`, ...) used for a message's stored `content` and for `ctx.content`; the core processor already supported this, but `betterZap()` and `createWebhookHandler()` did not pass it through. `config.defaultTemplateLanguage` sets the language code `sendTemplate` uses when a call passes none. Both default to the previous behavior.
+- 6065912: One failing item no longer stops the rest of a webhook payload. Before, the first error while processing a request (a storage failure on one message, or a status with a malformed timestamp) skipped every later message, status and change in that request, and Meta does not retry because it already got `200 OK`. Each change, message and status is now processed on its own. Failures are logged as `webhook.change_failed`, `webhook.message_failed` or `webhook.status_failed`. A status with an unreadable timestamp is applied with the current time and logged as `webhook.status_invalid_timestamp`.
+- 0c224f9: Inbound and outbound messages now use the same phone key. Before, replies were keyed by the 13-digit Brazilian number while incoming messages were stored under Meta's `wa_id`, which for many Brazilian numbers has 12 digits. A reply to such a contact could fail with `CONTEXT_WINDOW_CLOSED`, and the contact could get two conversations. Every phone that reaches the store is now normalized: Brazilian mobile numbers always use the 13-digit form.
+
+  **Existing data:** if your store has conversations or messages saved under a 12-digit Brazilian mobile number (`55` + area code + 8 digits starting with 6 to 9), rewrite them to the 13-digit form by inserting `9` after the area code, merging with the 13-digit conversation where one already exists.
+
+  Numbers from other countries are no longer rejected. `formatPhone` no longer throws and is deprecated in favor of the new `normalizePhone` and `normalizeWaId`. A Brazilian landline no longer gets a ninth digit added. Apps that message numbers outside Brazil should set the new `config.defaultCountry: false` and pass numbers in international format.
+
+- 4ba5840: Plugins can now hook every webhook event, not only `onMessage` and `onStatusUpdate`: `onCoexistenceHistory`, `onSmbAppStateSync`, `onSmbMessageEcho`, the account lifecycle events, message edits and revokes, and unsupported messages. Plugin hooks run in array order before the app's own hook, and a failing one is logged without stopping the rest, as before.
+
+  `betterZap()` now throws at startup when two plugins share an `id`, when a plugin returns a context or service key that better-zap or another plugin already provides (`db`, `api`, `logger`, `whatsapp`), or when `init()` returns a Promise. Before, these were accepted and the later value silently won, or the result was silently dropped.
+
+  New exports from `better-zap`: `WEBHOOK_EVENT_NAMES` and the types `BetterZapWebhookEvents`, `BetterZapWebhookEventName`, `BetterZapWebhookEventContext` and `BetterZapWebhookHooks`.
+
+- cbe7c99: `templateDefinitionFromMeta` converts a template returned by Meta into the definition used by `send.template`, so a template listed at runtime can be sent with named params.
+
+  `better-zap generate` changes in three ways. A phone-number button no longer makes it fail. A template it cannot express (flows, carousels, ...) is skipped with a warning instead of stopping the run. Only `APPROVED` and `PAUSED` templates are generated; pass `--all-statuses` for the previous behavior. When a template exists in several languages, the entry uses `--default-language` if set, otherwise the first language code alphabetically.
+
+  Re-run `better-zap generate` after upgrading: the output can change, and `--check` fails until you do.
+
+- 0238b9e: `TemplateService.uploadHeaderMedia` uploads the sample image, video or PDF that a media-header template needs and returns the handle for `example.header_handle`. It needs the Meta app id, set once as `appId` in the service config or per call.
+
+  Failures from `TemplateService` and `CoexistenceService` no longer contain the access token when Meta echoes it in an error message: it is replaced with `[REDACTED]` in `error`, `errorUserTitle`, `errorUserMessage` and `details`.
+
+- 382ac26: New `TemplateService` creates, lists, reads, edits and deletes message templates through Meta's template management API. It takes a token and a WhatsApp Business Account id, either once in the constructor or per call, so one service can serve several accounts. It adds no HTTP routes.
+- 4c91167: Meta's template webhooks now reach four new optional hooks instead of being ignored: `onTemplateStatusUpdate` (approved, rejected, paused, disabled, ...), `onTemplateQualityUpdate`, `onTemplateCategoryUpdate` and `onTemplateComponentsUpdate`. They work in `createWebhookProcessor`, in `betterZap({ webhook })` and in plugins. Each receives the business account id as `wabaId`. `@better-zap/fixtures` adds `templateWebhookFixtures`.
+- 2d02c6e: `validateMessageTemplate` checks a template against Meta's documented limits (lengths, button counts, variable numbering, missing examples) and returns a list of issues with a code and a field path. It has no server dependencies, so a form can call it directly. `TemplateService.create` and `update` now run it first and return the issues without calling Meta; pass `validate: false` to skip it.
+- 7446341: Media downloads failed on Cloudflare Workers with "Illegal invocation", so every message got `metadata.media.status: "failed"` when `database.media` was set. `WhatsAppService.downloadMedia()` stored the global `fetch` on an object and called it as a method, and Workers only allows the built-in `fetch` to be called as a plain function. Coexistence Graph requests (`CoexistenceService`, used by `betterZap()` coexistence routes) had the same bug when no custom `fetch` was passed. Both now call the global `fetch` correctly. A custom `fetch` still works as before.
+
 ## 25.0.3
 
 ### Patch Changes

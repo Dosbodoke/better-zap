@@ -1,5 +1,28 @@
 # @better-zap/cli
 
+## 25.0.4
+
+### Patch Changes
+
+- cbe7c99: `templateDefinitionFromMeta` converts a template returned by Meta into the definition used by `send.template`, so a template listed at runtime can be sent with named params.
+
+  `better-zap generate` changes in three ways. A phone-number button no longer makes it fail. A template it cannot express (flows, carousels, ...) is skipped with a warning instead of stopping the run. Only `APPROVED` and `PAUSED` templates are generated; pass `--all-statuses` for the previous behavior. When a template exists in several languages, the entry uses `--default-language` if set, otherwise the first language code alphabetically.
+
+  Re-run `better-zap generate` after upgrading: the output can change, and `--check` fails until you do.
+
+- Updated dependencies [75ae858]
+- Updated dependencies [0dfb258]
+- Updated dependencies [6065912]
+- Updated dependencies [0c224f9]
+- Updated dependencies [4ba5840]
+- Updated dependencies [cbe7c99]
+- Updated dependencies [0238b9e]
+- Updated dependencies [382ac26]
+- Updated dependencies [4c91167]
+- Updated dependencies [2d02c6e]
+- Updated dependencies [7446341]
+  - better-zap@25.0.4
+
 ## 25.0.3
 
 ### Patch Changes
