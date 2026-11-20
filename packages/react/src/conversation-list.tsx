@@ -4,7 +4,11 @@ import React, { useCallback, useMemo, useRef, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { UserIcon } from "@hugeicons/core-free-icons";
 import { LegendList } from "@legendapp/list/react";
-import { InboxEmptyState } from "./inbox-empty-state";
+import {
+  ConversationListEmpty,
+  ConversationListEmptyContext,
+  type ConversationListEmptyState,
+} from "./conversation-list-empty";
 import { cn } from "./utils";
 import type { Conversation } from "better-zap";
 import { ConversationSearch } from "./conversation-search";
@@ -14,6 +18,15 @@ import {
 } from "./conversation-filter-chips";
 import { useOptionalWhatsappDashboard } from "./whatsapp-dashboard";
 
+export {
+  ConversationListClearSearch,
+  ConversationListEmpty,
+  useConversationListEmpty,
+  type ConversationListClearSearchProps,
+  type ConversationListEmptyProps,
+  type ConversationListEmptyState,
+} from "./conversation-list-empty";
+
 export interface ConversationListLabels {
   searchPlaceholder: string;
   searchLabel: string;
@@ -21,14 +34,8 @@ export interface ConversationListLabels {
   filterUnread: string;
   loading: string;
   error: string;
+  /** When set, replaces the heading of every empty state. */
   empty: string;
-  noConversations?: string;
-  noConversationsDescription?: string;
-  noResults?: (query: string) => string;
-  noResultsDescription?: string;
-  caughtUp?: string;
-  caughtUpDescription?: string;
-  clearSearch?: string;
   outgoingPrefix: string;
   noPreview: string;
   yesterday: string;
@@ -70,6 +77,11 @@ export interface ConversationListProps
 
   formatTime?: (isoDate: string) => string;
   labels?: Partial<ConversationListLabels>;
+  /**
+   * Shown instead of rows when nothing matches. Read why with
+   * `useConversationListEmpty()`. Default: `<ConversationListEmpty />`.
+   */
+  empty?: React.ReactNode;
 }
 
 /**
@@ -127,6 +139,7 @@ export function ConversationList({
   renderAvatar,
   formatTime: formatTimeProp,
   labels: labelsProp,
+  empty,
   className,
   ...props
 }: ConversationListProps) {
@@ -205,7 +218,8 @@ export function ConversationList({
     [labels.filterAll, labels.filterUnread],
   );
 
-  const normalizedSearch = search.trim().toLowerCase();
+  const query = search.trim();
+  const normalizedSearch = query.toLowerCase();
   const effectiveFilter = filter;
 
   const unreadConversationsCount = useMemo(
@@ -226,6 +240,75 @@ export function ConversationList({
       return matchesSearch && matchesFilter;
     });
   }, [conversations, normalizedSearch, effectiveFilter]);
+
+  const clearSearch = useCallback(
+    () => handleSearchChange(""),
+    [handleSearchChange],
+  );
+
+  const emptyState = useMemo((): ConversationListEmptyState | null => {
+    if (filtered.length > 0) return null;
+    if (conversations.length === 0) return { reason: "no-conversations" };
+    if (query) return { reason: "no-results", query, filter, clearSearch };
+    return { reason: "all-read" };
+  }, [filtered.length, conversations.length, query, filter, clearSearch]);
+
+  let content: React.ReactNode;
+  if (isLoading) {
+    content = (
+      <div className="flex items-center justify-center h-full text-sm text-[#667781]">
+        {labels.loading}
+      </div>
+    );
+  } else if (isError) {
+    content = (
+      <div className="flex items-center justify-center h-full text-sm text-red-500">
+        {labels.error}
+      </div>
+    );
+  } else if (emptyState) {
+    content = (
+      <ConversationListEmptyContext.Provider value={emptyState}>
+        {/* An explicit labels.empty predates per-reason copy; it still wins. */}
+        {empty ?? <ConversationListEmpty heading={labelsProp?.empty} />}
+      </ConversationListEmptyContext.Provider>
+    );
+  } else {
+    content = (
+      <LegendList
+        className="chat-scrollbar"
+        data={filtered}
+        estimatedItemSize={72}
+        extraData={selectedConversationId}
+        getFixedItemSize={() => 72}
+        keyExtractor={(conversation) => conversation.id}
+        recycleItems
+        renderItem={({ item: conversation }) => {
+          const isSelected = selectedConversationId === conversation.id;
+
+          if (renderItem) {
+            return renderItem(conversation, {
+              isSelected,
+              select: () => handleSelect(conversation.id),
+            });
+          }
+
+          return (
+            <ConversationListRow
+              conversation={conversation}
+              isSelected={isSelected}
+              onSelectConversation={handleSelect}
+              avatar={renderAvatar?.(conversation)}
+              outgoingPrefix={labels.outgoingPrefix}
+              noPreviewLabel={labels.noPreview}
+              formatTime={effectiveFormatTime}
+            />
+          );
+        }}
+        style={{ height: "100%", overflowX: "hidden" }}
+      />
+    );
+  }
 
   const isVisible = !isMobile || mobileView === "list";
 
@@ -252,93 +335,7 @@ export function ConversationList({
         labels={chipLabels}
       />
 
-      <div className="min-h-0 flex-1">
-        {isLoading ? (
-          <div className="flex items-center justify-center h-full text-sm text-[#667781]">
-            {labels.loading}
-          </div>
-        ) : isError ? (
-          <div className="flex items-center justify-center h-full text-sm text-red-500">
-            {labels.error}
-          </div>
-        ) : filtered.length === 0 ? (
-          <InboxEmptyState
-            compact={!isMobile || conversations.length > 0}
-            spot={
-              conversations.length === 0
-                ? "empty"
-                : normalizedSearch
-                  ? "search"
-                  : "read"
-            }
-            heading={
-              labelsProp?.empty ??
-              (conversations.length === 0
-                ? (labels.noConversations ?? "Nenhuma conversa ainda")
-                : normalizedSearch
-                  ? (labels.noResults?.(search) ??
-                    `Nenhum resultado para “${search}”`)
-                  : (labels.caughtUp ?? "Tudo lido"))
-            }
-            description={
-              conversations.length === 0
-                ? (labels.noConversationsDescription ??
-                  "Quando um cliente enviar uma mensagem para o seu número do WhatsApp Business, a conversa aparece aqui.")
-                : normalizedSearch
-                  ? (labels.noResultsDescription ??
-                    (filter === "unread"
-                      ? "A busca procura entre as não lidas, pelo nome do contato ou pelo telefone."
-                      : "A busca procura pelo nome do contato ou pelo telefone."))
-                  : (labels.caughtUpDescription ??
-                    "Nenhuma conversa com mensagens não lidas.")
-            }
-            action={
-              normalizedSearch && conversations.length > 0 ? (
-                <button
-                  type="button"
-                  className="mt-2 inline-flex h-8 items-center rounded-full border border-[#e9edef] px-3 text-sm font-medium text-[#008069] hover:bg-[#e7fce3] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#008069]"
-                  onClick={() => handleSearchChange("")}
-                >
-                  {labels.clearSearch ?? "Limpar busca"}
-                </button>
-              ) : undefined
-            }
-          />
-        ) : (
-          <LegendList
-            className="chat-scrollbar"
-            data={filtered}
-            estimatedItemSize={72}
-            extraData={selectedConversationId}
-            getFixedItemSize={() => 72}
-            keyExtractor={(conversation) => conversation.id}
-            recycleItems
-            renderItem={({ item: conversation }) => {
-              const isSelected = selectedConversationId === conversation.id;
-
-              if (renderItem) {
-                return renderItem(conversation, {
-                  isSelected,
-                  select: () => handleSelect(conversation.id),
-                });
-              }
-
-              return (
-                <ConversationListRow
-                  conversation={conversation}
-                  isSelected={isSelected}
-                  onSelectConversation={handleSelect}
-                  avatar={renderAvatar?.(conversation)}
-                  outgoingPrefix={labels.outgoingPrefix}
-                  noPreviewLabel={labels.noPreview}
-                  formatTime={effectiveFormatTime}
-                />
-              );
-            }}
-            style={{ height: "100%", overflowX: "hidden" }}
-          />
-        )}
-      </div>
+      <div className="min-h-0 flex-1">{content}</div>
     </div>
   );
 }

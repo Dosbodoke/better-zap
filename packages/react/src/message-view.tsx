@@ -10,19 +10,27 @@ import {
 import { LegendList } from "@legendapp/list/react";
 import type { Conversation, LinkPreview, UIMessage } from "better-zap";
 import { cn, getDisplayDate } from "./utils";
-import { InboxEmptyState } from "./inbox-empty-state";
+import {
+  InboxEmpty,
+  InboxEmptyDescription,
+  InboxEmptyIllustration,
+  InboxEmptyTitle,
+} from "./inbox-empty";
 import { MessageBubble, type MessageBubbleProps } from "./message-bubble";
 import { useOptionalWhatsappDashboard } from "./whatsapp-dashboard";
 
 export interface MessageViewProps extends React.ComponentProps<"div"> {
-  /** Copy used when no conversation is selected. */
-  emptyStateLabels?: Partial<MessageViewEmptyLabels>;
+  /**
+   * Replaces the default `MessageViewEmpty` content when there are no
+   * children (desktop / standalone only).
+   */
+  empty?: React.ReactNode;
   children?: React.ReactNode;
 }
 
 export function MessageView({
   children,
-  emptyStateLabels,
+  empty,
   className,
   style,
   ...props
@@ -38,12 +46,9 @@ export function MessageView({
     // Don't show empty state on mobile — the conversation list is shown instead
     if (isMobile) return null;
     return (
-      <MessageViewEmpty
-        labels={emptyStateLabels}
-        className={className}
-        style={style}
-        {...props}
-      />
+      <MessageViewEmpty className={className} style={style} {...props}>
+        {empty}
+      </MessageViewEmpty>
     );
   }
 
@@ -481,24 +486,11 @@ export function DateDivider({
 }
 
 // Empty State
-export interface MessageViewEmptyLabels {
-  heading: string;
-  description: string;
-}
-
-export interface MessageViewEmptyProps extends React.ComponentProps<"div"> {
-  labels?: Partial<MessageViewEmptyLabels>;
-  /** Show the first-use state when the inbox has no conversations. */
-  noConversations?: boolean;
-}
-
 export function MessageViewEmpty({
   className,
   children,
-  labels,
-  noConversations = false,
   ...props
-}: MessageViewEmptyProps) {
+}: React.ComponentProps<"div">) {
   return (
     <div
       className={cn(
@@ -508,21 +500,13 @@ export function MessageViewEmpty({
       {...props}
     >
       {children ?? (
-        <InboxEmptyState
-          spot={noConversations ? "empty" : "conversation"}
-          heading={
-            labels?.heading ??
-            (noConversations
-              ? "Nenhuma conversa ainda"
-              : "Selecione uma conversa")
-          }
-          description={
-            labels?.description ??
-            (noConversations
-              ? "Quando um cliente enviar uma mensagem para o seu número do WhatsApp Business, a conversa aparece na lista."
-              : "Escolha uma conversa na lista para ler e responder.")
-          }
-        />
+        <InboxEmpty size="lg">
+          <InboxEmptyIllustration variant="chat" />
+          <InboxEmptyTitle>Selecione uma conversa</InboxEmptyTitle>
+          <InboxEmptyDescription>
+            Escolha uma conversa na lista para ler e responder.
+          </InboxEmptyDescription>
+        </InboxEmpty>
       )}
     </div>
   );
