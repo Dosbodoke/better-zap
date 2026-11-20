@@ -6,11 +6,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ConversationItem,
   ConversationList,
+  ConversationListClearSearch,
+  ConversationListEmpty,
+  InboxEmpty,
+  InboxEmptyTitle,
   MessageView,
   WhatsappDashboard,
+  useConversationListEmpty,
 } from "@better-zap/react";
 import type {
   ConversationItemProps,
+  ConversationListEmptyState,
   ConversationListLabels,
   ConversationListProps,
   MobileView,
@@ -26,6 +32,7 @@ import {
 type _TypeExports = [
   ConversationListProps,
   ConversationListLabels,
+  ConversationListEmptyState,
   ConversationItemProps,
   WhatsappDashboardContextValue,
   MobileView,
@@ -194,17 +201,17 @@ describe("ConversationList + WhatsappDashboard (published surface)", () => {
         />
       </WhatsappDashboard>,
     );
-    expect(screen.getByText("Nenhuma conversa encontrada")).toBeTruthy();
+    expect(screen.getByText("Nenhuma conversa ainda")).toBeTruthy();
   });
 
-  it("desktop empty MessageView shows Better Zap branding", () => {
+  it("desktop empty MessageView prompts for a conversation", () => {
     mockMatchMedia(false);
     render(
       <WhatsappDashboard>
         <MessageView />
       </WhatsappDashboard>,
     );
-    expect(screen.getByText("Better Zap")).toBeTruthy();
+    expect(screen.getByText("Selecione uma conversa")).toBeTruthy();
   });
 
   it("mobile matchMedia hides list when mobileView is chat", async () => {
@@ -442,7 +449,9 @@ describe("ConversationList standalone (no WhatsappDashboard)", () => {
     );
 
     expect(screen.getByText("Loading chats...")).toBeTruthy();
-    expect(screen.getByRole("textbox", { name: "Search conversations" })).toBeTruthy();
+    expect(
+      screen.getByRole("textbox", { name: "Search conversations" }),
+    ).toBeTruthy();
     expect(screen.getByPlaceholderText("Find chat")).toBeTruthy();
     expect(screen.getByRole("button", { name: "All" })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Unread/ })).toBeTruthy();
@@ -483,5 +492,204 @@ describe("ConversationList standalone (no WhatsappDashboard)", () => {
     await user.click(screen.getByRole("button"));
     expect(onSelect).toHaveBeenCalledWith("c1");
     expect(onSubmit).not.toHaveBeenCalled();
+  });
+});
+
+describe("inbox empty-state recovery", () => {
+  beforeEach(() => {
+    mockMatchMedia(false);
+    stubLegendListLayout();
+  });
+
+  it("keeps the search chrome and clears an uncontrolled query", async () => {
+    const user = userEvent.setup();
+    render(
+      <ConversationList conversations={conversations} defaultSearch="Atlas" />,
+    );
+    expect(screen.getByText("Nenhum resultado para “Atlas”")).toBeTruthy();
+    expect(
+      screen.getByRole("textbox", { name: "Buscar conversa" }),
+    ).toHaveProperty("value", "Atlas");
+    await user.click(screen.getByRole("button", { name: "Limpar busca" }));
+    expect(
+      screen.getByRole("textbox", { name: "Buscar conversa" }),
+    ).toHaveProperty("value", "");
+    await waitFor(() =>
+      expect(screen.getAllByText("Bruno").length).toBeGreaterThan(0),
+    );
+  });
+
+  it("requests a controlled search reset without changing the filter", async () => {
+    const user = userEvent.setup();
+    const onSearchChange = vi.fn();
+    const onFilterChange = vi.fn();
+    render(
+      <ConversationList
+        conversations={conversations}
+        search="Atlas"
+        filter="unread"
+        onSearchChange={onSearchChange}
+        onFilterChange={onFilterChange}
+      />,
+    );
+    expect(screen.getByText(/A busca procura entre as não lidas/)).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Limpar busca" }));
+    expect(onSearchChange).toHaveBeenCalledWith("");
+    expect(onFilterChange).not.toHaveBeenCalled();
+  });
+
+  it("celebrates a cleared unread filter without offering an action", () => {
+    render(
+      <ConversationList
+        conversations={conversations.map((c) => ({ ...c, unreadCount: 0 }))}
+        defaultFilter="unread"
+      />,
+    );
+    expect(screen.getByText("Tudo lido")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Limpar busca" })).toBeNull();
+  });
+
+  it.each([
+    { isLoading: true },
+    { isError: true },
+  ])("does not show emptiness during %j", (props) => {
+    render(<ConversationList conversations={[]} {...props} />);
+    expect(screen.queryByText("Nenhuma conversa ainda")).toBeNull();
+    expect(screen.queryByText("Tudo lido")).toBeNull();
+  });
+});
+
+describe("custom empty slot", () => {
+  beforeEach(() => {
+    mockMatchMedia(false);
+    stubLegendListLayout();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  /** Custom copy for searches; the default content for every other reason. */
+  function SearchEmpty() {
+    const empty = useConversationListEmpty();
+    if (empty.reason !== "no-results") return <ConversationListEmpty />;
+    return (
+      <InboxEmpty>
+        <InboxEmptyTitle>No match for {empty.query}</InboxEmptyTitle>
+        <ConversationListClearSearch>Reset</ConversationListClearSearch>
+      </InboxEmpty>
+    );
+  }
+
+  it("renders consumer content with the reason and query", () => {
+    render(
+      <ConversationList
+        conversations={conversations}
+        defaultSearch="  Atlas "
+        empty={<SearchEmpty />}
+      />,
+    );
+    expect(
+      screen.getByRole("heading", { name: "No match for Atlas" }),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Nenhum resultado/)).toBeNull();
+  });
+
+  it("falls back to the default content for other reasons", () => {
+    render(<ConversationList conversations={[]} empty={<SearchEmpty />} />);
+    expect(screen.getByText("Nenhuma conversa ainda")).toBeTruthy();
+  });
+
+  it("recovers a controlled search from a custom action", async () => {
+    const user = userEvent.setup();
+    const onSearchChange = vi.fn();
+
+    function ControlledSearch() {
+      const [search, setSearch] = useState("Atlas");
+      return (
+        <ConversationList
+          conversations={conversations}
+          search={search}
+          onSearchChange={(value) => {
+            onSearchChange(value);
+            setSearch(value);
+          }}
+          empty={<SearchEmpty />}
+        />
+      );
+    }
+
+    render(<ControlledSearch />);
+    await user.click(screen.getByRole("button", { name: "Reset" }));
+
+    expect(onSearchChange).toHaveBeenCalledWith("");
+    expect(
+      screen.getByRole("textbox", { name: "Buscar conversa" }),
+    ).toHaveProperty("value", "");
+    await waitFor(() =>
+      expect(screen.getAllByText("Bruno").length).toBeGreaterThan(0),
+    );
+  });
+
+  it("keeps the query when the clear action prevents default", async () => {
+    const user = userEvent.setup();
+    const onSearchChange = vi.fn();
+    render(
+      <ConversationList
+        conversations={conversations}
+        defaultSearch="Atlas"
+        onSearchChange={onSearchChange}
+        empty={
+          <ConversationListClearSearch
+            onClick={(event) => event.preventDefault()}
+          />
+        }
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Limpar busca" }));
+    expect(onSearchChange).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("textbox", { name: "Buscar conversa" }),
+    ).toHaveProperty("value", "Atlas");
+  });
+
+  it("exposes the all-read reason without a clear action", () => {
+    let seen: ConversationListEmptyState | undefined;
+    function Probe() {
+      seen = useConversationListEmpty();
+      return <ConversationListClearSearch />;
+    }
+    render(
+      <ConversationList
+        conversations={conversations.map((c) => ({ ...c, unreadCount: 0 }))}
+        defaultFilter="unread"
+        empty={<Probe />}
+      />,
+    );
+    expect(seen).toEqual({ reason: "all-read" });
+    expect(screen.queryByRole("button", { name: "Limpar busca" })).toBeNull();
+  });
+
+  it.each([
+    { isLoading: true },
+    { isError: true },
+  ])("loading and error win over a custom empty slot (%j)", (props) => {
+    render(
+      <ConversationList
+        conversations={[]}
+        empty={<p>custom-empty</p>}
+        {...props}
+      />,
+    );
+    expect(screen.queryByText("custom-empty")).toBeNull();
+  });
+
+  it("useConversationListEmpty throws outside the empty slot", () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    function Orphan() {
+      useConversationListEmpty();
+      return null;
+    }
+    expect(() => render(<Orphan />)).toThrow(/empty` slot/);
   });
 });

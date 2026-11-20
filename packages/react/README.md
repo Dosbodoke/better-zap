@@ -101,11 +101,12 @@ or not they're inside it (see the sections below).
 The package has two layers: generic presentational **primitives** with no Better Zap
 dependency, and Better Zap **adapters** that map domain data onto those primitives.
 
-| Concern | Primitives (`Bubble*`, `Message*` layout, `Composer*`, `DateDivider`) | Adapters (`MessageBubble`, `MessageInput`, `MessageList`, `ConversationList`, `MessageView*`, `WhatsappDashboard`) |
+| Concern | Primitives (`Bubble*`, `Message*` layout, `Composer*`, `DateDivider`, `InboxEmpty*`) | Adapters (`MessageBubble`, `MessageInput`, `MessageList`, `ConversationList`, `MessageView*`, `WhatsappDashboard`) |
 | --- | --- | --- |
 | Data mapping (domain → presentation) | None — you pass `align`/`variant` directly | Own it — map `Conversation`/`UIMessage` fields (`sender`/`status`/`direction`) to presentational props |
 | Row layout | `Message`, `MessageAvatar`, `MessageContent`, `MessageHeader`, `MessageFooter` | Composed internally by `MessageBubble` / `MessageList`'s default renderer |
 | Bubble surface | `Bubble`, `BubbleContent`, `BubbleReactions`, `LinkPreviewCard` | Composed internally; still swappable via `renderMessage` (see [MessageList](#messagelist)) |
+| Empty states | `InboxEmpty`, `InboxEmptyIllustration`, `InboxEmptyTitle`, `InboxEmptyDescription` | `ConversationListEmpty` and the `MessageView` default; swappable via `empty` (see [Empty states](#empty-states)) |
 | Metadata / timestamps | You render them (`MessageFooter`, etc.) | Own default formatting (`formatDate`/`formatTime`), overridable via props |
 | Actions | `ComposerButton`, `ComposerSend`, etc. — you wire callbacks | `MessageInput` gates action buttons on callbacks being provided (see [Actions and failures](#actions-and-failures)) |
 | Responsive orchestration | None | `WhatsappDashboard` owns mobile list/chat navigation; `ConversationList`/`MessageView` read it optionally |
@@ -324,9 +325,64 @@ callbacks still fire when uncontrolled if provided.
   (wins over `renderAvatar`).
 - `renderAvatar(conversation)` — swap the default avatar inside
   `ConversationItem`.
-- `labels` — partial overrides for search, chips, loading/error/empty, preview
-  prefix, and `"Ontem"`.
+- `labels` — partial overrides for search, chips, loading/error, preview
+  prefix, and `"Ontem"`. `labels.empty` replaces every empty-state heading.
 - `formatTime(isoDate)` — optional time label override for rows.
+- `empty` — replaces the empty content (see [Empty states](#empty-states)).
+
+### Empty states
+
+When no row matches, the list renders its `empty` slot (default
+`<ConversationListEmpty />`) under a context that says why. Loading and error
+take precedence. Search and filter stay visible.
+
+| `reason` | When | Default content |
+| --- | --- | --- |
+| `"no-conversations"` | `conversations` is empty | first-use copy, no action |
+| `"no-results"` | a search matches nothing; carries `query`, `filter`, `clearSearch()` | query echo + `ConversationListClearSearch` |
+| `"all-read"` | the unread filter has nothing left | "Tudo lido", no action |
+
+Read the reason with `useConversationListEmpty()` and compose your own content
+from the `InboxEmpty*` parts, falling back to `<ConversationListEmpty />` for
+the reasons you don't customize. `ConversationListClearSearch` goes through
+`onSearchChange("")` when search is controlled and clears internal state
+otherwise; it renders nothing unless the reason is `"no-results"`.
+
+```tsx
+function UnreadSearchEmpty({ onSearchAll }: { onSearchAll: () => void }) {
+  const empty = useConversationListEmpty();
+  if (empty.reason !== "no-results" || empty.filter !== "unread") {
+    return <ConversationListEmpty />;
+  }
+  return (
+    <InboxEmpty>
+      <InboxEmptyIllustration variant="search" />
+      <InboxEmptyTitle>Nenhuma não lida com “{empty.query}”</InboxEmptyTitle>
+      <InboxEmptyDescription>Ela pode já ter sido lida.</InboxEmptyDescription>
+      <button type="button" onClick={onSearchAll}>
+        Buscar em todas
+      </button>
+      <ConversationListClearSearch />
+    </InboxEmpty>
+  );
+}
+
+function Inbox({ conversations }: { conversations: Conversation[] }) {
+  const [filter, setFilter] = useState<ConversationFilterValue>("all");
+  return (
+    <ConversationList
+      conversations={conversations}
+      filter={filter}
+      onFilterChange={setFilter}
+      empty={<UnreadSearchEmpty onSearchAll={() => setFilter("all")} />}
+    />
+  );
+}
+```
+
+`InboxEmpty` takes `size="sm"` (list) or `"lg"` (pane);
+`InboxEmptyIllustration` takes `variant` `"chat"`, `"outline"`, `"search"` or
+`"read"`.
 
 ## MessageList
 
@@ -522,8 +578,8 @@ It works **standalone** or inside `WhatsappDashboard`. Leaves use
 </MessageView>
 ```
 
-Outside a provider, empty `MessageView` (no children) renders the default
-pt-BR "Better Zap" empty state. Inside a mobile dashboard with no children it
+Outside a provider, empty `MessageView` (no children) renders a pt-BR
+"Selecione uma conversa" prompt. Inside a mobile dashboard with no children it
 returns `null` so the list can fill the viewport.
 
 ### Header composition
@@ -550,8 +606,25 @@ returns `null` so the list can fill the viewport.
 
 ### Empty content seam
 
-`MessageViewEmpty` accepts optional `children` to replace the default icon +
-copy. Used automatically by empty `MessageView` on desktop / standalone.
+Empty `MessageView` renders `MessageViewEmpty` on desktop / standalone. Pass
+`empty` to replace its content, built from the same `InboxEmpty*` parts as the
+list (or any node); `MessageViewEmpty` also takes `children` directly.
+
+```tsx
+<MessageView
+  empty={
+    <InboxEmpty size="lg">
+      <InboxEmptyIllustration variant="chat" />
+      <InboxEmptyTitle>Selecione uma conversa</InboxEmptyTitle>
+      <InboxEmptyDescription>
+        {unread} conversas não lidas.
+      </InboxEmptyDescription>
+    </InboxEmpty>
+  }
+>
+  {active && <MessageViewHeader conversation={active} />}
+</MessageView>
+```
 
 ### Style merge
 

@@ -6,6 +6,7 @@ export * from "./bubble";
 export * from "./message";
 export * from "./conversation-list";
 export * from "./conversation-filter-chips";
+export * from "./inbox-empty";
 export * from "./utils";
 export type {
   Conversation,
