@@ -1,5 +1,24 @@
 # @better-zap/demo-dashboard
 
+## 0.0.7
+
+### Patch Changes
+
+- Updated dependencies [75ae858]
+- Updated dependencies [0dfb258]
+- Updated dependencies [6065912]
+- Updated dependencies [3b51745]
+- Updated dependencies [0c224f9]
+- Updated dependencies [4ba5840]
+- Updated dependencies [cbe7c99]
+- Updated dependencies [0238b9e]
+- Updated dependencies [382ac26]
+- Updated dependencies [4c91167]
+- Updated dependencies [2d02c6e]
+- Updated dependencies [7446341]
+  - better-zap@25.0.4
+  - @better-zap/react@25.0.4
+
 ## 0.0.6
 
 ### Patch Changes
