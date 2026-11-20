@@ -74,7 +74,7 @@ describe("MessageView standalone (no WhatsappDashboard)", () => {
 
   it("renders default empty state when no children", () => {
     render(<MessageView />);
-    expect(screen.getByText("Better Zap")).toBeTruthy();
+    expect(screen.getByText("Selecione uma conversa")).toBeTruthy();
   });
 
   it("header shows back when showBackButton and calls onBack", async () => {
@@ -160,7 +160,7 @@ describe("MessageView standalone (no WhatsappDashboard)", () => {
 
   it("MessageViewEmpty children replace default copy", () => {
     const { rerender } = render(<MessageViewEmpty />);
-    expect(screen.getByText("Better Zap")).toBeTruthy();
+    expect(screen.getByText("Selecione uma conversa")).toBeTruthy();
 
     rerender(
       <MessageViewEmpty>
@@ -168,7 +168,7 @@ describe("MessageView standalone (no WhatsappDashboard)", () => {
       </MessageViewEmpty>,
     );
     expect(screen.getByText("custom empty")).toBeTruthy();
-    expect(screen.queryByText("Better Zap")).toBeNull();
+    expect(screen.queryByText("Selecione uma conversa")).toBeNull();
   });
 
   it("MessageViewContent renders children standalone", () => {
@@ -191,13 +191,13 @@ describe("MessageView + WhatsappDashboard", () => {
     vi.restoreAllMocks();
   });
 
-  it("desktop empty MessageView shows Better Zap branding", () => {
+  it("desktop empty MessageView prompts for a conversation", () => {
     render(
       <WhatsappDashboard isMobile={false}>
         <MessageView />
       </WhatsappDashboard>,
     );
-    expect(screen.getByText("Better Zap")).toBeTruthy();
+    expect(screen.getByText("Selecione uma conversa")).toBeTruthy();
   });
 
   it("desktop MessageView with children is visible", () => {

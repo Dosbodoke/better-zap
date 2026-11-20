@@ -108,6 +108,12 @@ const ChatPane = memo(function ChatPane({
       : NO_MESSAGES,
   );
 
+  const conversations = useSyncExternalStore(
+    client.subscribe,
+    () => client.getState().conversations,
+  );
+  const unread = conversations.filter((item) => item.unreadCount > 0).length;
+
   const resolveLinkPreview = useLinkPreviews(client, messages);
 
   const handleSend = useCallback(
@@ -119,7 +125,13 @@ const ChatPane = memo(function ChatPane({
   );
 
   return (
-    <MessageView>
+    <MessageView
+      emptyStateLabels={{
+        description: unread > 0
+          ? `Escolha uma conversa na lista para ler e responder. ${unread} ${unread === 1 ? "conversa tem" : "conversas têm"} mensagens não lidas.`
+          : "Escolha uma conversa na lista para ver o histórico.",
+      }}
+    >
       {conversation && (
         <>
           <MessageViewHeader conversation={conversation} onInfoClick={() => {}} />

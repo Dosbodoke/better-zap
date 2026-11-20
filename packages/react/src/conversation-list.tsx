@@ -2,8 +2,9 @@
 
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Message01Icon, UserIcon } from "@hugeicons/core-free-icons";
+import { UserIcon } from "@hugeicons/core-free-icons";
 import { LegendList } from "@legendapp/list/react";
+import { InboxEmptyState } from "./inbox-empty-state";
 import { cn } from "./utils";
 import type { Conversation } from "better-zap";
 import { ConversationSearch } from "./conversation-search";
@@ -21,6 +22,13 @@ export interface ConversationListLabels {
   loading: string;
   error: string;
   empty: string;
+  noConversations?: string;
+  noConversationsDescription?: string;
+  noResults?: (query: string) => string;
+  noResultsDescription?: string;
+  caughtUp?: string;
+  caughtUpDescription?: string;
+  clearSearch?: string;
   outgoingPrefix: string;
   noPreview: string;
   yesterday: string;
@@ -254,10 +262,48 @@ export function ConversationList({
             {labels.error}
           </div>
         ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full gap-2 text-[#667781]">
-            <HugeiconsIcon icon={Message01Icon} size={32} />
-            <p className="text-sm">{labels.empty}</p>
-          </div>
+          <InboxEmptyState
+            compact={!isMobile || conversations.length > 0}
+            spot={
+              conversations.length === 0
+                ? "empty"
+                : normalizedSearch
+                  ? "search"
+                  : "read"
+            }
+            heading={
+              labelsProp?.empty ??
+              (conversations.length === 0
+                ? (labels.noConversations ?? "Nenhuma conversa ainda")
+                : normalizedSearch
+                  ? (labels.noResults?.(search) ??
+                    `Nenhum resultado para “${search}”`)
+                  : (labels.caughtUp ?? "Tudo lido"))
+            }
+            description={
+              conversations.length === 0
+                ? (labels.noConversationsDescription ??
+                  "Quando um cliente enviar uma mensagem para o seu número do WhatsApp Business, a conversa aparece aqui.")
+                : normalizedSearch
+                  ? (labels.noResultsDescription ??
+                    (filter === "unread"
+                      ? "A busca procura entre as não lidas, pelo nome do contato ou pelo telefone."
+                      : "A busca procura pelo nome do contato ou pelo telefone."))
+                  : (labels.caughtUpDescription ??
+                    "Nenhuma conversa com mensagens não lidas.")
+            }
+            action={
+              normalizedSearch && conversations.length > 0 ? (
+                <button
+                  type="button"
+                  className="mt-2 inline-flex h-8 items-center rounded-full border border-[#e9edef] px-3 text-sm font-medium text-[#008069] hover:bg-[#e7fce3] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#008069]"
+                  onClick={() => handleSearchChange("")}
+                >
+                  {labels.clearSearch ?? "Limpar busca"}
+                </button>
+              ) : undefined
+            }
+          />
         ) : (
           <LegendList
             className="chat-scrollbar"

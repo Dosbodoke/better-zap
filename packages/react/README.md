@@ -605,3 +605,12 @@ remain public — nothing described below removes an export.
 
 See the [package release policy](../../README.md#releases) and the
 [maintainer release runbook](../../.changeset/README.md).
+
+
+### Inbox empty states
+
+The inbox uses a compact chat-bubble visual with copy for first use, an empty search, and a cleared unread filter. Search and filter controls remain visible; “Limpar busca” calls `onSearchChange("")` for controlled searches and clears internal state otherwise. Loading and errors take precedence over empty states.
+
+`ConversationList` accepts optional `labels.noConversations`, `noConversationsDescription`, `noResults(query)`, `noResultsDescription`, `caughtUp`, `caughtUpDescription`, and `clearSearch`. An explicit `labels.empty` still overrides the empty heading for all states.
+
+`MessageView` accepts `emptyStateLabels` with `heading` and `description` for the unselected pane. `MessageViewEmpty` accepts the same fields through `labels`, plus `noConversations` for first-use copy. Custom children still replace its default content. The unselected pane stays hidden on mobile, where the conversation list carries the empty state.

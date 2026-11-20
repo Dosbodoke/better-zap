@@ -5,21 +5,24 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import {
   ArrowLeft02Icon,
   InformationCircleIcon,
-  Message01Icon,
   UserIcon,
 } from "@hugeicons/core-free-icons";
 import { LegendList } from "@legendapp/list/react";
 import type { Conversation, LinkPreview, UIMessage } from "better-zap";
 import { cn, getDisplayDate } from "./utils";
+import { InboxEmptyState } from "./inbox-empty-state";
 import { MessageBubble, type MessageBubbleProps } from "./message-bubble";
 import { useOptionalWhatsappDashboard } from "./whatsapp-dashboard";
 
 export interface MessageViewProps extends React.ComponentProps<"div"> {
+  /** Copy used when no conversation is selected. */
+  emptyStateLabels?: Partial<MessageViewEmptyLabels>;
   children?: React.ReactNode;
 }
 
 export function MessageView({
   children,
+  emptyStateLabels,
   className,
   style,
   ...props
@@ -34,7 +37,14 @@ export function MessageView({
   if (!hasContent) {
     // Don't show empty state on mobile — the conversation list is shown instead
     if (isMobile) return null;
-    return <MessageViewEmpty className={className} style={style} {...props} />;
+    return (
+      <MessageViewEmpty
+        labels={emptyStateLabels}
+        className={className}
+        style={style}
+        {...props}
+      />
+    );
   }
 
   return (
@@ -187,9 +197,7 @@ export function MessageViewContent({
   ...props
 }: MessageViewContentProps) {
   return (
-    <MessageViewScrollContext.Provider
-      value={{ autoScroll, onScrollTop }}
-    >
+    <MessageViewScrollContext.Provider value={{ autoScroll, onScrollTop }}>
       <div
         className={cn("flex min-h-0 flex-1 flex-col p-4 pb-0", className)}
         {...props}
@@ -319,7 +327,8 @@ function getGroupPosition(
 ): MessageGroupPosition {
   const n = messages.length;
   const prevSame =
-    index > 0 && sameGroup(messages[index - 1]!, messages[index]!, resolveFormatDate);
+    index > 0 &&
+    sameGroup(messages[index - 1]!, messages[index]!, resolveFormatDate);
   const nextSame =
     index < n - 1 &&
     sameGroup(messages[index]!, messages[index + 1]!, resolveFormatDate);
@@ -345,8 +354,7 @@ export function MessageList({
   const scrollContext = useContext(MessageViewScrollContext);
   const resolvedAutoScroll =
     autoScrollProp ?? scrollContext?.autoScroll ?? true;
-  const resolvedOnScrollTop =
-    onScrollTopProp ?? scrollContext?.onScrollTop;
+  const resolvedOnScrollTop = onScrollTopProp ?? scrollContext?.onScrollTop;
 
   const resolveFormatDate = formatDate ?? getDisplayDate;
   const resolveFormatTime = formatTime ?? defaultFormatTime;
@@ -473,41 +481,48 @@ export function DateDivider({
 }
 
 // Empty State
+export interface MessageViewEmptyLabels {
+  heading: string;
+  description: string;
+}
+
+export interface MessageViewEmptyProps extends React.ComponentProps<"div"> {
+  labels?: Partial<MessageViewEmptyLabels>;
+  /** Show the first-use state when the inbox has no conversations. */
+  noConversations?: boolean;
+}
+
 export function MessageViewEmpty({
   className,
   children,
+  labels,
+  noConversations = false,
   ...props
-}: React.ComponentProps<"div">) {
+}: MessageViewEmptyProps) {
   return (
     <div
       className={cn(
-        "relative flex flex-1 flex-col items-center justify-center bg-[#f0f2f5] text-[#667781] p-6",
+        "relative flex min-h-0 flex-1 flex-col items-center justify-center bg-[#f0f2f5] text-[#667781]",
         className,
       )}
       {...props}
     >
       {children ?? (
-        <>
-          <HugeiconsIcon
-            icon={Message01Icon}
-            size={96}
-            strokeWidth={1}
-            className="mb-6 text-[#c6cdd2]"
-          />
-          <h1 className="mb-4 text-[32px] font-light text-[#41525d]">
-            Better Zap
-          </h1>
-          <div className="max-w-md space-y-3 text-center">
-            <p className="text-sm leading-[20px]">
-              Esta é uma interface dedicada para visualização e monitoramento de
-              mensagens da <strong>API Oficial do WhatsApp</strong>.
-            </p>
-            <p className="text-sm leading-[20px] opacity-80">
-              Acompanhe o histórico de conversas, verifique o status de entrega e
-              gerencie as interações do Cloud API de forma profissional.
-            </p>
-          </div>
-        </>
+        <InboxEmptyState
+          spot={noConversations ? "empty" : "conversation"}
+          heading={
+            labels?.heading ??
+            (noConversations
+              ? "Nenhuma conversa ainda"
+              : "Selecione uma conversa")
+          }
+          description={
+            labels?.description ??
+            (noConversations
+              ? "Quando um cliente enviar uma mensagem para o seu número do WhatsApp Business, a conversa aparece na lista."
+              : "Escolha uma conversa na lista para ler e responder.")
+          }
+        />
       )}
     </div>
   );

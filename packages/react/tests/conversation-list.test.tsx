@@ -194,17 +194,17 @@ describe("ConversationList + WhatsappDashboard (published surface)", () => {
         />
       </WhatsappDashboard>,
     );
-    expect(screen.getByText("Nenhuma conversa encontrada")).toBeTruthy();
+    expect(screen.getByText("Nenhuma conversa ainda")).toBeTruthy();
   });
 
-  it("desktop empty MessageView shows Better Zap branding", () => {
+  it("desktop empty MessageView prompts for a conversation", () => {
     mockMatchMedia(false);
     render(
       <WhatsappDashboard>
         <MessageView />
       </WhatsappDashboard>,
     );
-    expect(screen.getByText("Better Zap")).toBeTruthy();
+    expect(screen.getByText("Selecione uma conversa")).toBeTruthy();
   });
 
   it("mobile matchMedia hides list when mobileView is chat", async () => {
@@ -442,7 +442,9 @@ describe("ConversationList standalone (no WhatsappDashboard)", () => {
     );
 
     expect(screen.getByText("Loading chats...")).toBeTruthy();
-    expect(screen.getByRole("textbox", { name: "Search conversations" })).toBeTruthy();
+    expect(
+      screen.getByRole("textbox", { name: "Search conversations" }),
+    ).toBeTruthy();
     expect(screen.getByPlaceholderText("Find chat")).toBeTruthy();
     expect(screen.getByRole("button", { name: "All" })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Unread/ })).toBeTruthy();
@@ -483,5 +485,69 @@ describe("ConversationList standalone (no WhatsappDashboard)", () => {
     await user.click(screen.getByRole("button"));
     expect(onSelect).toHaveBeenCalledWith("c1");
     expect(onSubmit).not.toHaveBeenCalled();
+  });
+});
+
+describe("inbox empty-state recovery", () => {
+  beforeEach(() => {
+    mockMatchMedia(false);
+    stubLegendListLayout();
+  });
+
+  it("keeps the search chrome and clears an uncontrolled query", async () => {
+    const user = userEvent.setup();
+    render(
+      <ConversationList conversations={conversations} defaultSearch="Atlas" />,
+    );
+    expect(screen.getByText("Nenhum resultado para “Atlas”")).toBeTruthy();
+    expect(
+      screen.getByRole("textbox", { name: "Buscar conversa" }),
+    ).toHaveProperty("value", "Atlas");
+    await user.click(screen.getByRole("button", { name: "Limpar busca" }));
+    expect(
+      screen.getByRole("textbox", { name: "Buscar conversa" }),
+    ).toHaveProperty("value", "");
+    await waitFor(() =>
+      expect(screen.getAllByText("Bruno").length).toBeGreaterThan(0),
+    );
+  });
+
+  it("requests a controlled search reset without changing the filter", async () => {
+    const user = userEvent.setup();
+    const onSearchChange = vi.fn();
+    const onFilterChange = vi.fn();
+    render(
+      <ConversationList
+        conversations={conversations}
+        search="Atlas"
+        filter="unread"
+        onSearchChange={onSearchChange}
+        onFilterChange={onFilterChange}
+      />,
+    );
+    expect(screen.getByText(/A busca procura entre as não lidas/)).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Limpar busca" }));
+    expect(onSearchChange).toHaveBeenCalledWith("");
+    expect(onFilterChange).not.toHaveBeenCalled();
+  });
+
+  it("celebrates a cleared unread filter without offering an action", () => {
+    render(
+      <ConversationList
+        conversations={conversations.map((c) => ({ ...c, unreadCount: 0 }))}
+        defaultFilter="unread"
+      />,
+    );
+    expect(screen.getByText("Tudo lido")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Limpar busca" })).toBeNull();
+  });
+
+  it.each([
+    { isLoading: true },
+    { isError: true },
+  ])("does not show emptiness during %j", (props) => {
+    render(<ConversationList conversations={[]} {...props} />);
+    expect(screen.queryByText("Nenhuma conversa ainda")).toBeNull();
+    expect(screen.queryByText("Tudo lido")).toBeNull();
   });
 });
