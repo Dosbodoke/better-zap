@@ -1,5 +1,12 @@
 # @better-zap/react
 
+## 25.0.5
+
+### Patch Changes
+
+- b8f50e0: Use centered chat bubbles for inbox empty states, with distinct first-use, no-results and all-read content and a clear-search action. Customize them through the new `empty` slot on `ConversationList` and `MessageView`, composed from `InboxEmpty`, `InboxEmptyIllustration`, `InboxEmptyTitle`, `InboxEmptyDescription`, `ConversationListEmpty`, `ConversationListClearSearch` and `useConversationListEmpty()`.
+  - better-zap@25.0.5
+
 ## 25.0.4
 
 ### Patch Changes

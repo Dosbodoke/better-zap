@@ -1,5 +1,7 @@
 # @better-zap/fixtures
 
+## 25.0.5
+
 ## 25.0.4
 
 ### Patch Changes

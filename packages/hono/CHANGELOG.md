@@ -1,5 +1,11 @@
 # @better-zap/hono
 
+## 25.0.5
+
+### Patch Changes
+
+- better-zap@25.0.5
+
 ## 25.0.4
 
 ### Patch Changes
