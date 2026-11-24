@@ -1,5 +1,11 @@
 # @better-zap/fixtures
 
+## 25.0.5
+
+### Patch Changes
+
+- 99cd686: Remove code comments, including JSDoc on public types. Editors no longer show option docs on hover; the documentation site is the reference. No runtime or type changes.
+
 ## 25.0.4
 
 ### Patch Changes

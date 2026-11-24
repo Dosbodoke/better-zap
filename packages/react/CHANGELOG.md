@@ -1,5 +1,16 @@
 # @better-zap/react
 
+## 25.0.5
+
+### Patch Changes
+
+- b8f50e0: Use centered chat bubbles for inbox empty states, with distinct first-use, no-results and all-read content and a clear-search action. Customize them through the new `empty` slot on `ConversationList` and `MessageView`, composed from `InboxEmpty`, `InboxEmptyIllustration`, `InboxEmptyTitle`, `InboxEmptyDescription`, `ConversationListEmpty`, `ConversationListClearSearch` and `useConversationListEmpty()`.
+- 99cd686: Remove code comments, including JSDoc on public types. Editors no longer show option docs on hover; the documentation site is the reference. No runtime or type changes.
+- Updated dependencies [2e6e274]
+- Updated dependencies [99cd686]
+- Updated dependencies [a121278]
+  - better-zap@25.0.5
+
 ## 25.0.4
 
 ### Patch Changes
