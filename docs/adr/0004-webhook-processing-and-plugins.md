@@ -75,6 +75,9 @@ Plugins:
   event field always wins over a plugin key with the same name. Hook
   contexts are typed the same way, so a hook typed with the event's fields
   is always right, whatever the plugins return.
+  When a plugin's context has a string index, the merged context keeps its
+  declared keys but types the index as `unknown`, since a computed key may
+  name an event field.
 - `definePlugin()` infers the plugin's context for its own hooks and its
   database from the `init` parameter. When it declares context, `init` is
   required and must always return it. Its hooks do not take part in inference

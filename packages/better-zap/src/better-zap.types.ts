@@ -95,8 +95,16 @@ export type BetterZapWebhookEventContext<
   TName extends BetterZapWebhookEventName,
 > = Parameters<NonNullable<BetterZapWebhookEvents[TName]>>[0];
 
+type KnownKeys<TValue> = {
+  [TKey in keyof TValue as string extends TKey
+    ? never
+    : number extends TKey
+      ? never
+      : TKey]: TValue[TKey];
+};
+
 type MergeEventContext<TEvent, TContext> = string extends keyof TContext
-  ? TEvent & TContext
+  ? TEvent & Omit<KnownKeys<TContext>, keyof TEvent> & Record<string, unknown>
   : [Extract<keyof TContext, keyof TEvent>] extends [never]
     ? TEvent & TContext
     : TEvent & Omit<TContext, keyof TEvent>;

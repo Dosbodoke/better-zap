@@ -651,3 +651,31 @@ betterZap({
   plugins: [legacyCrmPlugin],
   webhook: noopWebhook,
 });
+
+declare const computedKey: string;
+
+const indexedPlugin = definePlugin({
+  id: "indexed",
+  init: () => ({ context: { phone: 1 } as Record<string, number> }),
+  hooks: {
+    onMessage: async (ctx) => {
+      // @ts-expect-error a computed key may hit an event field, so it is unknown
+      ctx[computedKey]!.toFixed();
+      ctx.phone.toUpperCase();
+    },
+  },
+});
+
+betterZap({
+  database,
+  config,
+  plugins: [indexedPlugin],
+  webhook: {
+    onMessage: async (ctx) => {
+      // @ts-expect-error a computed key may hit an event field, so it is unknown
+      ctx[computedKey]!.toFixed();
+      ctx.phone.toUpperCase();
+    },
+    onStatusUpdate: async () => {},
+  },
+});
