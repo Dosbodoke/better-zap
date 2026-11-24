@@ -293,14 +293,15 @@ export class TemplateService {
     if (!isNonEmptyString(options.fileName)) return invalidInput("fileName is required");
 
     const { file } = options;
-    let fileLength: number;
-    if (file instanceof Blob) {
-      fileLength = file.size;
-    } else if (file instanceof ArrayBuffer || file instanceof Uint8Array) {
-      fileLength = file.byteLength;
+    let body: Blob | ArrayBuffer | Uint8Array<ArrayBuffer>;
+    if (file instanceof Blob || file instanceof ArrayBuffer) {
+      body = file;
+    } else if (file instanceof Uint8Array) {
+      body = isArrayBufferBacked(file) ? file : new Uint8Array(file);
     } else {
       return invalidInput("file must be a Blob, ArrayBuffer or Uint8Array");
     }
+    const fileLength = body instanceof Blob ? body.size : body.byteLength;
     if (fileLength === 0) return invalidInput("file is empty");
 
     const token = await this.resolveToken(options, options.wabaId ?? this.wabaId);
@@ -331,7 +332,7 @@ export class TemplateService {
       method: "POST",
       authScheme: "OAuth",
       headers: { file_offset: "0" },
-      rawBody: file as BodyInit,
+      rawBody: body,
     });
     if (!upload.success) return upload;
 
@@ -407,6 +408,10 @@ export class TemplateService {
 
 function isNumericId(value: unknown): value is string {
   return typeof value === "string" && NUMERIC_ID.test(value);
+}
+
+function isArrayBufferBacked(view: Uint8Array): view is Uint8Array<ArrayBuffer> {
+  return view.buffer instanceof ArrayBuffer;
 }
 
 function isNonEmptyString(value: unknown): value is string {

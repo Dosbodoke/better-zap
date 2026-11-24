@@ -593,6 +593,24 @@ describe("TemplateService.uploadHeaderMedia", () => {
     expect(fetchMock.mock.calls[1]![1]!.body).toBe(file);
   });
 
+  it("uploads a copy of a Uint8Array backed by a SharedArrayBuffer", async () => {
+    const { fetchMock, service } = setupUpload([
+      jsonResponse({ id: "upload:abc" }),
+      jsonResponse({ h: "4::handle" }),
+    ]);
+    const file = new Uint8Array(new SharedArrayBuffer(4)).subarray(1, 3);
+    file.set([7, 8]);
+
+    const result = await service.uploadHeaderMedia({ ...png, file });
+
+    expect(result.success).toBe(true);
+    expect(new URL(fetchMock.mock.calls[0]![0]).searchParams.get("file_length")).toBe("2");
+    const body = fetchMock.mock.calls[1]![1]!.body;
+    expect(body).toBeInstanceOf(Uint8Array);
+    expect((body as Uint8Array).buffer).toBeInstanceOf(ArrayBuffer);
+    expect(Array.from(body as Uint8Array)).toEqual([7, 8]);
+  });
+
   it("fails with a configuration error when no appId is set", async () => {
     const fetchMock = vi.fn(async () => jsonResponse({}));
     const service = new TemplateService({ accessToken: "token_1", fetch: fetchMock });
