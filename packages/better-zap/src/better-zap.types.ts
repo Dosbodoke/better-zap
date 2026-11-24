@@ -154,7 +154,7 @@ export interface AnyBetterZapPlugin<
     ctx: BetterZapPluginInitContext<TDatabase>,
   ) => { context?: object; services?: object } | void;
   hooks?: {
-    [TName in BetterZapWebhookEventName]?: (ctx: never) => Promise<void>;
+    [TName in BetterZapWebhookEventName]?: Function;
   };
 }
 

@@ -55,18 +55,38 @@ Plugins:
   the context and services from the type `init` returns, not from
   `BetterZapPlugin`'s type arguments, and leaves out the core keys.
 - The `plugins` option takes two checks. Its constraint, `AnyBetterZapPlugin`,
-  accepts any plugin-shaped object: its hooks take `never`. Then
+  accepts any plugin-shaped object: its hooks may be any `Function`. Then
   `ValidateBetterZapPlugins` checks each plugin's hooks against the context
   they will receive: the app's database plus every plugin's context. So a
   missing dependency or a database the app lacks is a type error where the
   plugin is passed.
 - When the plugin types can't be inferred (explicit type arguments on
-  `betterZap()` or a list typed with erased plugins), or on TypeScript's
-  first pass over a list with an inline plugin whose hooks take an untyped
-  `ctx` (context is still inferred on the second pass), the default and the
-  check fall back to `BetterZapPluginFor<TDatabase>`. Its hooks may only need
-  the app's database and the core context. The database is always checked,
-  and plugins whose hooks read plugin context are rejected there.
+  `betterZap()` or a list typed with erased plugins), the check falls back to
+  `BetterZapPluginFor<TDatabase>`. Its hooks may only need the app's database
+  and the core context. The database is always checked, and plugins whose
+  hooks read plugin context are rejected there.
+- When an argument holds a function with an untyped parameter, such as an
+  inline plugin's `onMessage: async (ctx) => ...`, TypeScript first checks the
+  call with that function skipped and `TPlugins` at its default. If that
+  check fails, it never reaches the pass that infers the list. So the default,
+  `(BetterZapPluginFor<TDatabase> | AnyBetterZapPlugin<TDatabase>)[]`,
+  accepts any plugin. `AnyBetterZapPlugin`'s hooks are `Function`, which has
+  no call signature, so an untyped `ctx` still takes its type from the
+  `BetterZapPluginFor` member. A plugin whose hooks read plugin context passes
+  that first check, and the second pass infers and validates the whole list.
+- Explicit type arguments also leave `TPlugins` at its default, so that
+  default alone can't tell them from the first pass. A fourth type parameter
+  is inferred from `database` and stays `unknown` when type arguments are
+  passed. Only then is the default checked against `BetterZapPluginFor`. A
+  call without type arguments skips the check only while `TPlugins` is
+  exactly the default, so a list typed `AnyBetterZapPlugin[]` is still
+  rejected.
+  Overloads split by the number of type arguments were rejected: a call
+  without type arguments tries every overload, so each mistake would be
+  reported as "No overload matches this call", and the error could point at
+  the call instead of the plugin. An inline `database` object holding
+  functions with untyped parameters is skipped on the first pass too, so that
+  parameter stays `unknown` and the call falls back to the strict check.
 - `betterZap()` takes `plugins` as a `const` type parameter, so a list is a
   tuple. In an array, TypeScript reduces subtypes, and `{ id }` would absorb
   a sibling that adds services. `definePlugin()` keeps a literal `id` when it

@@ -680,17 +680,102 @@ betterZap({
   },
 });
 
+const withInline = betterZap({
+  database: ticketDatabase,
+  config,
+  plugins: [
+    legacyCrmPlugin,
+    {
+      id: "inline-untyped",
+      init: () => ({ services: { inlineCount: 1 } }),
+      hooks: {
+        onMessage: async (ctx) => {
+          await ctx.db.tickets.open(ctx.phone);
+        },
+      },
+    },
+  ],
+  webhook: {
+    onMessage: async () => {},
+    onStatusUpdate: async () => {},
+    onTemplateStatusUpdate: async (ctx) => {
+      ctx.contact.name;
+    },
+  },
+});
+
+withInline.services.inlineCount.toFixed();
+
 betterZap({
   database,
   config,
   plugins: [
-    // @ts-expect-error an inline plugin with an untyped ctx makes the list fall back to BetterZapPluginFor
+    auditPlugin,
+    auditReader,
+    {
+      id: "inline-untyped",
+      hooks: {
+        onMessage: async (ctx) => {
+          ctx.db.whatsappLog;
+        },
+      },
+    },
+  ],
+  webhook: {
+    onMessage: async (ctx) => {
+      ctx.audit.record(ctx.phone);
+    },
+    onStatusUpdate: async () => {},
+  },
+});
+
+betterZap({
+  database,
+  config,
+  plugins: [
+    // @ts-expect-error an inline plugin does not hide another plugin's missing dependency
+    auditReader,
+    {
+      id: "inline-untyped",
+      hooks: {
+        onMessage: async (ctx) => {
+          ctx.db.whatsappLog;
+        },
+      },
+    },
+  ],
+  webhook: noopWebhook,
+});
+
+betterZap({
+  database,
+  config,
+  plugins: [
     legacyCrmPlugin,
     {
       id: "inline-untyped",
       hooks: {
         onMessage: async (ctx) => {
-          ctx.phone;
+          // @ts-expect-error the inline hook's ctx is typed with the app's database
+          await ctx.db.tickets.open(ctx.phone);
+        },
+      },
+    },
+  ],
+  webhook: noopWebhook,
+});
+
+betterZap<BetterZapDatabase>({
+  database,
+  config,
+  plugins: [
+    // @ts-expect-error with explicit type arguments, an inline plugin does not relax the check of its siblings
+    legacyCrmPlugin,
+    {
+      id: "inline-untyped",
+      hooks: {
+        onMessage: async (ctx) => {
+          ctx.db.whatsappLog;
         },
       },
     },
