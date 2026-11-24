@@ -92,6 +92,7 @@ export type {
   BetterZapCoreConfig,
   BetterZapDatabase,
   BetterZapPlugin,
+  BetterZapPluginFor,
   BetterZapServices,
   InferBetterZapPluginContext,
   InferBetterZapPluginServices,

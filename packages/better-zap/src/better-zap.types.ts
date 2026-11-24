@@ -127,13 +127,19 @@ export interface AnyBetterZapPlugin<
     ctx: BetterZapPluginInitContext<TDatabase>,
   ) => { context?: object; services?: object } | void;
   hooks?: {
-    [TName in BetterZapWebhookEventName]?: {
-      bivariantHook(
-        ctx: BetterZapWebhookEventContext<TName> &
-          BetterZapCoreContext &
-          Record<string, unknown>,
-      ): Promise<void>;
-    }["bivariantHook"];
+    [TName in BetterZapWebhookEventName]?: (ctx: never) => Promise<void>;
+  };
+}
+
+export interface BetterZapPluginFor<
+  TDatabase extends BetterZapDatabase = BetterZapDatabase,
+> extends AnyBetterZapPlugin<TDatabase> {
+  hooks?: {
+    [TName in BetterZapWebhookEventName]?: (
+      ctx: BetterZapWebhookEventContext<TName> &
+        BetterZapCoreContext<TDatabase> &
+        Record<string, unknown>,
+    ) => Promise<void>;
   };
 }
 
@@ -195,8 +201,8 @@ type PluginHookCheck<
 export type ValidateBetterZapPlugins<
   TPlugins extends readonly unknown[],
   TDatabase extends BetterZapDatabase,
-> = readonly AnyBetterZapPlugin<TDatabase>[] extends TPlugins
-  ? unknown
+> = readonly BetterZapPluginFor<TDatabase>[] extends TPlugins
+  ? readonly BetterZapPluginFor<TDatabase>[]
   : {
       [TIndex in keyof TPlugins]: TPlugins[TIndex] &
         PluginHookCheck<

@@ -10,6 +10,7 @@ import type {
   BetterZapCoreContext,
   BetterZapCoreServices,
   BetterZapDatabase,
+  BetterZapPluginFor,
   InferBetterZapPluginServices,
   OutgoingLoggingMetadata,
   TemplateComponent,
@@ -79,7 +80,7 @@ function serializeRuntimeTemplate(
 export function betterZap<
   TDatabase extends BetterZapDatabase = BetterZapDatabase,
   TPlugins extends readonly AnyBetterZapPlugin<TDatabase>[] =
-    readonly AnyBetterZapPlugin<TDatabase>[],
+    readonly BetterZapPluginFor<TDatabase>[],
   TTemplates extends TemplateRegistry = {},
 >(
   options: BetterZapConfig<TDatabase, TPlugins, TTemplates>,

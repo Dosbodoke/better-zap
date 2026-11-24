@@ -6,6 +6,14 @@ import type {
   BetterZapWebhookHooks,
 } from "./better-zap.types";
 
+type DefinedPlugin<
+  TDatabase extends BetterZapDatabase,
+  TContext extends object,
+  TServices extends object,
+> = Omit<BetterZapPlugin<TDatabase, TContext, TServices>, "hooks"> & {
+  hooks?: BetterZapPlugin<TDatabase>["hooks"];
+};
+
 export function definePlugin<
   TContext extends object = {},
   TServices extends object = {},
@@ -21,6 +29,6 @@ export function definePlugin<
       Record<string, unknown> & NoInfer<TContext>
     >
   >;
-}): BetterZapPlugin<TDatabase, TContext, TServices> {
-  return plugin;
+}): DefinedPlugin<TDatabase, TContext, TServices> {
+  return plugin as DefinedPlugin<TDatabase, TContext, TServices>;
 }

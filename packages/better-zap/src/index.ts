@@ -331,6 +331,7 @@ export type {
   BetterZapDatabase,
   BetterZapPlugin,
   BetterZapPluginInitContext,
+  BetterZapPluginFor,
   BetterZapPluginInitResult,
   BetterZapServices,
   BetterZapTemplatesApi,

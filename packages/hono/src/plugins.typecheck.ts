@@ -1,5 +1,6 @@
 import { definePlugin } from "better-zap";
 import type {
+  AnyBetterZapPlugin,
   BetterZapDatabase,
   BetterZapPlugin,
   BetterZapPluginInitContext,
@@ -338,3 +339,87 @@ betterZap({
 type SinglePluginContext<TPlugin> = InferBetterZapPluginContext<TPlugin>;
 const singlePluginContext: SinglePluginContext<typeof auditPlugin> = {};
 void singlePluginContext;
+
+betterZap<BetterZapDatabase>({
+  database,
+  config,
+  // @ts-expect-error explicit type arguments still check the hooks' database
+  plugins: [ticketHooksOnly],
+  webhook: noopWebhook,
+});
+
+betterZap<TicketDatabase>({
+  database: ticketDatabase,
+  config,
+  // @ts-expect-error with explicit type arguments, hooks cannot read plugin context
+  plugins: [metricsPlugin],
+  webhook: noopWebhook,
+});
+
+const erasedPlugins: readonly AnyBetterZapPlugin[] = [ticketHooksOnly];
+
+betterZap({
+  database,
+  config,
+  // @ts-expect-error a list typed AnyBetterZapPlugin[] has lost its hook types
+  plugins: erasedPlugins,
+  webhook: noopWebhook,
+});
+
+const partialAuditReader = {
+  id: "partial-audit-reader",
+  hooks: {
+    onMessage: async (ctx: MessageContext & { audit: Audit }) => {
+      ctx.audit.record(ctx.phone);
+    },
+  },
+};
+
+betterZap({
+  database,
+  config,
+  plugins: [auditPlugin, partialAuditReader],
+  webhook: noopWebhook,
+});
+
+betterZap({
+  database,
+  config,
+  // @ts-expect-error no plugin provides the audit context the hook reads
+  plugins: [partialAuditReader],
+  webhook: noopWebhook,
+});
+
+const legacyPlugins: BetterZapPlugin[] = [
+  {
+    id: "legacy",
+    hooks: {
+      onMessage: async (ctx) => {
+        ctx.db.whatsappLog;
+      },
+    },
+  },
+];
+
+betterZap({
+  database: ticketDatabase,
+  config,
+  plugins: legacyPlugins,
+  webhook: noopWebhook,
+});
+
+const counter = <TName extends string>(name: TName) =>
+  definePlugin({
+    id: name,
+    init: () => ({ services: { [name]: 0 } as Record<TName, number> }),
+  });
+
+const counted = betterZap({
+  database,
+  config,
+  plugins: [counter("visits")],
+  webhook: noopWebhook,
+});
+
+const visits: number = counted.services.visits;
+void visits;

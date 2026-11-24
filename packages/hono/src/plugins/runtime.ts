@@ -95,6 +95,9 @@ export function initializePlugins<
       services?: Record<string, unknown>;
     };
 
+    assertPlainObject(plugin.id, "context", context);
+    assertPlainObject(plugin.id, "services", services);
+
     if (context) {
       for (const key of Object.keys(context)) {
         if (RESERVED_CONTEXT_KEYS.has(key)) {
@@ -155,6 +158,25 @@ function assertUniquePluginIds(
       );
     }
     seen.add(plugin.id);
+  }
+}
+
+function assertPlainObject(
+  pluginId: string,
+  name: "context" | "services",
+  value: unknown,
+): void {
+  if (value === undefined) {
+    return;
+  }
+  const prototype =
+    typeof value === "object" && value !== null
+      ? Object.getPrototypeOf(value)
+      : undefined;
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new Error(
+      `[betterZap] Plugin "${pluginId}": init() must return ${name} as a plain object, not a class instance or other value.`,
+    );
   }
 }
 

@@ -676,6 +676,30 @@ describe("betterZap plugins", () => {
     ).toThrow('[betterZap] Plugin "async-plugin": init() must be synchronous');
   });
 
+  it("throws when init returns a class instance as context or services", () => {
+    class Audit {
+      record() {}
+    }
+
+    for (const name of ["context", "services"] as const) {
+      expect(() =>
+        betterZap({
+          database: makeDatabase(),
+          config: pluginTestConfig,
+          plugins: [
+            {
+              id: "class-plugin",
+              init: () => ({ [name]: new Audit() }),
+            },
+          ],
+          webhook: noopWebhook,
+        }),
+      ).toThrow(
+        `[betterZap] Plugin "class-plugin": init() must return ${name} as a plain object`,
+      );
+    }
+  });
+
   it("names the plugin when init throws", () => {
     const original = new Error("boom");
     let thrown: unknown;

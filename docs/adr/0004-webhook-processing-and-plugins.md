@@ -54,17 +54,25 @@ Plugins:
 - A plugin's types come from its shape, as in better-auth: `betterZap()` reads
   the context and services from the type `init` returns, not from
   `BetterZapPlugin`'s type arguments, and leaves out the core keys.
-- The `plugins` option takes two checks. `AnyBetterZapPlugin` accepts any hook
-  whose context includes the event and core context. It is bivariant, so a
-  plugin typed against its own context still fits. `ValidateBetterZapPlugins`
-  then checks each plugin's hooks against the context they will receive: the
-  app's database plus every plugin's context. So a missing dependency or a
-  database the app lacks is a type error where the plugin is passed.
-  Validation is skipped when `betterZap()`'s type arguments are given
-  explicitly, because then nothing is inferred to check against.
+- The `plugins` option takes two checks. Its constraint, `AnyBetterZapPlugin`,
+  accepts any plugin-shaped object: its hooks take `never`. Then
+  `ValidateBetterZapPlugins` checks each plugin's hooks against the context
+  they will receive: the app's database plus every plugin's context. So a
+  missing dependency or a database the app lacks is a type error where the
+  plugin is passed.
+- When the plugin types can't be inferred (explicit type arguments on
+  `betterZap()`, or a list typed with erased plugins), the default and the
+  check fall back to `BetterZapPluginFor<TDatabase>`. Its hooks may only need
+  the app's database and the core context. The database is always checked,
+  and plugins whose hooks read plugin context are rejected there.
 - `definePlugin()` infers the plugin's context for its own hooks and its
   database from the `init` parameter. Its hooks do not take part in inference
   (`NoInfer`), so a hook cannot declare context that `init` does not return.
+  It returns hooks typed with the core context only, because the runtime
+  always passes them the plugin's own context. That keeps them valid under
+  `BetterZapPluginFor`.
+- The runtime copies the own properties of `context` and `services`, so
+  `init` must return plain objects; it throws for anything else.
 - The types treat whatever `init` can return as provided. An `init` that
   sometimes returns nothing, or a union of plugins, still types every key as
   present. Making those keys optional would make every annotated plugin's
