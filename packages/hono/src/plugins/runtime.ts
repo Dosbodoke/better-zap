@@ -1,11 +1,11 @@
 import { serializeError, WEBHOOK_EVENT_NAMES } from "better-zap";
 import type {
+  AnyBetterZapPlugin,
   BetterZapContext,
   BetterZapCoreConfig,
   BetterZapCoreContext,
   BetterZapCoreServices,
   BetterZapDatabase,
-  BetterZapPlugin,
   BetterZapServices,
   BetterZapWebhookEventName,
   BetterZapWebhookEvents,
@@ -16,7 +16,7 @@ import type {
 
 interface InitializePluginsOptions<
   TDatabase extends BetterZapDatabase,
-  TPlugins extends readonly BetterZapPlugin<TDatabase, any, any>[],
+  TPlugins extends readonly AnyBetterZapPlugin<TDatabase>[],
 > {
   plugins: TPlugins;
   database: TDatabase;
@@ -38,7 +38,7 @@ const RESERVED_SERVICE_KEYS: ReadonlySet<string> = new Set([
 
 export function initializePlugins<
   TDatabase extends BetterZapDatabase,
-  TPlugins extends readonly BetterZapPlugin<TDatabase, any, any>[],
+  TPlugins extends readonly AnyBetterZapPlugin<TDatabase>[],
 >(
   options: InitializePluginsOptions<TDatabase, TPlugins>,
 ): {
@@ -95,6 +95,9 @@ export function initializePlugins<
       services?: Record<string, unknown>;
     };
 
+    assertPlainObject(plugin.id, "context", context);
+    assertPlainObject(plugin.id, "services", services);
+
     if (context) {
       for (const key of Object.keys(context)) {
         if (RESERVED_CONTEXT_KEYS.has(key)) {
@@ -145,7 +148,7 @@ export function initializePlugins<
 }
 
 function assertUniquePluginIds(
-  plugins: readonly BetterZapPlugin<any, any, any>[],
+  plugins: readonly AnyBetterZapPlugin<any>[],
 ): void {
   const seen = new Set<string>();
   for (const plugin of plugins) {
@@ -155,6 +158,25 @@ function assertUniquePluginIds(
       );
     }
     seen.add(plugin.id);
+  }
+}
+
+function assertPlainObject(
+  pluginId: string,
+  name: "context" | "services",
+  value: unknown,
+): void {
+  if (value === undefined || value === null) {
+    return;
+  }
+  const prototype =
+    typeof value === "object" && value !== null
+      ? Object.getPrototypeOf(value)
+      : undefined;
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new Error(
+      `[betterZap] Plugin "${pluginId}": init() must return ${name} as a plain object, not a class instance or other value.`,
+    );
   }
 }
 
@@ -171,7 +193,7 @@ type AnyWebhookHooks = Partial<
 >;
 
 export function composeWebhookHooks<TDatabase extends BetterZapDatabase>(options: {
-  plugins: readonly BetterZapPlugin<TDatabase, any, any>[];
+  plugins: readonly AnyBetterZapPlugin<TDatabase>[];
   userHooks: AnyWebhookHooks;
   context: BetterZapContext<TDatabase, Record<string, unknown>>;
   log: Logger;
@@ -183,7 +205,7 @@ export function composeWebhookHooks<TDatabase extends BetterZapDatabase>(options
 
   for (const name of WEBHOOK_EVENT_NAMES) {
     hooks[name] = async (eventContext) => {
-      const ctx = { ...eventContext, ...options.context };
+      const ctx = { ...options.context, ...eventContext };
 
       for (const plugin of options.plugins) {
         const hook = (plugin.hooks as AnyWebhookHooks | undefined)?.[name];

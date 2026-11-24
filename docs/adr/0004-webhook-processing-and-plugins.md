@@ -51,6 +51,50 @@ Plugins:
   A plugin hook that throws is logged with fields identifying the event.
 - The list of hookable events (`WEBHOOK_EVENT_NAMES`) is checked at compile time
   against `WebhookProcessorHooks`, so a new hook cannot be forgotten.
+- A plugin's types come from its shape, as in better-auth: `betterZap()` reads
+  the context and services from the type `init` returns, not from
+  `BetterZapPlugin`'s type arguments, and leaves out the core keys.
+- The `plugins` option takes two checks. Its constraint, `AnyBetterZapPlugin`,
+  accepts any plugin-shaped object: its hooks take `never`. Then
+  `ValidateBetterZapPlugins` checks each plugin's hooks against the context
+  they will receive: the app's database plus every plugin's context. So a
+  missing dependency or a database the app lacks is a type error where the
+  plugin is passed.
+- When the plugin types can't be inferred (explicit type arguments on
+  `betterZap()` or a list typed with erased plugins), or on TypeScript's
+  first pass over a list with an inline plugin whose hooks take an untyped
+  `ctx` (context is still inferred on the second pass), the default and the
+  check fall back to `BetterZapPluginFor<TDatabase>`. Its hooks may only need
+  the app's database and the core context. The database is always checked,
+  and plugins whose hooks read plugin context are rejected there.
+- `betterZap()` takes `plugins` as a `const` type parameter, so a list is a
+  tuple. In an array, TypeScript reduces subtypes, and `{ id }` would absorb
+  a sibling that adds services. `definePlugin()` keeps a literal `id` when it
+  infers one, so its plugins are rarely subtypes of each other. A list kept
+  in a variable or spread is still an array, where a plugin with
+  `id: string` can absorb another, so the docs ask for `as const` there.
+- The runtime spreads the event context over the plugin context, so an
+  event field wins over a plugin key with the same name whenever the event
+  sets it. Hook contexts are typed the same way. Optional event fields that
+  the event leaves out (template `category`, history `progress`, ...) let a
+  plugin key through, and the types don't show it; typing those keys as a
+  union would reject the plugins that provide them.
+  When a plugin's context has a string index, the merged context keeps its
+  declared keys but types the index as `unknown`, since a computed key may
+  name an event field.
+- `definePlugin()` infers the plugin's context for its own hooks and its
+  database from the `init` parameter. When it declares context, `init` is
+  required and must always return it. Its hooks do not take part in inference
+  (`NoInfer`), so a hook cannot declare context that `init` does not return.
+  It returns hooks typed with the core context only, because the runtime
+  always passes them the plugin's own context. That keeps them valid under
+  `BetterZapPluginFor`.
+- The runtime copies the own properties of `context` and `services`, so
+  `init` must return plain objects; it throws for anything else.
+- The types treat whatever `init` can return as provided. An `init` that
+  sometimes returns nothing, or a union of plugins, still types every key as
+  present. Making those keys optional would make every annotated plugin's
+  context optional, since `BetterZapPlugin`'s `init` returns `... | void`.
 
 ## Consequences
 

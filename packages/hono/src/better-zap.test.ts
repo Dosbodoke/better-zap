@@ -308,6 +308,40 @@ describe("betterZap plugins", () => {
     ]);
   });
 
+  it("keeps event fields when a plugin context key has the same name", async () => {
+    const phones: unknown[] = [];
+
+    const zap = betterZap({
+      database: makeDatabase(),
+      config: pluginTestConfig,
+      plugins: [
+        {
+          id: "phone-plugin",
+          init: () => ({ context: { phone: 123, extra: "kept" } }),
+          hooks: {
+            onMessage: async (ctx) => {
+              phones.push(ctx.phone, ctx.extra);
+            },
+          },
+        },
+      ],
+      webhook: {
+        onMessage: async (ctx) => {
+          phones.push(ctx.phone);
+        },
+        onStatusUpdate: async () => {},
+      },
+    });
+
+    const response = await postWebhook(zap, makeTextMessage());
+
+    expect(response.status).toBe(200);
+    expect(phones).toHaveLength(3);
+    expect(typeof phones[0]).toBe("string");
+    expect(phones[1]).toBe("kept");
+    expect(phones[2]).toBe(phones[0]);
+  });
+
   it("uses webhook.resolveMessageContent for stored content and ctx.content", async () => {
     const store = makeStore();
     const onMessage = vi.fn().mockResolvedValue(undefined);
@@ -674,6 +708,46 @@ describe("betterZap plugins", () => {
         webhook: noopWebhook,
       }),
     ).toThrow('[betterZap] Plugin "async-plugin": init() must be synchronous');
+  });
+
+  it("throws when init returns a class instance as context or services", () => {
+    class Audit {
+      record() {}
+    }
+
+    for (const name of ["context", "services"] as const) {
+      expect(() =>
+        betterZap({
+          database: makeDatabase(),
+          config: pluginTestConfig,
+          plugins: [
+            {
+              id: "class-plugin",
+              init: () => ({ [name]: new Audit() }),
+            },
+          ],
+          webhook: noopWebhook,
+        }),
+      ).toThrow(
+        `[betterZap] Plugin "class-plugin": init() must return ${name} as a plain object`,
+      );
+    }
+  });
+
+  it("ignores a null context or services", () => {
+    expect(() =>
+      betterZap({
+        database: makeDatabase(),
+        config: pluginTestConfig,
+        plugins: [
+          {
+            id: "null-plugin",
+            init: () => ({ context: null, services: null }) as never,
+          },
+        ],
+        webhook: noopWebhook,
+      }),
+    ).not.toThrow();
   });
 
   it("names the plugin when init throws", () => {

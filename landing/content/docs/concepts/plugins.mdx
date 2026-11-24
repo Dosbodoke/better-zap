@@ -7,16 +7,12 @@ Plugins let you extend Better Zap's functionality by injecting context, services
 
 ## Creating a Plugin
 
-A plugin is an object with an `id`, an optional `init` function, and optional hooks. A plugin can hook any webhook event, not only messages and statuses (see [Plugin Lifecycle](#plugin-lifecycle)):
+A plugin is an object with an `id`, an optional `init` function, and optional hooks. Wrap it in `definePlugin()`: the context and services that `init` returns are inferred, and the plugin's own hooks see them without any type annotation. A plugin can hook any webhook event, not only messages and statuses (see [Plugin Lifecycle](#plugin-lifecycle)):
 
 ```ts
-import type { BetterZapPlugin, BetterZapDatabase } from "better-zap";
+import { definePlugin } from "better-zap";
 
-const analyticsPlugin: BetterZapPlugin<
-  BetterZapDatabase,
-  { analytics: AnalyticsService },  // Context to inject
-  { analytics: AnalyticsService }   // Services to expose
-> = {
+export const analyticsPlugin = definePlugin({
   id: "analytics",
 
   init: (ctx) => {
@@ -36,7 +32,54 @@ const analyticsPlugin: BetterZapPlugin<
       await ctx.analytics.trackStatus(ctx.status);
     },
   },
-};
+});
+```
+
+A plugin that returns context from `init` must always return it: an `init` that sometimes returns nothing is a type error in `definePlugin`, and so is passing a context type with no `init` to provide it. When `init` takes a parameter, write it before `hooks`. TypeScript reads the object in order, and the hooks only see the plugin's context once `init`'s return type is known. An `init` without parameters can go anywhere.
+
+### Plugins with options
+
+Export a function that takes options and returns the plugin, so each app configures it:
+
+```ts
+import { definePlugin } from "better-zap";
+
+export const analytics = (options: { apiKey: string }) =>
+  definePlugin({
+    id: "analytics",
+    init: () => {
+      const analytics = new AnalyticsService(options.apiKey);
+      return { context: { analytics }, services: { analytics } };
+    },
+  });
+
+// plugins: [analytics({ apiKey: env.ANALYTICS_KEY })]
+```
+
+### Without `definePlugin`
+
+A plain object checked with `satisfies` works too. Better Zap reads the plugin's context and services from what `init` returns, so nothing has to be annotated:
+
+```ts
+import type { BetterZapPlugin } from "better-zap";
+
+export const flags = (enabled: string[]) =>
+  ({
+    id: "flags",
+    init: () => ({ services: { flags: new Set(enabled) } }),
+  }) satisfies BetterZapPlugin;
+```
+
+When the plugin's own hooks read its context, pass that context type to `BetterZapPlugin` so the hooks are typed:
+
+```ts
+const auditPlugin = {
+  id: "audit",
+  init: () => ({ context: { audit: createAudit() } }),
+  hooks: {
+    onMessage: async (ctx) => ctx.audit.record(ctx.phone),
+  },
+} satisfies BetterZapPlugin<BetterZapDatabase, { audit: Audit }>;
 ```
 
 ## Using Plugins
@@ -88,6 +131,8 @@ zap.services.analytics.getReport();
 
 - Plugin ids must be unique.
 - `init` must be synchronous. If a plugin needs asynchronous setup, create the client lazily inside a service.
+- Event fields win over plugin context when the event sets them. In a hook for an event that has a `phone` or `message` field, a context key with the same name is hidden. Some fields are optional and left out when Meta sends no value, such as `category` on template events or `progress` on history events. A plugin key with that name then shows through, and the types don't show it. Avoid event field names.
+- `context` and `services` must be plain objects. Better Zap copies their own properties, so a class instance would lose its methods; `betterZap()` throws at startup if `init` returns one. Put instances inside the object instead: `{ context: { audit: new Audit() } }`.
 - A plugin cannot return the context keys `db`, `api` or `logger`, the service keys `whatsapp` or `logger`, or a key another plugin already returned. `betterZap()` throws at startup if it does, and the error names the plugin.
 - For each event, plugin hooks run in array order, before your own hook.
 - A plugin hook that throws is logged as `plugin.<event>_failed` (for example `plugin.on_coexistence_message_edit_failed`) and does not stop the other plugins or your hook.
@@ -96,22 +141,90 @@ zap.services.analytics.getReport();
 
 ## Type Inference
 
-The generic parameters on `BetterZapPlugin` enable full type inference:
+Better Zap infers each plugin's context and services from the type of what its `init` returns. The contexts of all plugins are intersected, and so are their services:
+
+```ts
+// If pluginA's init returns { context: { queue } }
+// and pluginB's init returns { context: { analytics } }
+// then ctx in onMessage has both: ctx.queue and ctx.analytics
+```
+
+A plugin without `init` adds nothing to the context or services. The reserved context keys (`db`, `api`, `logger`) and service keys (`whatsapp`, `logger`) are left out of the types, since `betterZap()` throws for them at startup.
+
+`betterZap()` also checks every plugin's hooks against the context they will receive: your `database` plus the context of every plugin in the list. A plugin whose hooks need a key that no plugin provides, or a database your app doesn't have, is rejected where you pass it to `plugins`.
+
+When `betterZap()` can't see each plugin's type, it checks the plugins against `BetterZapPluginFor<MyDatabase>`: their hooks may only need your database and the core context. That happens when you pass type arguments, as in `betterZap<MyDatabase>({ ... })`, when the list's type has lost its plugin types, such as `AnyBetterZapPlugin[]`, or when the list holds an inline plugin whose hooks take an untyped `ctx` (see [Inline plugins](#inline-plugins)). With type arguments or an erased list, plugin context and services are not inferred. With an inline plugin, they are still inferred; only the check of its siblings falls back. `definePlugin` plugins pass this check, because their hooks always receive their own context. Plugins written with `satisfies` or an annotation whose hooks read plugin context are rejected. Let TypeScript infer the types, and declare a list `as const` when you keep it in a variable.
+
+The types assume that `init` returns everything it can return. An `init` that sometimes returns nothing, or a list whose type is a union of plugins, still shows every key as present.
+
+### Plugin lists
+
+Write the list inline in `plugins: [...]`, or declare it `as const` when you keep it in a variable or spread it, so TypeScript keeps each plugin's own type:
+
+```ts
+const basePlugins = [logging, analytics] as const;
+
+betterZap({ /* ... */ plugins: [...basePlugins, auditPlugin] });
+```
+
+A list annotated as `BetterZapPlugin[]` has lost each plugin's type. Spread without `as const`, TypeScript merges its plugins into one union type, which can drop another plugin's context.
+
+### Reading another plugin's context
+
+A plugin can read context that another plugin provides. Pass that context to `BetterZapPlugin` and leave it out of `init`, or annotate the hook's `ctx`:
+
+```ts
+const auditReader = {
+  id: "audit-reader",
+  hooks: {
+    onMessage: async (ctx) => ctx.audit.record(ctx.phone),
+  },
+} satisfies BetterZapPlugin<BetterZapDatabase, { audit: Audit }>;
+
+betterZap({ /* ... */ plugins: [auditPlugin, auditReader] }); // ok
+betterZap({ /* ... */ plugins: [auditReader] }); // type error: nothing provides audit
+```
+
+A hook annotated with only part of the context, such as `ctx: MessageContext & { audit: Audit }`, works the same way. A `satisfies` plugin can't yet provide its own context and also read another plugin's: `BetterZapPlugin`'s `TContext` then has to match what `init` returns. Use an annotated hook for that case (see [#121](https://github.com/Dosbodoke/better-zap/issues/121)). `definePlugin` only types hooks with what its own `init` returns, so a hook annotated with another plugin's context is an error there.
+
+### Inline plugins
+
+A plugin written inline in `plugins: [...]` is accepted, and your `webhook` hooks get its context. Its own hooks see `db`, `api` and `logger`, but not the plugin's own context. When its hooks take an untyped `ctx`, TypeScript can't infer the list in one pass, so every other plugin in the list is checked as `BetterZapPluginFor` and a `satisfies` or annotated plugin whose hooks read plugin context is rejected. Wrap the inline plugin in `definePlugin`, or type its `ctx`.
+
+### Custom database
+
+A plugin that needs more than `BetterZapDatabase` declares it on the `init` parameter. `definePlugin` infers the database from it, the plugin's hooks get that type on `ctx.db`, and `betterZap()` rejects the plugin when the app's `database` does not have it:
+
+```ts
+import { definePlugin, type BetterZapPluginInitContext } from "better-zap";
+
+type TicketDatabase = BetterZapDatabase & { tickets: TicketStore };
+
+const ticketPlugin = definePlugin({
+  id: "tickets",
+  init: ({ database }: BetterZapPluginInitContext<TicketDatabase>) => ({
+    context: { tickets: database.tickets },
+  }),
+  hooks: {
+    onMessage: async (ctx) => {
+      await ctx.db.tickets.open(ctx.phone);
+    },
+  },
+});
+```
+
+A plugin without `init` passes its database as the third type argument instead: `definePlugin<{}, {}, TicketDatabase>({ ... })`.
+
+### Explicit types
+
+`BetterZapPlugin` takes the same types explicitly. With `satisfies`, `TContext` only types the hooks, and what the plugin provides still comes from `init`. With a type annotation (`const plugin: BetterZapPlugin<...> = ...`), the annotation is all `betterZap()` sees, so `TContext` and `TServices` count as provided. Annotate only what `init` returns:
 
 ```ts
 BetterZapPlugin<
   TDatabase,   // Your database type
-  TContext,     // What this plugin adds to the hook context
+  TContext,    // What this plugin adds to the hook context
   TServices,   // What this plugin adds to the services object
 >
-```
-
-When multiple plugins are used, their contexts and services are intersected:
-
-```ts
-// If pluginA adds { queue: QueueService }
-// and pluginB adds { analytics: AnalyticsService }
-// then ctx in onMessage has both: ctx.queue and ctx.analytics
 ```
 
 ## Init Context
@@ -129,14 +242,12 @@ The `init` function receives:
 ## Example: Queue Plugin
 
 ```ts
-const queuePlugin: BetterZapPlugin<
-  MyDatabase,
-  { queuePosition: (phone: string) => Promise<number> },
-  { queue: QueueManager }
-> = {
+import { definePlugin, type BetterZapPluginInitContext } from "better-zap";
+
+const queuePlugin = definePlugin({
   id: "queue",
 
-  init: ({ database, log }) => {
+  init: ({ database, log }: BetterZapPluginInitContext<MyDatabase>) => {
     const queue = new QueueManager(database, log);
 
     return {
@@ -155,5 +266,5 @@ const queuePlugin: BetterZapPlugin<
       }
     },
   },
-};
+});
 ```

@@ -6,14 +6,16 @@ import {
   WhatsAppService,
 } from "better-zap";
 import type {
+  AnyBetterZapPlugin,
   BetterZapCoreContext,
   BetterZapCoreServices,
   BetterZapDatabase,
-  BetterZapPlugin,
+  BetterZapPluginFor,
   InferBetterZapPluginServices,
   OutgoingLoggingMetadata,
   TemplateComponent,
   TemplateRegistry,
+  ValidateBetterZapPlugins,
 } from "better-zap";
 import {
   createLogger,
@@ -76,13 +78,21 @@ function serializeRuntimeTemplate(
   });
 }
 
+type PluginsCheck<
+  TPlugins extends readonly unknown[],
+  TDatabase extends BetterZapDatabase,
+> = [TPlugins] extends [ValidateBetterZapPlugins<TPlugins, TDatabase>]
+  ? unknown
+  : { plugins?: ValidateBetterZapPlugins<TPlugins, TDatabase> };
+
 export function betterZap<
   TDatabase extends BetterZapDatabase = BetterZapDatabase,
-  TPlugins extends readonly BetterZapPlugin<TDatabase, any, any>[] =
-    readonly BetterZapPlugin<TDatabase, any, any>[],
+  const TPlugins extends readonly AnyBetterZapPlugin<TDatabase>[] =
+    readonly BetterZapPluginFor<TDatabase>[],
   TTemplates extends TemplateRegistry = {},
 >(
-  options: BetterZapConfig<TDatabase, TPlugins, TTemplates>,
+  options: BetterZapConfig<TDatabase, TPlugins, TTemplates> &
+    NoInfer<PluginsCheck<TPlugins, TDatabase>>,
 ): BetterZap<InferBetterZapPluginServices<TPlugins>, TTemplates> {
   const {
     database,

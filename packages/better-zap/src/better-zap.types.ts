@@ -57,7 +57,7 @@ export type BetterZapCoreContext<
 
 export type BetterZapContext<
   TDatabase extends BetterZapDatabase = BetterZapDatabase,
-  TPluginContext extends Record<string, unknown> = {},
+  TPluginContext extends object = {},
 > = Simplify<BetterZapCoreContext<TDatabase> & TPluginContext>;
 
 export type BetterZapCoreServices = {
@@ -66,12 +66,12 @@ export type BetterZapCoreServices = {
 };
 
 export type BetterZapServices<
-  TPluginServices extends Record<string, unknown> = {},
+  TPluginServices extends object = {},
 > = Simplify<BetterZapCoreServices & TPluginServices>;
 
 export interface BetterZapPluginInitResult<
-  TContext extends Record<string, unknown> = {},
-  TServices extends Record<string, unknown> = {},
+  TContext extends object = {},
+  TServices extends object = {},
 > {
   context?: TContext;
   services?: TServices;
@@ -95,45 +95,132 @@ export type BetterZapWebhookEventContext<
   TName extends BetterZapWebhookEventName,
 > = Parameters<NonNullable<BetterZapWebhookEvents[TName]>>[0];
 
+type KnownKeys<TValue> = {
+  [TKey in keyof TValue as string extends TKey
+    ? never
+    : number extends TKey
+      ? never
+      : TKey]: TValue[TKey];
+};
+
+type MergeEventContext<TEvent, TContext> = string extends keyof TContext
+  ? TEvent & Omit<KnownKeys<TContext>, keyof TEvent> & Record<string, unknown>
+  : [Extract<keyof TContext, keyof TEvent>] extends [never]
+    ? TEvent & TContext
+    : TEvent & Omit<TContext, keyof TEvent>;
+
 export type BetterZapWebhookHooks<
   TDatabase extends BetterZapDatabase = BetterZapDatabase,
-  TPluginContext extends Record<string, unknown> = {},
+  TPluginContext extends object = {},
 > = {
   [TName in keyof BetterZapWebhookEvents]: (
-    ctx: BetterZapWebhookEventContext<TName> &
-      BetterZapContext<TDatabase, TPluginContext>,
+    ctx: MergeEventContext<
+      BetterZapWebhookEventContext<TName>,
+      BetterZapContext<TDatabase, TPluginContext>
+    >,
+  ) => Promise<void>;
+};
+
+export type BetterZapPluginHooks<
+  TDatabase extends BetterZapDatabase = BetterZapDatabase,
+  TContext extends object = {},
+> = {
+  [TName in BetterZapWebhookEventName]?: (
+    ctx: MergeEventContext<
+      BetterZapWebhookEventContext<TName>,
+      BetterZapContext<TDatabase, TContext>
+    > &
+      Record<string, unknown>,
   ) => Promise<void>;
 };
 
 export interface BetterZapPlugin<
   TDatabase extends BetterZapDatabase = BetterZapDatabase,
-  TContext extends Record<string, unknown> = {},
-  TServices extends Record<string, unknown> = {},
+  TContext extends object = {},
+  TServices extends object = {},
 > {
   id: string;
   init?: (
     ctx: BetterZapPluginInitContext<TDatabase>,
   ) => BetterZapPluginInitResult<TContext, TServices> | void;
-  hooks?: Partial<
-    BetterZapWebhookHooks<TDatabase, Record<string, unknown> & TContext>
-  >;
+  hooks?: BetterZapPluginHooks<TDatabase, TContext>;
 }
 
+export interface AnyBetterZapPlugin<
+  TDatabase extends BetterZapDatabase = BetterZapDatabase,
+> {
+  id: string;
+  init?: (
+    ctx: BetterZapPluginInitContext<TDatabase>,
+  ) => { context?: object; services?: object } | void;
+  hooks?: {
+    [TName in BetterZapWebhookEventName]?: (ctx: never) => Promise<void>;
+  };
+}
+
+export interface BetterZapPluginFor<
+  TDatabase extends BetterZapDatabase = BetterZapDatabase,
+> extends AnyBetterZapPlugin<TDatabase> {
+  hooks?: BetterZapPluginHooks<TDatabase>;
+}
+
+type WithoutKeys<TValue, TKeys extends PropertyKey> = {
+  [TKey in keyof TValue as TKey extends TKeys ? never : TKey]: TValue[TKey];
+};
+
+type InferPluginInitResult<TPlugin> = TPlugin extends {
+  init?: (...args: never[]) => infer TResult;
+}
+  ? Exclude<TResult, void | undefined>
+  : never;
+
+type InferPluginInitKey<
+  TPlugin,
+  TKey extends "context" | "services",
+> = InferPluginInitResult<TPlugin> extends infer TResult
+  ? TResult extends { [TProperty in TKey]?: infer TValue }
+    ? NonNullable<TValue>
+    : never
+  : never;
+
 export type InferBetterZapPluginContext<TPlugins> = Simplify<
-  UnionToIntersection<
-    TPlugins extends readonly BetterZapPlugin<any, infer TContext, any>[]
-      ? TContext
-      : {}
+  WithoutKeys<
+    UnionToIntersection<
+      TPlugins extends readonly unknown[]
+        ? InferPluginInitKey<TPlugins[number], "context">
+        : never
+    >,
+    keyof BetterZapCoreContext
   >
 >;
 
 export type InferBetterZapPluginServices<TPlugins> = Simplify<
-  UnionToIntersection<
-    TPlugins extends readonly BetterZapPlugin<any, any, infer TServices>[]
-      ? TServices
-      : {}
+  WithoutKeys<
+    UnionToIntersection<
+      TPlugins extends readonly unknown[]
+        ? InferPluginInitKey<TPlugins[number], "services">
+        : never
+    >,
+    keyof BetterZapCoreServices
   >
 >;
+
+type PluginHookCheck<
+  TDatabase extends BetterZapDatabase,
+  TContext extends object,
+> = {
+  hooks?: BetterZapPluginHooks<TDatabase, TContext>;
+};
+
+export type ValidateBetterZapPlugins<
+  TPlugins extends readonly unknown[],
+  TDatabase extends BetterZapDatabase,
+> = readonly BetterZapPluginFor<TDatabase>[] extends TPlugins
+  ? readonly BetterZapPluginFor<TDatabase>[]
+  : {
+      [TIndex in keyof TPlugins]: TPlugins[TIndex] &
+        PluginHookCheck<TDatabase, InferBetterZapPluginContext<TPlugins>>;
+    };
 
 type RawTemplateSendOptions = {
   language?: string;
