@@ -61,9 +61,9 @@ Plugins:
   missing dependency or a database the app lacks is a type error where the
   plugin is passed.
 - When the plugin types can't be inferred (explicit type arguments on
-  `betterZap()`, a list typed with erased plugins, or a list with an inline
-  plugin whose hooks take an untyped `ctx`, which TypeScript only infers on
-  a second pass), the default and the
+  `betterZap()` or a list typed with erased plugins), or on TypeScript's
+  first pass over a list with an inline plugin whose hooks take an untyped
+  `ctx` (context is still inferred on the second pass), the default and the
   check fall back to `BetterZapPluginFor<TDatabase>`. Its hooks may only need
   the app's database and the core context. The database is always checked,
   and plugins whose hooks read plugin context are rejected there.

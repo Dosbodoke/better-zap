@@ -17,3 +17,4 @@ Type changes to check when upgrading:
 - With explicit type arguments, as in `betterZap<MyDatabase>({ ... })`, plugin context and services are no longer typed (context used to be `any`). Plugins must then have hooks that only need your database and the core context: `definePlugin` plugins do, while a `satisfies` or annotated plugin whose hooks read plugin context is rejected. Drop the type arguments to get full inference.
 - `InferBetterZapPluginContext` and `InferBetterZapPluginServices` return `{}` for anything that is not an array of plugins, and leave out the core keys.
 - The plugin types use `NoInfer`, so apps need TypeScript 5.4 or later.
+- A plugin context typed with a string index, such as `Record<string, any>`, keeps its declared keys, but other keys are now `unknown` in hooks, since a computed key may name an event field. Narrow them before use.
