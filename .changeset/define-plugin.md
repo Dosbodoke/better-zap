@@ -12,5 +12,6 @@
 Type changes to check when upgrading:
 
 - With no `plugins`, the hook `ctx` has only the core keys, so reading any other key is a type error.
-- With explicit type arguments, as in `betterZap<MyDatabase>({ ... })`, plugin context is no longer typed (it used to be `any`). Plugins must then have hooks that only need your database and the core context: `definePlugin` plugins do, while a `satisfies` or annotated plugin whose hooks read plugin context is rejected. Drop the type arguments to get full inference.
+- With explicit type arguments, as in `betterZap<MyDatabase>({ ... })`, plugin context and services are no longer typed (context used to be `any`). Plugins must then have hooks that only need your database and the core context: `definePlugin` plugins do, while a `satisfies` or annotated plugin whose hooks read plugin context is rejected. Drop the type arguments to get full inference.
 - `InferBetterZapPluginContext` and `InferBetterZapPluginServices` return `{}` for anything that is not an array of plugins, and leave out the core keys.
+- The plugin types use `NoInfer`, so apps need TypeScript 5.4 or later.

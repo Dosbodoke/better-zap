@@ -423,3 +423,45 @@ const counted = betterZap({
 
 const visits: number = counted.services.visits;
 void visits;
+
+betterZap({
+  database,
+  config,
+  // @ts-expect-error a plugin without hooks does not hide another plugin's missing dependency
+  plugins: [flagsPlugin({ enabled: ["beta"] }), auditReader],
+  webhook: noopWebhook,
+});
+
+betterZap({
+  database,
+  config,
+  // @ts-expect-error a plugin without hooks does not hide another plugin's database
+  plugins: [flagsPlugin({ enabled: ["beta"] }), ticketHooksOnly],
+  webhook: noopWebhook,
+});
+
+const mixedPlugins = [flagsPlugin({ enabled: ["beta"] }), auditReader];
+
+betterZap({
+  database,
+  config,
+  // @ts-expect-error the same holds for a list kept in a variable
+  plugins: mixedPlugins,
+  webhook: noopWebhook,
+});
+
+betterZap({
+  database: ticketDatabase,
+  config,
+  plugins: [
+    {
+      id: "inline-tickets",
+      hooks: {
+        onMessage: async (ctx) => {
+          await ctx.db.tickets.open(ctx.phone);
+        },
+      },
+    },
+  ],
+  webhook: noopWebhook,
+});

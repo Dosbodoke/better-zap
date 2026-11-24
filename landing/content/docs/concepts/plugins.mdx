@@ -152,7 +152,7 @@ A plugin without `init` adds nothing to the context or services. The reserved co
 
 `betterZap()` also checks every plugin's hooks against the context they will receive: your `database` plus the context of every plugin in the list. A plugin whose hooks need a key that no plugin provides, or a database your app doesn't have, is rejected where you pass it to `plugins`.
 
-When `betterZap()` can't see each plugin's type, it checks the plugins against `BetterZapPluginFor<MyDatabase>`: their hooks may only need your database and the core context. That happens when you pass type arguments, as in `betterZap<MyDatabase>({ ... })`, or when the list's type has lost its plugin types, such as `AnyBetterZapPlugin[]`. In those cases plugin context is not inferred. `definePlugin` plugins pass this check, because their hooks always receive their own context. Plugins written with `satisfies` or an annotation whose hooks read plugin context are rejected. Let TypeScript infer the types, or keep a list in a variable without a type annotation.
+When `betterZap()` can't see each plugin's type, it checks the plugins against `BetterZapPluginFor<MyDatabase>`: their hooks may only need your database and the core context. That happens when you pass type arguments, as in `betterZap<MyDatabase>({ ... })`, or when the list's type has lost its plugin types, such as `AnyBetterZapPlugin[]`. In those cases plugin context and services are not inferred. `definePlugin` plugins pass this check, because their hooks always receive their own context. Plugins written with `satisfies` or an annotation whose hooks read plugin context are rejected. Let TypeScript infer the types, or keep a list in a variable without a type annotation.
 
 The types assume that `init` returns everything it can return. An `init` that sometimes returns nothing, or a list whose type is a union of plugins, still shows every key as present.
 
@@ -172,7 +172,7 @@ betterZap({ /* ... */ plugins: [auditPlugin, auditReader] }); // ok
 betterZap({ /* ... */ plugins: [auditReader] }); // type error: nothing provides audit
 ```
 
-A hook annotated with only part of the context, such as `ctx: MessageContext & { audit: Audit }`, works the same way. `definePlugin` only types hooks with what its own `init` returns, so a hook annotated with another plugin's context is an error there.
+A hook annotated with only part of the context, such as `ctx: MessageContext & { audit: Audit }`, works the same way. A `satisfies` plugin can't yet provide its own context and also read another plugin's: `BetterZapPlugin`'s `TContext` then has to match what `init` returns. Use an annotated hook for that case (see [#121](https://github.com/Dosbodoke/better-zap/issues/121)). `definePlugin` only types hooks with what its own `init` returns, so a hook annotated with another plugin's context is an error there.
 
 ### Inline plugins
 

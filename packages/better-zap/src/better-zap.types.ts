@@ -181,22 +181,17 @@ export type InferBetterZapPluginServices<TPlugins> = Simplify<
 >;
 
 type PluginHookCheck<
-  TPlugin,
   TDatabase extends BetterZapDatabase,
   TContext extends object,
-> = TPlugin extends { hooks?: infer THooks }
-  ? {
-      hooks?: {
-        [TName in keyof THooks]: TName extends BetterZapWebhookEventName
-          ? (
-              ctx: BetterZapWebhookEventContext<TName> &
-                BetterZapContext<TDatabase, TContext> &
-                Record<string, unknown>,
-            ) => Promise<void>
-          : THooks[TName];
-      };
-    }
-  : unknown;
+> = {
+  hooks?: {
+    [TName in BetterZapWebhookEventName]?: (
+      ctx: BetterZapWebhookEventContext<TName> &
+        BetterZapContext<TDatabase, TContext> &
+        Record<string, unknown>,
+    ) => Promise<void>;
+  };
+};
 
 export type ValidateBetterZapPlugins<
   TPlugins extends readonly unknown[],
@@ -205,11 +200,7 @@ export type ValidateBetterZapPlugins<
   ? readonly BetterZapPluginFor<TDatabase>[]
   : {
       [TIndex in keyof TPlugins]: TPlugins[TIndex] &
-        PluginHookCheck<
-          TPlugins[TIndex],
-          TDatabase,
-          InferBetterZapPluginContext<TPlugins>
-        >;
+        PluginHookCheck<TDatabase, InferBetterZapPluginContext<TPlugins>>;
     };
 
 type RawTemplateSendOptions = {
