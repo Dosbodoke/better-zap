@@ -6,10 +6,10 @@ import {
   WhatsAppService,
 } from "better-zap";
 import type {
+  AnyBetterZapPlugin,
   BetterZapCoreContext,
   BetterZapCoreServices,
   BetterZapDatabase,
-  BetterZapPlugin,
   InferBetterZapPluginServices,
   OutgoingLoggingMetadata,
   TemplateComponent,
@@ -78,8 +78,7 @@ function serializeRuntimeTemplate(
 
 export function betterZap<
   TDatabase extends BetterZapDatabase = BetterZapDatabase,
-  TPlugins extends readonly BetterZapPlugin<TDatabase, any, any>[] =
-    readonly BetterZapPlugin<TDatabase, any, any>[],
+  TPlugins extends readonly AnyBetterZapPlugin<TDatabase>[] = readonly [],
   TTemplates extends TemplateRegistry = {},
 >(
   options: BetterZapConfig<TDatabase, TPlugins, TTemplates>,

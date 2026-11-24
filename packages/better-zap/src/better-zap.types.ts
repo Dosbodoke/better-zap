@@ -119,20 +119,43 @@ export interface BetterZapPlugin<
   >;
 }
 
-export type InferBetterZapPluginContext<TPlugins> = Simplify<
-  UnionToIntersection<
-    TPlugins extends readonly BetterZapPlugin<any, infer TContext, any>[]
-      ? TContext
-      : {}
-  >
+export interface AnyBetterZapPlugin<
+  TDatabase extends BetterZapDatabase = BetterZapDatabase,
+> {
+  id: string;
+  init?: (
+    ctx: BetterZapPluginInitContext<TDatabase>,
+  ) => { context?: object; services?: object } | void;
+  hooks?: {
+    [TName in BetterZapWebhookEventName]?: (ctx: never) => Promise<void>;
+  };
+}
+
+type InferPluginInitResult<TPlugin> = TPlugin extends {
+  init?: (...args: never[]) => infer TResult;
+}
+  ? Exclude<TResult, void | undefined>
+  : never;
+
+type InferPluginInitKey<
+  TPlugin,
+  TKey extends "context" | "services",
+> = InferPluginInitResult<TPlugin> extends infer TResult
+  ? TResult extends { [TProperty in TKey]?: infer TValue }
+    ? NonNullable<TValue>
+    : never
+  : never;
+
+export type InferBetterZapPluginContext<
+  TPlugins extends readonly unknown[],
+> = Simplify<
+  UnionToIntersection<InferPluginInitKey<TPlugins[number], "context">>
 >;
 
-export type InferBetterZapPluginServices<TPlugins> = Simplify<
-  UnionToIntersection<
-    TPlugins extends readonly BetterZapPlugin<any, any, infer TServices>[]
-      ? TServices
-      : {}
-  >
+export type InferBetterZapPluginServices<
+  TPlugins extends readonly unknown[],
+> = Simplify<
+  UnionToIntersection<InferPluginInitKey<TPlugins[number], "services">>
 >;
 
 type RawTemplateSendOptions = {

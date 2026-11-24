@@ -1,8 +1,8 @@
 import type {
+  AnyBetterZapPlugin,
   BetterZapApi,
   BetterZapCoreConfig,
   BetterZapDatabase,
-  BetterZapPlugin,
   BetterZapServices,
   BetterZapWebhookHooks,
   IncomingMessage,
@@ -31,8 +31,7 @@ export type BetterZapVerifySignupState = (input: {
 
 export interface BetterZapConfig<
   TDatabase extends BetterZapDatabase = BetterZapDatabase,
-  TPlugins extends readonly BetterZapPlugin<TDatabase, any, any>[] =
-    readonly [],
+  TPlugins extends readonly AnyBetterZapPlugin<TDatabase>[] = readonly [],
   TTemplates extends TemplateRegistry = {},
 > {
   database: TDatabase;
@@ -86,6 +85,7 @@ export interface BetterZap<
 }
 
 export type {
+  AnyBetterZapPlugin,
   BetterZapApi,
   BetterZapContext,
   BetterZapCoreConfig,

@@ -15,6 +15,7 @@ export { getMessageContent } from "./webhook/message-content";
 export type { BetterZapEnv } from "./handler/types";
 
 export type {
+  AnyBetterZapPlugin,
   BetterZapApi,
   BetterZapContext,
   BetterZapCoreConfig,

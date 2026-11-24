@@ -1,11 +1,11 @@
 import { serializeError, WEBHOOK_EVENT_NAMES } from "better-zap";
 import type {
+  AnyBetterZapPlugin,
   BetterZapContext,
   BetterZapCoreConfig,
   BetterZapCoreContext,
   BetterZapCoreServices,
   BetterZapDatabase,
-  BetterZapPlugin,
   BetterZapServices,
   BetterZapWebhookEventName,
   BetterZapWebhookEvents,
@@ -16,7 +16,7 @@ import type {
 
 interface InitializePluginsOptions<
   TDatabase extends BetterZapDatabase,
-  TPlugins extends readonly BetterZapPlugin<TDatabase, any, any>[],
+  TPlugins extends readonly AnyBetterZapPlugin<TDatabase>[],
 > {
   plugins: TPlugins;
   database: TDatabase;
@@ -38,7 +38,7 @@ const RESERVED_SERVICE_KEYS: ReadonlySet<string> = new Set([
 
 export function initializePlugins<
   TDatabase extends BetterZapDatabase,
-  TPlugins extends readonly BetterZapPlugin<TDatabase, any, any>[],
+  TPlugins extends readonly AnyBetterZapPlugin<TDatabase>[],
 >(
   options: InitializePluginsOptions<TDatabase, TPlugins>,
 ): {
@@ -145,7 +145,7 @@ export function initializePlugins<
 }
 
 function assertUniquePluginIds(
-  plugins: readonly BetterZapPlugin<any, any, any>[],
+  plugins: readonly AnyBetterZapPlugin<any>[],
 ): void {
   const seen = new Set<string>();
   for (const plugin of plugins) {
@@ -171,7 +171,7 @@ type AnyWebhookHooks = Partial<
 >;
 
 export function composeWebhookHooks<TDatabase extends BetterZapDatabase>(options: {
-  plugins: readonly BetterZapPlugin<TDatabase, any, any>[];
+  plugins: readonly AnyBetterZapPlugin<TDatabase>[];
   userHooks: AnyWebhookHooks;
   context: BetterZapContext<TDatabase, Record<string, unknown>>;
   log: Logger;

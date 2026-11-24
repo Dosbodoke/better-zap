@@ -51,6 +51,13 @@ Plugins:
   A plugin hook that throws is logged with fields identifying the event.
 - The list of hookable events (`WEBHOOK_EVENT_NAMES`) is checked at compile time
   against `WebhookProcessorHooks`, so a new hook cannot be forgotten.
+- A plugin's types come from its shape, as in better-auth: `betterZap()` reads
+  the context and services from the type `init` returns, not from
+  `BetterZapPlugin`'s type arguments. The `plugins` option accepts any
+  `AnyBetterZapPlugin`, whose hooks take `never`, so a plugin whose hooks are
+  typed against its own context is assignable without an annotation.
+  `definePlugin()` infers that context for the plugin's own hooks. The app's
+  database is checked against the plugin's through the `init` parameter type.
 
 ## Consequences
 
