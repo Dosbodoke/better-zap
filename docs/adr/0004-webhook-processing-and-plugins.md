@@ -71,9 +71,10 @@ Plugins:
   two of its plugins are never subtypes of each other in a list kept in a
   variable. A spread of a non-tuple list still yields an array, so the docs
   ask for `as const` there.
-- Hook contexts are typed the way the runtime merges them: plugin context is
-  spread over the event context, so a plugin key that names an event field
-  replaces its type.
+- The runtime spreads the event context over the plugin context, so an
+  event field always wins over a plugin key with the same name. Hook
+  contexts are typed the same way, so a hook typed with the event's fields
+  is always right, whatever the plugins return.
 - `definePlugin()` infers the plugin's context for its own hooks and its
   database from the `init` parameter. When it declares context, `init` is
   required and must always return it. Its hooks do not take part in inference

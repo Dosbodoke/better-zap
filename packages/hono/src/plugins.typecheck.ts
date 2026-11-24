@@ -518,23 +518,31 @@ const phoneReader = {
 betterZap({
   database,
   config,
-  // @ts-expect-error plugin context replaces the event's phone field
   plugins: [phonePlugin, phoneReader],
-  webhook: noopWebhook,
-});
-
-betterZap({
-  database,
-  config,
-  plugins: [phonePlugin],
   webhook: {
     onMessage: async (ctx) => {
-      const phone: number = ctx.phone;
-      void phone;
+      ctx.phone.toUpperCase();
       ctx.message.id;
     },
     onStatusUpdate: async () => {},
   },
+});
+
+const definedPhonePlugin = definePlugin({
+  id: "defined-phone",
+  init: () => ({ context: { phone: 1 } }),
+  hooks: {
+    onMessage: async (ctx) => {
+      ctx.phone.toUpperCase();
+    },
+  },
+});
+
+betterZap<BetterZapDatabase>({
+  database,
+  config,
+  plugins: [definedPhonePlugin, phonePlugin, phoneReader],
+  webhook: noopWebhook,
 });
 
 const loggingPlugin = definePlugin({

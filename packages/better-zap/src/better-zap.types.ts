@@ -97,9 +97,9 @@ export type BetterZapWebhookEventContext<
 
 type MergeEventContext<TEvent, TContext> = string extends keyof TContext
   ? TEvent & TContext
-  : [Extract<keyof TEvent, keyof TContext>] extends [never]
+  : [Extract<keyof TContext, keyof TEvent>] extends [never]
     ? TEvent & TContext
-    : Omit<TEvent, keyof TContext> & TContext;
+    : TEvent & Omit<TContext, keyof TEvent>;
 
 export type BetterZapWebhookHooks<
   TDatabase extends BetterZapDatabase = BetterZapDatabase,
@@ -113,6 +113,19 @@ export type BetterZapWebhookHooks<
   ) => Promise<void>;
 };
 
+export type BetterZapPluginHooks<
+  TDatabase extends BetterZapDatabase = BetterZapDatabase,
+  TContext extends object = {},
+> = {
+  [TName in BetterZapWebhookEventName]?: (
+    ctx: MergeEventContext<
+      BetterZapWebhookEventContext<TName>,
+      BetterZapContext<TDatabase, TContext>
+    > &
+      Record<string, unknown>,
+  ) => Promise<void>;
+};
+
 export interface BetterZapPlugin<
   TDatabase extends BetterZapDatabase = BetterZapDatabase,
   TContext extends object = {},
@@ -122,9 +135,7 @@ export interface BetterZapPlugin<
   init?: (
     ctx: BetterZapPluginInitContext<TDatabase>,
   ) => BetterZapPluginInitResult<TContext, TServices> | void;
-  hooks?: Partial<
-    BetterZapWebhookHooks<TDatabase, Record<string, unknown> & TContext>
-  >;
+  hooks?: BetterZapPluginHooks<TDatabase, TContext>;
 }
 
 export interface AnyBetterZapPlugin<
@@ -142,13 +153,7 @@ export interface AnyBetterZapPlugin<
 export interface BetterZapPluginFor<
   TDatabase extends BetterZapDatabase = BetterZapDatabase,
 > extends AnyBetterZapPlugin<TDatabase> {
-  hooks?: {
-    [TName in BetterZapWebhookEventName]?: (
-      ctx: BetterZapWebhookEventContext<TName> &
-        BetterZapCoreContext<TDatabase> &
-        Record<string, unknown>,
-    ) => Promise<void>;
-  };
+  hooks?: BetterZapPluginHooks<TDatabase>;
 }
 
 type InferPluginInitResult<TPlugin> = TPlugin extends {
@@ -192,15 +197,7 @@ type PluginHookCheck<
   TDatabase extends BetterZapDatabase,
   TContext extends object,
 > = {
-  hooks?: {
-    [TName in BetterZapWebhookEventName]?: (
-      ctx: MergeEventContext<
-        BetterZapWebhookEventContext<TName>,
-        BetterZapContext<TDatabase, TContext>
-      > &
-        Record<string, unknown>,
-    ) => Promise<void>;
-  };
+  hooks?: BetterZapPluginHooks<TDatabase, TContext>;
 };
 
 export type ValidateBetterZapPlugins<

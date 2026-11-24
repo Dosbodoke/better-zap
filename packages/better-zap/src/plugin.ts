@@ -1,8 +1,8 @@
 import type {
   BetterZapDatabase,
   BetterZapPlugin,
+  BetterZapPluginHooks,
   BetterZapPluginInitContext,
-  BetterZapWebhookHooks,
 } from "./better-zap.types";
 
 type DefinedPlugin<
@@ -40,12 +40,7 @@ export function definePlugin<
 >(
   plugin: {
     id: TId;
-    hooks?: Partial<
-      BetterZapWebhookHooks<
-        NoInfer<TDatabase>,
-        Record<string, unknown> & NoInfer<TContext>
-      >
-    >;
+    hooks?: BetterZapPluginHooks<NoInfer<TDatabase>, NoInfer<TContext>>;
   } & DefinedPluginInit<TDatabase, TContext, TServices>,
 ): DefinedPlugin<TId, TDatabase, TContext, TServices> {
   return plugin as DefinedPlugin<TId, TDatabase, TContext, TServices>;

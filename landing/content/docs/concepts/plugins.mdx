@@ -131,7 +131,7 @@ zap.services.analytics.getReport();
 
 - Plugin ids must be unique.
 - `init` must be synchronous. If a plugin needs asynchronous setup, create the client lazily inside a service.
-- A context key with the same name as an event field, such as `phone` or `message`, replaces that field in every hook, and the types show the plugin's value. Avoid those names.
+- Event fields win over plugin context. In a hook for an event that has a `phone` or `message` field, a context key with the same name is hidden. Avoid those names.
 - `context` and `services` must be plain objects. Better Zap copies their own properties, so a class instance would lose its methods; `betterZap()` throws at startup if `init` returns one. Put instances inside the object instead: `{ context: { audit: new Audit() } }`.
 - A plugin cannot return the context keys `db`, `api` or `logger`, the service keys `whatsapp` or `logger`, or a key another plugin already returned. `betterZap()` throws at startup if it does, and the error names the plugin.
 - For each event, plugin hooks run in array order, before your own hook.
@@ -159,7 +159,7 @@ The types assume that `init` returns everything it can return. An `init` that so
 
 ### Plugin lists
 
-Write the list inline in `plugins: [...]`, or keep it in a variable without a type annotation, so TypeScript keeps each plugin's own type. To spread a list into `plugins`, declare it `as const`:
+Write the list inline in `plugins: [...]`, or declare it `as const` when you keep it in a variable or spread it, so TypeScript keeps each plugin's own type:
 
 ```ts
 const basePlugins = [logging, analytics] as const;

@@ -23,6 +23,7 @@ export type {
   BetterZapPlugin,
   BetterZapPluginInitContext,
   BetterZapPluginFor,
+  BetterZapPluginHooks,
   BetterZapPluginInitResult,
   BetterZapServices,
   BetterZapWebhookEventContext,

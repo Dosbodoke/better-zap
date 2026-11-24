@@ -205,7 +205,7 @@ export function composeWebhookHooks<TDatabase extends BetterZapDatabase>(options
 
   for (const name of WEBHOOK_EVENT_NAMES) {
     hooks[name] = async (eventContext) => {
-      const ctx = { ...eventContext, ...options.context };
+      const ctx = { ...options.context, ...eventContext };
 
       for (const plugin of options.plugins) {
         const hook = (plugin.hooks as AnyWebhookHooks | undefined)?.[name];
