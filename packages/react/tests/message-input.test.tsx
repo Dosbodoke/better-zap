@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -201,53 +201,17 @@ describe("MessageInput (published surface)", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("closes freeform window when expiresAt is reached (fake timers)", async () => {
-    const now = new Date("2026-07-11T12:00:00.000Z");
-    vi.useFakeTimers({ now });
-
-    const expiresAtMs = now.getTime() + 100;
+  function renderExpiringInput(expiresInMs: number) {
+    const now = new Date();
+    const expiresAtMs = now.getTime() + expiresInMs;
     const lastIncoming = new Date(expiresAtMs - 24 * HOUR).toISOString();
-    const expiresAt = new Date(expiresAtMs).toISOString();
     const conversation = createConversation(
       {
         lastIncomingMessageAt: lastIncoming,
         freeformMessageWindow: {
           isOpen: true,
           lastIncomingMessageAt: lastIncoming,
-          expiresAt,
-        },
-      },
-      now,
-    );
-
-    render(<MessageInput onSend={vi.fn()} conversation={conversation} />);
-
-    expect(screen.getByRole("textbox", { name: "Mensagem" })).toBeTruthy();
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(150);
-    });
-
-    expect(
-      screen.getByText(/A janela de 24h expirou/, { exact: false }),
-    ).toBeTruthy();
-    expect(screen.queryByRole("textbox", { name: "Mensagem" })).toBeNull();
-  });
-
-  it("revalidates before send and does not call onSend when window expired", async () => {
-    const now = new Date("2026-07-11T12:00:00.000Z");
-    vi.useFakeTimers({ now });
-
-    const expiresAtMs = now.getTime() + 5000;
-    const lastIncoming = new Date(expiresAtMs - 24 * HOUR).toISOString();
-    const expiresAt = new Date(expiresAtMs).toISOString();
-    const conversation = createConversation(
-      {
-        lastIncomingMessageAt: lastIncoming,
-        freeformMessageWindow: {
-          isOpen: true,
-          lastIncomingMessageAt: lastIncoming,
-          expiresAt,
+          expiresAt: new Date(expiresAtMs).toISOString(),
         },
       },
       now,
@@ -255,7 +219,6 @@ describe("MessageInput (published surface)", () => {
 
     const onSend = vi.fn();
     const onSendError = vi.fn();
-
     render(
       <MessageInput
         onSend={onSend}
@@ -264,33 +227,46 @@ describe("MessageInput (published surface)", () => {
         labels={{ sendFailed: "" }}
       />,
     );
+    return { expiresAtMs, onSend, onSendError };
+  }
 
-    const textarea = screen.getByRole("textbox", {
-      name: "Mensagem",
-    }) as HTMLTextAreaElement;
-    fireEvent.change(textarea, { target: { value: "late" } });
-    expect(textarea.value).toBe("late");
+  it("closes freeform window when expiresAt is reached (fake timers)", async () => {
+    vi.useFakeTimers({ now: new Date("2026-07-11T12:00:00.000Z") });
+    renderExpiringInput(5000);
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(6000);
+      await vi.advanceTimersByTimeAsync(4999);
     });
+    expect(screen.getByRole("textbox", { name: "Mensagem" })).toBeTruthy();
+    expect(screen.queryByText(/A janela de 24h expirou/)).toBeNull();
 
-    if (screen.queryByRole("textbox", { name: "Mensagem" }) == null) {
-      expect(onSend).not.toHaveBeenCalled();
-      expect(
-        screen.getByText(/A janela de 24h expirou/, { exact: false }),
-      ).toBeTruthy();
-      return;
-    }
-
-    fireEvent.click(screen.getByRole("button", { name: "Enviar" }));
-    await waitFor(() => {
-      expect(onSend).not.toHaveBeenCalled();
-      expect(onSendError).toHaveBeenCalled();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
     });
-    const err = onSendError.mock.calls[0]?.[0];
-    expect(err).toBeInstanceOf(FreeformWindowClosedError);
-    expect(textarea.value).toBe("late");
+    expect(screen.queryByRole("textbox", { name: "Mensagem" })).toBeNull();
+    expect(screen.getByText(/A janela de 24h expirou/)).toBeTruthy();
+  });
+
+  it("revalidates before send and does not call onSend when the window expired", async () => {
+    vi.useFakeTimers({
+      now: new Date("2026-07-11T12:00:00.000Z"),
+      toFake: ["Date"],
+    });
+    const { expiresAtMs, onSend, onSendError } = renderExpiringInput(HOUR);
+    const user = userEvent.setup();
+
+    await user.type(screen.getByRole("textbox", { name: "Mensagem" }), "late");
+    vi.setSystemTime(expiresAtMs);
+    expect(screen.getByRole("textbox", { name: "Mensagem" })).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Enviar" }));
+
+    expect(onSend).not.toHaveBeenCalled();
+    expect(onSendError).toHaveBeenCalledTimes(1);
+    const [error, context] = onSendError.mock.calls[0]!;
+    expect(error).toBeInstanceOf(FreeformWindowClosedError);
+    expect(context).toEqual({ text: "late" });
+    expect(screen.getByText(/A janela de 24h expirou/)).toBeTruthy();
   });
 
   it("applies custom labels for textarea and sendFailed", async () => {
