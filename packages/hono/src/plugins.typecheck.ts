@@ -605,3 +605,49 @@ betterZap({
   plugins: [...basePlugins, auditPlugin, auditReader],
   webhook: noopWebhook,
 });
+
+type CrmContact = { id: string; name: string };
+
+const crmPlugin = definePlugin({
+  id: "crm",
+  init: () => ({ context: { contact: {} as CrmContact } }),
+});
+
+const statusLogPlugin = definePlugin({
+  id: "status-log",
+  hooks: {
+    onStatusUpdate: async (ctx) => {
+      ctx.status.id;
+    },
+  },
+});
+
+const legacyCrmPlugin: BetterZapPlugin<
+  BetterZapDatabase,
+  { contact: CrmContact }
+> = {
+  id: "legacy-crm",
+  init: () => ({ context: { contact: {} as CrmContact } }),
+};
+
+betterZap({
+  database,
+  config,
+  plugins: [statusLogPlugin, crmPlugin],
+  webhook: {
+    onMessage: async (ctx) => {
+      ctx.contact?.wa_id;
+    },
+    onStatusUpdate: async () => {},
+    onTemplateStatusUpdate: async (ctx) => {
+      ctx.contact.name;
+    },
+  },
+});
+
+betterZap({
+  database,
+  config,
+  plugins: [legacyCrmPlugin],
+  webhook: noopWebhook,
+});

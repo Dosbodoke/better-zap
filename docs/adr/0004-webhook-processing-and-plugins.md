@@ -67,10 +67,10 @@ Plugins:
   and plugins whose hooks read plugin context are rejected there.
 - `betterZap()` takes `plugins` as a `const` type parameter, so a list is a
   tuple. In an array, TypeScript reduces subtypes, and `{ id }` would absorb
-  a sibling that adds services. `definePlugin()` keeps the literal `id`, so
-  two of its plugins are never subtypes of each other in a list kept in a
-  variable. A spread of a non-tuple list still yields an array, so the docs
-  ask for `as const` there.
+  a sibling that adds services. `definePlugin()` keeps a literal `id` when it
+  infers one, so its plugins are rarely subtypes of each other. A list kept
+  in a variable or spread is still an array, where a plugin with
+  `id: string` can absorb another, so the docs ask for `as const` there.
 - The runtime spreads the event context over the plugin context, so an
   event field always wins over a plugin key with the same name. Hook
   contexts are typed the same way, so a hook typed with the event's fields
