@@ -7,6 +7,8 @@
 
 `betterZap()` reads each plugin's context and services from the type `init` returns, and checks every plugin's hooks against the context they will receive. A plugin whose hooks need a key no plugin provides, or a database the app doesn't have, is now a type error. Context and service types may now be interfaces. Plugins annotated with `BetterZapPlugin<...>` keep working.
 
+Hook contexts now show a plugin context key that replaces an event field (such as `phone`) with the plugin's type, as the runtime already did.
+
 `betterZap()` now throws at startup when `init` returns `context` or `services` that is not a plain object, such as a class instance, whose methods would otherwise be lost.
 
 Type changes to check when upgrading:

@@ -95,13 +95,21 @@ export type BetterZapWebhookEventContext<
   TName extends BetterZapWebhookEventName,
 > = Parameters<NonNullable<BetterZapWebhookEvents[TName]>>[0];
 
+type MergeEventContext<TEvent, TContext> = string extends keyof TContext
+  ? TEvent & TContext
+  : [Extract<keyof TEvent, keyof TContext>] extends [never]
+    ? TEvent & TContext
+    : Omit<TEvent, keyof TContext> & TContext;
+
 export type BetterZapWebhookHooks<
   TDatabase extends BetterZapDatabase = BetterZapDatabase,
   TPluginContext extends object = {},
 > = {
   [TName in keyof BetterZapWebhookEvents]: (
-    ctx: BetterZapWebhookEventContext<TName> &
-      BetterZapContext<TDatabase, TPluginContext>,
+    ctx: MergeEventContext<
+      BetterZapWebhookEventContext<TName>,
+      BetterZapContext<TDatabase, TPluginContext>
+    >,
   ) => Promise<void>;
 };
 
@@ -186,8 +194,10 @@ type PluginHookCheck<
 > = {
   hooks?: {
     [TName in BetterZapWebhookEventName]?: (
-      ctx: BetterZapWebhookEventContext<TName> &
-        BetterZapContext<TDatabase, TContext> &
+      ctx: MergeEventContext<
+        BetterZapWebhookEventContext<TName>,
+        BetterZapContext<TDatabase, TContext>
+      > &
         Record<string, unknown>,
     ) => Promise<void>;
   };

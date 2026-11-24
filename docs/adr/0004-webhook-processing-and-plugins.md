@@ -65,8 +65,15 @@ Plugins:
   check fall back to `BetterZapPluginFor<TDatabase>`. Its hooks may only need
   the app's database and the core context. The database is always checked,
   and plugins whose hooks read plugin context are rejected there.
+- `betterZap()` takes `plugins` as a `const` type parameter, so a list is a
+  tuple. In an array, TypeScript reduces subtypes, and `{ id }` would absorb
+  a sibling that adds services.
+- Hook contexts are typed the way the runtime merges them: plugin context is
+  spread over the event context, so a plugin key that names an event field
+  replaces its type.
 - `definePlugin()` infers the plugin's context for its own hooks and its
-  database from the `init` parameter. Its hooks do not take part in inference
+  database from the `init` parameter. When it declares context, `init` is
+  required and must always return it. Its hooks do not take part in inference
   (`NoInfer`), so a hook cannot declare context that `init` does not return.
   It returns hooks typed with the core context only, because the runtime
   always passes them the plugin's own context. That keeps them valid under

@@ -465,3 +465,74 @@ betterZap({
   ],
   webhook: noopWebhook,
 });
+
+const countPlugin = {
+  id: "count",
+  init: () => ({ services: { count: 1 } }),
+} satisfies BetterZapPlugin;
+
+const idOnlyPlugin = { id: "id-only" };
+
+const withIdOnly = betterZap({
+  database,
+  config,
+  plugins: [countPlugin, idOnlyPlugin],
+  webhook: noopWebhook,
+});
+
+const count: number = withIdOnly.services.count;
+void count;
+
+// @ts-expect-error a plugin that declares context needs an init that returns it
+definePlugin<{ audit: Audit }>({
+  id: "ghost",
+  hooks: {
+    onMessage: async (ctx) => {
+      ctx.audit.record(ctx.phone);
+    },
+  },
+});
+
+declare const auditEnabled: boolean;
+
+definePlugin({
+  id: "maybe-audit",
+  // @ts-expect-error init must always return the context it declares
+  init: () => (auditEnabled ? { context: { audit: {} as Audit } } : undefined),
+});
+
+const phonePlugin = {
+  id: "phone",
+  init: () => ({ context: { phone: 1 } }),
+} satisfies BetterZapPlugin;
+
+const phoneReader = {
+  id: "phone-reader",
+  hooks: {
+    onMessage: async (ctx: MessageContext) => {
+      ctx.phone.toUpperCase();
+    },
+  },
+};
+
+betterZap({
+  database,
+  config,
+  // @ts-expect-error plugin context replaces the event's phone field
+  plugins: [phonePlugin, phoneReader],
+  webhook: noopWebhook,
+});
+
+betterZap({
+  database,
+  config,
+  plugins: [phonePlugin],
+  webhook: {
+    onMessage: async (ctx) => {
+      const phone: number = ctx.phone;
+      void phone;
+      ctx.message.id;
+    },
+    onStatusUpdate: async () => {},
+  },
+});
