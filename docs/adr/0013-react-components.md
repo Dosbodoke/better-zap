@@ -21,6 +21,9 @@ Rendering cost:
   so a resolver may return a fresh object each call. `resolveLinkPreview` must
   be synchronous; pass a new function when previews change.
 - Direct props win over context.
+- The demo dashboard subscribes each pane to its own slice, and passes counts
+  as number snapshots, so a status tick or an unrelated change does not
+  re-render a pane.
 
 Layout:
 
@@ -37,6 +40,12 @@ Layout:
   hydration attaches `onError`.
 - The mobile breakpoint, 1024px, is Tailwind's `lg`. On mobile the message
   pane shows no empty state; the conversation list is shown instead.
+- Empty states have a reason (`useConversationListEmpty()`), and each reason
+  has its own default copy. An explicit `labels.empty` predates per-reason copy
+  and still replaces it. `ConversationListClearSearch` renders only when the
+  list is empty because of a search; `preventDefault()` in its `onClick` keeps
+  the query. On mobile the list is the whole screen, so the first-use empty
+  state takes the pane size.
 - `render` props follow Base UI's element polymorphism: class names are joined,
   styles merged, the render element's other props win, and part children win
   unless the render element has its own.

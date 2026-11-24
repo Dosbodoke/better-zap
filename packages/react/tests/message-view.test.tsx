@@ -4,6 +4,8 @@ import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ConversationList,
+  InboxEmpty,
+  InboxEmptyTitle,
   MessageView,
   MessageViewContent,
   MessageViewEmpty,
@@ -72,7 +74,7 @@ describe("MessageView standalone (no WhatsappDashboard)", () => {
 
   it("renders default empty state when no children", () => {
     render(<MessageView />);
-    expect(screen.getByText("Better Zap")).toBeTruthy();
+    expect(screen.getByText("Selecione uma conversa")).toBeTruthy();
   });
 
   it("header shows back when showBackButton and calls onBack", async () => {
@@ -158,7 +160,7 @@ describe("MessageView standalone (no WhatsappDashboard)", () => {
 
   it("MessageViewEmpty children replace default copy", () => {
     const { rerender } = render(<MessageViewEmpty />);
-    expect(screen.getByText("Better Zap")).toBeTruthy();
+    expect(screen.getByText("Selecione uma conversa")).toBeTruthy();
 
     rerender(
       <MessageViewEmpty>
@@ -166,7 +168,21 @@ describe("MessageView standalone (no WhatsappDashboard)", () => {
       </MessageViewEmpty>,
     );
     expect(screen.getByText("custom empty")).toBeTruthy();
-    expect(screen.queryByText("Better Zap")).toBeNull();
+    expect(screen.queryByText("Selecione uma conversa")).toBeNull();
+  });
+
+  it("empty slot replaces the default pane content", () => {
+    render(
+      <MessageView
+        empty={
+          <InboxEmpty size="lg">
+            <InboxEmptyTitle>Pick a chat</InboxEmptyTitle>
+          </InboxEmpty>
+        }
+      />,
+    );
+    expect(screen.getByRole("heading", { name: "Pick a chat" })).toBeTruthy();
+    expect(screen.queryByText("Selecione uma conversa")).toBeNull();
   });
 
   it("MessageViewContent renders children standalone", () => {
@@ -189,13 +205,23 @@ describe("MessageView + WhatsappDashboard", () => {
     vi.restoreAllMocks();
   });
 
-  it("desktop empty MessageView shows Better Zap branding", () => {
+  it("desktop empty MessageView prompts for a conversation", () => {
     render(
       <WhatsappDashboard isMobile={false}>
         <MessageView />
       </WhatsappDashboard>,
     );
-    expect(screen.getByText("Better Zap")).toBeTruthy();
+    expect(screen.getByText("Selecione uma conversa")).toBeTruthy();
+  });
+
+  it("mobile empty MessageView renders nothing, even with an empty slot", () => {
+    render(
+      <WhatsappDashboard isMobile>
+        <MessageView empty={<p>custom-empty</p>} />
+      </WhatsappDashboard>,
+    );
+    expect(screen.queryByText("custom-empty")).toBeNull();
+    expect(screen.queryByText("Selecione uma conversa")).toBeNull();
   });
 
   it("desktop MessageView with children is visible", () => {

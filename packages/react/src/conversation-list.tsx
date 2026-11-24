@@ -2,8 +2,13 @@
 
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Message01Icon, UserIcon } from "@hugeicons/core-free-icons";
+import { UserIcon } from "@hugeicons/core-free-icons";
 import { LegendList } from "@legendapp/list/react";
+import {
+  ConversationListEmpty,
+  ConversationListEmptyContext,
+  type ConversationListEmptyState,
+} from "./conversation-list-empty";
 import { cn } from "./utils";
 import type { Conversation } from "better-zap";
 import { ConversationSearch } from "./conversation-search";
@@ -12,6 +17,15 @@ import {
   type ConversationFilterValue,
 } from "./conversation-filter-chips";
 import { useOptionalWhatsappDashboard } from "./whatsapp-dashboard";
+
+export {
+  ConversationListClearSearch,
+  ConversationListEmpty,
+  useConversationListEmpty,
+  type ConversationListClearSearchProps,
+  type ConversationListEmptyProps,
+  type ConversationListEmptyState,
+} from "./conversation-list-empty";
 
 export interface ConversationListLabels {
   searchPlaceholder: string;
@@ -62,6 +76,7 @@ export interface ConversationListProps
 
   formatTime?: (isoDate: string) => string;
   labels?: Partial<ConversationListLabels>;
+  empty?: React.ReactNode;
 }
 
 const ConversationListRow = React.memo(function ConversationListRow({
@@ -114,6 +129,7 @@ export function ConversationList({
   renderAvatar,
   formatTime: formatTimeProp,
   labels: labelsProp,
+  empty,
   className,
   ...props
 }: ConversationListProps) {
@@ -188,7 +204,8 @@ export function ConversationList({
     [labels.filterAll, labels.filterUnread],
   );
 
-  const normalizedSearch = search.trim().toLowerCase();
+  const query = search.trim();
+  const normalizedSearch = query.toLowerCase();
   const effectiveFilter = filter;
 
   const unreadConversationsCount = useMemo(
@@ -209,6 +226,74 @@ export function ConversationList({
       return matchesSearch && matchesFilter;
     });
   }, [conversations, normalizedSearch, effectiveFilter]);
+
+  const clearSearch = useCallback(
+    () => handleSearchChange(""),
+    [handleSearchChange],
+  );
+
+  const emptyState = useMemo((): ConversationListEmptyState | null => {
+    if (filtered.length > 0) return null;
+    if (conversations.length === 0) return { reason: "no-conversations" };
+    if (query) return { reason: "no-results", query, filter, clearSearch };
+    return { reason: "all-read" };
+  }, [filtered.length, conversations.length, query, filter, clearSearch]);
+
+  let content: React.ReactNode;
+  if (isLoading) {
+    content = (
+      <div className="flex items-center justify-center h-full text-sm text-[#667781]">
+        {labels.loading}
+      </div>
+    );
+  } else if (isError) {
+    content = (
+      <div className="flex items-center justify-center h-full text-sm text-red-500">
+        {labels.error}
+      </div>
+    );
+  } else if (emptyState) {
+    content = (
+      <ConversationListEmptyContext.Provider value={emptyState}>
+        {empty ?? <ConversationListEmpty heading={labelsProp?.empty} />}
+      </ConversationListEmptyContext.Provider>
+    );
+  } else {
+    content = (
+      <LegendList
+        className="chat-scrollbar"
+        data={filtered}
+        estimatedItemSize={72}
+        extraData={selectedConversationId}
+        getFixedItemSize={() => 72}
+        keyExtractor={(conversation) => conversation.id}
+        recycleItems
+        renderItem={({ item: conversation }) => {
+          const isSelected = selectedConversationId === conversation.id;
+
+          if (renderItem) {
+            return renderItem(conversation, {
+              isSelected,
+              select: () => handleSelect(conversation.id),
+            });
+          }
+
+          return (
+            <ConversationListRow
+              conversation={conversation}
+              isSelected={isSelected}
+              onSelectConversation={handleSelect}
+              avatar={renderAvatar?.(conversation)}
+              outgoingPrefix={labels.outgoingPrefix}
+              noPreviewLabel={labels.noPreview}
+              formatTime={effectiveFormatTime}
+            />
+          );
+        }}
+        style={{ height: "100%", overflowX: "hidden" }}
+      />
+    );
+  }
 
   const isVisible = !isMobile || mobileView === "list";
 
@@ -235,55 +320,7 @@ export function ConversationList({
         labels={chipLabels}
       />
 
-      <div className="min-h-0 flex-1">
-        {isLoading ? (
-          <div className="flex items-center justify-center h-full text-sm text-[#667781]">
-            {labels.loading}
-          </div>
-        ) : isError ? (
-          <div className="flex items-center justify-center h-full text-sm text-red-500">
-            {labels.error}
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full gap-2 text-[#667781]">
-            <HugeiconsIcon icon={Message01Icon} size={32} />
-            <p className="text-sm">{labels.empty}</p>
-          </div>
-        ) : (
-          <LegendList
-            className="chat-scrollbar"
-            data={filtered}
-            estimatedItemSize={72}
-            extraData={selectedConversationId}
-            getFixedItemSize={() => 72}
-            keyExtractor={(conversation) => conversation.id}
-            recycleItems
-            renderItem={({ item: conversation }) => {
-              const isSelected = selectedConversationId === conversation.id;
-
-              if (renderItem) {
-                return renderItem(conversation, {
-                  isSelected,
-                  select: () => handleSelect(conversation.id),
-                });
-              }
-
-              return (
-                <ConversationListRow
-                  conversation={conversation}
-                  isSelected={isSelected}
-                  onSelectConversation={handleSelect}
-                  avatar={renderAvatar?.(conversation)}
-                  outgoingPrefix={labels.outgoingPrefix}
-                  noPreviewLabel={labels.noPreview}
-                  formatTime={effectiveFormatTime}
-                />
-              );
-            }}
-            style={{ height: "100%", overflowX: "hidden" }}
-          />
-        )}
-      </div>
+      <div className="min-h-0 flex-1">{content}</div>
     </div>
   );
 }

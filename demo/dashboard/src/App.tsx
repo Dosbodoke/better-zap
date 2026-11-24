@@ -10,10 +10,18 @@ import { firstLinkIn, type LinkPreview, type UIMessage } from "better-zap";
 import {
   WhatsappDashboard,
   ConversationList,
+  ConversationListClearSearch,
+  ConversationListEmpty,
+  InboxEmpty,
+  InboxEmptyDescription,
+  InboxEmptyIllustration,
+  InboxEmptyTitle,
   MessageView,
   MessageViewHeader,
   MessageViewContent,
   MessageList,
+  useConversationListEmpty,
+  type ConversationFilterValue,
 } from "@better-zap/react";
 import { MessageInput } from "@better-zap/react/message-input";
 import {
@@ -56,6 +64,32 @@ function useLinkPreviews(client: MockWhatsappClient, messages: UIMessage[]) {
   );
 }
 
+function UnreadSearchEmpty({ onSearchAll }: { onSearchAll: () => void }) {
+  const empty = useConversationListEmpty();
+  if (empty.reason !== "no-results" || empty.filter !== "unread") {
+    return <ConversationListEmpty />;
+  }
+  return (
+    <InboxEmpty>
+      <InboxEmptyIllustration variant="search" />
+      <InboxEmptyTitle>Nenhuma não lida com “{empty.query}”</InboxEmptyTitle>
+      <InboxEmptyDescription>
+        A conversa pode já ter sido lida. Busque em todas para encontrá-la.
+      </InboxEmptyDescription>
+      <div className="mt-2 flex flex-wrap justify-center gap-2">
+        <button
+          type="button"
+          className="inline-flex h-8 items-center rounded-full bg-[#008069] px-3 text-sm font-medium text-white hover:bg-[#017561] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#008069]"
+          onClick={onSearchAll}
+        >
+          Buscar em todas
+        </button>
+        <ConversationListClearSearch className="mt-0" />
+      </div>
+    </InboxEmpty>
+  );
+}
+
 const ConversationsPane = memo(function ConversationsPane({
   client,
   selectedId,
@@ -69,15 +103,33 @@ const ConversationsPane = memo(function ConversationsPane({
     client.subscribe,
     () => client.getState().conversations,
   );
+  const [filter, setFilter] = useState<ConversationFilterValue>("all");
 
   return (
     <ConversationList
       conversations={conversations}
       selectedConversationId={selectedId}
       onSelect={onSelect}
+      filter={filter}
+      onFilterChange={setFilter}
+      empty={<UnreadSearchEmpty onSearchAll={() => setFilter("all")} />}
     />
   );
 });
+
+function SelectConversationPrompt({ unread }: { unread: number }) {
+  return (
+    <InboxEmpty size="lg">
+      <InboxEmptyIllustration variant="chat" />
+      <InboxEmptyTitle>Selecione uma conversa</InboxEmptyTitle>
+      <InboxEmptyDescription>
+        {unread === 0
+          ? "Escolha uma conversa na lista para ver o histórico."
+          : `Escolha uma conversa para ler e responder. ${unread} com mensagens não lidas.`}
+      </InboxEmptyDescription>
+    </InboxEmpty>
+  );
+}
 
 const ChatPane = memo(function ChatPane({
   client,
@@ -98,6 +150,13 @@ const ChatPane = memo(function ChatPane({
       : NO_MESSAGES,
   );
 
+  const unread = useSyncExternalStore(
+    client.subscribe,
+    () =>
+      client.getState().conversations.filter((item) => item.unreadCount > 0)
+        .length,
+  );
+
   const resolveLinkPreview = useLinkPreviews(client, messages);
 
   const handleSend = useCallback(
@@ -109,7 +168,7 @@ const ChatPane = memo(function ChatPane({
   );
 
   return (
-    <MessageView>
+    <MessageView empty={<SelectConversationPrompt unread={unread} />}>
       {conversation && (
         <>
           <MessageViewHeader conversation={conversation} onInfoClick={() => {}} />

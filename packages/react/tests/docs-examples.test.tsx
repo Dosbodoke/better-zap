@@ -1,10 +1,17 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { useCallback, useState } from "react";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   Bubble as RootBubble,
   BubbleContent as RootBubbleContent,
   ConversationList,
+  ConversationListClearSearch,
+  ConversationListEmpty,
+  InboxEmpty,
+  InboxEmptyDescription,
+  InboxEmptyIllustration,
+  InboxEmptyTitle,
   LinkPreviewCard,
   MessageInput,
   MessageList,
@@ -12,8 +19,14 @@ import {
   MessageViewContent,
   MessageViewHeader,
   WhatsappDashboard,
+  useConversationListEmpty,
 } from "@better-zap/react";
-import type { Conversation, LinkPreview, UIMessage } from "@better-zap/react";
+import type {
+  Conversation,
+  ConversationFilterValue,
+  LinkPreview,
+  UIMessage,
+} from "@better-zap/react";
 import { firstLinkIn } from "better-zap";
 import { Bubble, BubbleContent } from "@better-zap/react/bubble";
 import {
@@ -96,6 +109,60 @@ function LinkPreviewComposition({
   );
 }
 
+function UnreadSearchEmpty({ onSearchAll }: { onSearchAll: () => void }) {
+  const empty = useConversationListEmpty();
+  if (empty.reason !== "no-results" || empty.filter !== "unread") {
+    return <ConversationListEmpty />;
+  }
+  return (
+    <InboxEmpty>
+      <InboxEmptyIllustration variant="search" />
+      <InboxEmptyTitle>Nenhuma não lida com “{empty.query}”</InboxEmptyTitle>
+      <InboxEmptyDescription>Ela pode já ter sido lida.</InboxEmptyDescription>
+      <button type="button" onClick={onSearchAll}>
+        Buscar em todas
+      </button>
+      <ConversationListClearSearch />
+    </InboxEmpty>
+  );
+}
+
+function Inbox({ conversations }: { conversations: Conversation[] }) {
+  const [filter, setFilter] = useState<ConversationFilterValue>("all");
+  return (
+    <ConversationList
+      conversations={conversations}
+      filter={filter}
+      onFilterChange={setFilter}
+      empty={<UnreadSearchEmpty onSearchAll={() => setFilter("all")} />}
+    />
+  );
+}
+
+function EmptyPane({
+  unread,
+  active,
+}: {
+  unread: number;
+  active: Conversation | null;
+}) {
+  return (
+    <MessageView
+      empty={
+        <InboxEmpty size="lg">
+          <InboxEmptyIllustration variant="chat" />
+          <InboxEmptyTitle>Selecione uma conversa</InboxEmptyTitle>
+          <InboxEmptyDescription>
+            {unread} conversas não lidas.
+          </InboxEmptyDescription>
+        </InboxEmpty>
+      }
+    >
+      {active && <MessageViewHeader conversation={active} />}
+    </MessageView>
+  );
+}
+
 describe("README examples", () => {
   beforeEach(() => {
     mockMatchMedia(false);
@@ -163,5 +230,54 @@ describe("README examples", () => {
       </Bubble>,
     );
     expect(screen.getByText("Hello")).toBeTruthy();
+  });
+
+  it("Empty states: custom unread search recovers through the filter", async () => {
+    const user = userEvent.setup();
+    render(
+      <Inbox
+        conversations={[
+          createConversation({
+            id: "c1",
+            contactName: "Bruno",
+            unreadCount: 0,
+          }),
+          createConversation({
+            id: "c2",
+            contactName: "Carla",
+            unreadCount: 1,
+          }),
+        ]}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /Não lidas/ }));
+    await user.type(
+      screen.getByRole("textbox", { name: "Buscar conversa" }),
+      "Bruno",
+    );
+    expect(
+      screen.getByRole("heading", { name: "Nenhuma não lida com “Bruno”" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Limpar busca" })).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Buscar em todas" }));
+    expect(screen.getAllByText("Bruno").length).toBeGreaterThan(0);
+    expect(
+      screen.getByRole("textbox", { name: "Buscar conversa" }),
+    ).toHaveProperty("value", "Bruno");
+  });
+
+  it("Empty states: other reasons keep the default content", () => {
+    render(<Inbox conversations={[]} />);
+    expect(screen.getByText("Nenhuma conversa ainda")).toBeTruthy();
+  });
+
+  it("Empty content seam: MessageView renders the custom prompt", () => {
+    render(<EmptyPane unread={2} active={null} />);
+    expect(
+      screen.getByRole("heading", { name: "Selecione uma conversa" }),
+    ).toBeTruthy();
+    expect(screen.getByText("2 conversas não lidas.")).toBeTruthy();
   });
 });

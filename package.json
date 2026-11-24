@@ -5,6 +5,7 @@
   "scripts": {
     "build": "pnpm --filter \"./packages/better-zap\" --filter \"./packages/react\" --filter \"./packages/hono\" --filter \"./packages/cli\" --filter \"./packages/fixtures\" -r build",
     "typecheck": "pnpm --filter \"./packages/better-zap\" --filter \"./packages/react\" --filter \"./packages/hono\" --filter \"./packages/cli\" --filter \"./packages/fixtures\" -r typecheck",
+    "demo": "pnpm --filter @better-zap/demo-dashboard dev",
     "landing:typecheck": "pnpm --dir landing typecheck",
     "test": "pnpm --filter \"./packages/better-zap\" --filter \"./packages/react\" --filter \"./packages/hono\" --filter \"./packages/cli\" --filter \"./packages/fixtures\" -r test",
     "pack:check": "pnpm --filter \"./packages/better-zap\" --filter \"./packages/react\" --filter \"./packages/hono\" --filter \"./packages/cli\" --filter \"./packages/fixtures\" -r package:check",
