@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ComponentProps } from "react";
 import { useState } from "react";
@@ -25,7 +25,6 @@ import type {
 import {
   createConversation,
   mockMatchMedia,
-  stubLegendListLayout,
 } from "./helpers";
 
 type _TypeExports = [
@@ -66,11 +65,7 @@ const conversations = [
 ];
 
 function findRowByName(name: string) {
-  const matches = screen.getAllByText(name);
-  const el = matches[0];
-  const button = el.closest("button");
-  if (!button) throw new Error(`no button for ${name}`);
-  return button;
+  return screen.getByRole("button", { name: new RegExp(name) });
 }
 
 function renderList(
@@ -95,7 +90,6 @@ function renderList(
 describe("ConversationList + WhatsappDashboard (published surface)", () => {
   beforeEach(() => {
     mockMatchMedia(false);
-    stubLegendListLayout();
   });
 
   afterEach(() => {
@@ -110,8 +104,8 @@ describe("ConversationList + WhatsappDashboard (published surface)", () => {
     expect(screen.getByRole("button", { name: /Não lidas/ })).toBeTruthy();
 
     await waitFor(() => {
-      expect(screen.getAllByText("Bruno").length).toBeGreaterThan(0);
-      expect(screen.getAllByText("Carla").length).toBeGreaterThan(0);
+      expect(screen.getByText("Bruno")).toBeTruthy();
+      expect(screen.getByText("Carla")).toBeTruthy();
     });
   });
 
@@ -120,18 +114,18 @@ describe("ConversationList + WhatsappDashboard (published surface)", () => {
     renderList();
 
     await waitFor(() =>
-      expect(screen.getAllByText("Bruno").length).toBeGreaterThan(0),
+      expect(screen.getByText("Bruno")).toBeTruthy(),
     );
 
     const search = screen.getByPlaceholderText("Buscar conversa");
     await user.clear(search);
     await user.type(search, "5511888777666");
-    expect(screen.getAllByText("Bruno").length).toBeGreaterThan(0);
+    expect(screen.getByText("Bruno")).toBeTruthy();
     expect(screen.queryByText("Carla")).toBeNull();
 
     await user.clear(search);
     await user.type(search, "carla");
-    expect(screen.getAllByText("Carla").length).toBeGreaterThan(0);
+    expect(screen.getByText("Carla")).toBeTruthy();
     expect(screen.queryByText("Bruno")).toBeNull();
   });
 
@@ -140,14 +134,15 @@ describe("ConversationList + WhatsappDashboard (published surface)", () => {
     renderList();
 
     await waitFor(() =>
-      expect(screen.getAllByText("Bruno").length).toBeGreaterThan(0),
+      expect(screen.getByText("Bruno")).toBeTruthy(),
     );
 
-    expect(screen.getAllByText("2").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("1").length).toBeGreaterThan(0);
+    expect(within(findRowByName("Bruno")).getByText("2")).toBeTruthy();
+    expect(within(findRowByName("Carla")).queryByText(/^\d+$/)).toBeNull();
+    expect(within(findRowByName("66655-5444")).getByText("1")).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: /Não lidas/ }));
-    expect(screen.getAllByText("Bruno").length).toBeGreaterThan(0);
+    expect(screen.getByText("Bruno")).toBeTruthy();
     expect(screen.queryByText("Carla")).toBeNull();
   });
 
@@ -156,7 +151,7 @@ describe("ConversationList + WhatsappDashboard (published surface)", () => {
     const { onSelect } = renderList();
 
     await waitFor(() =>
-      expect(screen.getAllByText("Bruno").length).toBeGreaterThan(0),
+      expect(screen.getByText("Bruno")).toBeTruthy(),
     );
     await user.click(findRowByName("Bruno"));
     expect(onSelect).toHaveBeenCalledWith("c1");
@@ -242,7 +237,7 @@ describe("ConversationList + WhatsappDashboard (published surface)", () => {
 
     const user = userEvent.setup();
     await waitFor(() =>
-      expect(screen.getAllByText("Bruno").length).toBeGreaterThan(0),
+      expect(screen.getByText("Bruno")).toBeTruthy(),
     );
     await user.click(findRowByName("Bruno"));
 
@@ -280,7 +275,7 @@ describe("ConversationList + WhatsappDashboard (published surface)", () => {
     renderList({ selectedConversationId: "c1" });
 
     await waitFor(() =>
-      expect(screen.getAllByText("Bruno").length).toBeGreaterThan(0),
+      expect(screen.getByText("Bruno")).toBeTruthy(),
     );
 
     const row = findRowByName("Bruno");
@@ -292,7 +287,6 @@ describe("ConversationList + WhatsappDashboard (published surface)", () => {
 describe("ConversationList standalone (no WhatsappDashboard)", () => {
   beforeEach(() => {
     mockMatchMedia(false);
-    stubLegendListLayout();
   });
 
   afterEach(() => {
@@ -312,7 +306,7 @@ describe("ConversationList standalone (no WhatsappDashboard)", () => {
     );
 
     await waitFor(() =>
-      expect(screen.getAllByText("Bruno").length).toBeGreaterThan(0),
+      expect(screen.getByText("Bruno")).toBeTruthy(),
     );
 
     const listRoot = screen
@@ -345,7 +339,7 @@ describe("ConversationList standalone (no WhatsappDashboard)", () => {
     render(<ControlledSearch />);
 
     await waitFor(() =>
-      expect(screen.getAllByText("Bruno").length).toBeGreaterThan(0),
+      expect(screen.getByText("Bruno")).toBeTruthy(),
     );
 
     const search = screen.getByRole("textbox", { name: "Buscar conversa" });
@@ -355,7 +349,7 @@ describe("ConversationList standalone (no WhatsappDashboard)", () => {
     expect(onSearchChange.mock.calls.at(-1)?.[0]).toBe("carla");
 
     await waitFor(() => {
-      expect(screen.getAllByText("Carla").length).toBeGreaterThan(0);
+      expect(screen.getByText("Carla")).toBeTruthy();
       expect(screen.queryByText("Bruno")).toBeNull();
     });
   });
@@ -381,15 +375,15 @@ describe("ConversationList standalone (no WhatsappDashboard)", () => {
     render(<ControlledFilter />);
 
     await waitFor(() =>
-      expect(screen.getAllByText("Bruno").length).toBeGreaterThan(0),
+      expect(screen.getByText("Bruno")).toBeTruthy(),
     );
-    expect(screen.getAllByText("Carla").length).toBeGreaterThan(0);
+    expect(screen.getByText("Carla")).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: /Não lidas/ }));
     expect(onFilterChange).toHaveBeenCalledWith("unread");
 
     await waitFor(() => {
-      expect(screen.getAllByText("Bruno").length).toBeGreaterThan(0);
+      expect(screen.getByText("Bruno")).toBeTruthy();
       expect(screen.queryByText("Carla")).toBeNull();
     });
   });
@@ -493,7 +487,6 @@ describe("ConversationList standalone (no WhatsappDashboard)", () => {
 describe("inbox empty-state recovery", () => {
   beforeEach(() => {
     mockMatchMedia(false);
-    stubLegendListLayout();
   });
 
   it("keeps the search chrome and clears an uncontrolled query", async () => {
@@ -510,7 +503,7 @@ describe("inbox empty-state recovery", () => {
       screen.getByRole("textbox", { name: "Buscar conversa" }),
     ).toHaveProperty("value", "");
     await waitFor(() =>
-      expect(screen.getAllByText("Bruno").length).toBeGreaterThan(0),
+      expect(screen.getByText("Bruno")).toBeTruthy(),
     );
   });
 
@@ -557,7 +550,6 @@ describe("inbox empty-state recovery", () => {
 describe("custom empty slot", () => {
   beforeEach(() => {
     mockMatchMedia(false);
-    stubLegendListLayout();
   });
 
   afterEach(() => {
@@ -621,7 +613,7 @@ describe("custom empty slot", () => {
       screen.getByRole("textbox", { name: "Buscar conversa" }),
     ).toHaveProperty("value", "");
     await waitFor(() =>
-      expect(screen.getAllByText("Bruno").length).toBeGreaterThan(0),
+      expect(screen.getByText("Bruno")).toBeTruthy(),
     );
   });
 

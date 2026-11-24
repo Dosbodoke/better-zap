@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DateDivider,
@@ -16,7 +16,6 @@ import type {
 import {
   createMessage,
   mockMatchMedia,
-  stubLegendListLayout,
 } from "./helpers";
 
 type _TypeExports = [
@@ -53,7 +52,6 @@ describe("MessageList (published surface)", () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.setSystemTime(new Date("2026-04-04T15:00:00.000Z"));
     mockMatchMedia(false);
-    stubLegendListLayout(800, 400);
   });
 
   afterEach(() => {
@@ -99,12 +97,14 @@ describe("MessageList (published surface)", () => {
       expect(screen.getByText("Assistente")).toBeTruthy();
     });
 
-    const messageOrder = textDocumentOrder(container, [
-      "ontem",
-      "hoje-a",
-      "hoje-b",
-    ]);
-    expect(messageOrder).toEqual(["ontem", "hoje-a", "hoje-b"]);
+    expect(
+      textDocumentOrder(container, ["ONTEM", "ontem", "HOJE", "hoje-a", "hoje-b"]),
+    ).toEqual(["ONTEM", "ontem", "HOJE", "hoje-a", "hoje-b"]);
+    const stickyHeaders = Array.from(
+      container.querySelectorAll("[data-sticky-header]"),
+      (header) => header.textContent,
+    );
+    expect(stickyHeaders).toEqual(["ONTEM", "HOJE"]);
   });
 
   it("custom renderMessage receives id, direction, align, groupPosition, and label", async () => {
@@ -445,6 +445,10 @@ describe("MessageList (published surface)", () => {
     await waitFor(() => {
       expect(screen.getByText("solo")).toBeTruthy();
     });
+    expect(onScrollTop).not.toHaveBeenCalled();
+
+    fireEvent.scroll(screen.getByTestId("legend-list"));
+    expect(onScrollTop).toHaveBeenCalledTimes(1);
   });
 
   it("direct autoScroll / onScrollTop props win over MessageViewContent context", async () => {
@@ -473,10 +477,10 @@ describe("MessageList (published surface)", () => {
     await waitFor(() => {
       expect(screen.getByText("ctx")).toBeTruthy();
     });
+
+    fireEvent.scroll(screen.getByTestId("legend-list"));
+    expect(propOnScrollTop).toHaveBeenCalledTimes(1);
     expect(contextOnScrollTop).not.toHaveBeenCalled();
-    await waitFor(() => {
-      expect(propOnScrollTop).toHaveBeenCalled();
-    });
   });
 
   it("assigns unique date-row identities for duplicate labels (malformed dates)", async () => {
@@ -519,19 +523,18 @@ describe("MessageList (published surface)", () => {
     });
 
     await waitFor(() => {
-      const invalidLabels = screen.getAllByText("Invalid Date");
-      expect(invalidLabels.length).toBeGreaterThanOrEqual(2);
+      expect(screen.getAllByTestId(/^date-/)).toHaveLength(3);
       expect(screen.getByText("VALID")).toBeTruthy();
       expect(screen.getByText("bad-a")).toBeTruthy();
       expect(screen.getByText("ok-msg")).toBeTruthy();
       expect(screen.getByText("bad-b")).toBeTruthy();
     });
 
-    expect(dateRowIds.filter((r) => r.startsWith("Invalid Date::"))).toHaveLength(
-      2,
-    );
-    expect(dateRowIds[0]).toBe("Invalid Date::not-a-date");
-    expect(dateRowIds[2]).toBe("Invalid Date::also-not-a-date");
+    expect(dateRowIds).toEqual([
+      "Invalid Date::not-a-date",
+      "VALID::2026-04-04T10:00:00.000Z",
+      "Invalid Date::also-not-a-date",
+    ]);
   });
 
   it("exports DateDivider with children API", async () => {
@@ -574,7 +577,6 @@ describe("MessageList resolveLinkPreview", () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.setSystemTime(new Date("2026-04-04T15:00:00.000Z"));
     mockMatchMedia(false);
-    stubLegendListLayout(800, 400);
   });
 
   afterEach(() => {

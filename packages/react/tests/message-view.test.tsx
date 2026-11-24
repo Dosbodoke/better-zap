@@ -23,7 +23,6 @@ import type {
 import {
   createConversation,
   mockMatchMedia,
-  stubLegendListLayout,
 } from "./helpers";
 
 type _TypeExports = [
@@ -51,11 +50,7 @@ const conversations = [
 ];
 
 function findRowByName(name: string) {
-  const matches = screen.getAllByText(name);
-  const el = matches[0];
-  const button = el.closest("button");
-  if (!button) throw new Error(`no button for ${name}`);
-  return button;
+  return screen.getByRole("button", { name: new RegExp(name) });
 }
 
 describe("MessageView standalone (no WhatsappDashboard)", () => {
@@ -198,7 +193,6 @@ describe("MessageView standalone (no WhatsappDashboard)", () => {
 describe("MessageView + WhatsappDashboard", () => {
   beforeEach(() => {
     mockMatchMedia(false);
-    stubLegendListLayout();
   });
 
   afterEach(() => {
@@ -279,10 +273,7 @@ describe("MessageView + WhatsappDashboard", () => {
     const messageRoot = screen.getByTestId("message-view");
     expect(messageRoot.style.display).toBe("none");
 
-    await waitFor(() =>
-      expect(screen.getAllByText("Bruno").length).toBeGreaterThan(0),
-    );
-    await user.click(findRowByName("Bruno"));
+    await user.click(await waitFor(() => findRowByName("Bruno")));
 
     await waitFor(() => {
       const listAfter = screen
@@ -342,10 +333,7 @@ describe("MessageView + WhatsappDashboard", () => {
       </WhatsappDashboard>,
     );
 
-    await waitFor(() =>
-      expect(screen.getAllByText("Bruno").length).toBeGreaterThan(0),
-    );
-    await user.click(findRowByName("Bruno"));
+    await user.click(await waitFor(() => findRowByName("Bruno")));
 
     await waitFor(() => {
       expect(onMobileViewChange).toHaveBeenCalledWith("chat");

@@ -33,7 +33,6 @@ import {
   createConversation,
   createMessage,
   mockMatchMedia,
-  stubLegendListLayout,
 } from "./helpers";
 
 function Dashboard({
@@ -166,7 +165,6 @@ function EmptyPane({
 describe("README examples", () => {
   beforeEach(() => {
     mockMatchMedia(false);
-    stubLegendListLayout();
   });
 
   it("Quick start renders the conversation name and a composer textarea", async () => {
@@ -184,7 +182,7 @@ describe("README examples", () => {
       />,
     );
 
-    expect(screen.getAllByText("Bruno").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: /Bruno/ })).toBeTruthy();
     expect(screen.getByRole("textbox", { name: "Mensagem" })).toBeTruthy();
   });
 
@@ -262,7 +260,7 @@ describe("README examples", () => {
     expect(screen.getByRole("button", { name: "Limpar busca" })).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "Buscar em todas" }));
-    expect(screen.getAllByText("Bruno").length).toBeGreaterThan(0);
+    expect(screen.getByText("Bruno")).toBeTruthy();
     expect(
       screen.getByRole("textbox", { name: "Buscar conversa" }),
     ).toHaveProperty("value", "Bruno");
