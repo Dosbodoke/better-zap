@@ -714,3 +714,33 @@ betterZap({
   ],
   webhook: noopWebhook,
 });
+
+const declaredIndexedPlugin = definePlugin({
+  id: "declared-indexed",
+  init: () => ({
+    context: { count: 1 } as { [key: string]: number; count: number },
+    services: { total: 1 } as { [key: string]: number; total: number },
+  }),
+  hooks: {
+    onMessage: async (ctx) => {
+      ctx.count.toFixed();
+    },
+  },
+});
+
+const declaredIndexed = betterZap({
+  database,
+  config,
+  plugins: [declaredIndexedPlugin],
+  webhook: {
+    onMessage: async (ctx) => {
+      ctx.count.toFixed();
+      ctx.phone.toUpperCase();
+      ctx.db.whatsappLog;
+    },
+    onStatusUpdate: async () => {},
+  },
+});
+
+declaredIndexed.services.total.toFixed();
+declaredIndexed.services.whatsapp;

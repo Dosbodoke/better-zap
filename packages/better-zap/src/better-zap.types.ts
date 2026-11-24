@@ -164,6 +164,10 @@ export interface BetterZapPluginFor<
   hooks?: BetterZapPluginHooks<TDatabase>;
 }
 
+type WithoutKeys<TValue, TKeys extends PropertyKey> = {
+  [TKey in keyof TValue as TKey extends TKeys ? never : TKey]: TValue[TKey];
+};
+
 type InferPluginInitResult<TPlugin> = TPlugin extends {
   init?: (...args: never[]) => infer TResult;
 }
@@ -180,7 +184,7 @@ type InferPluginInitKey<
   : never;
 
 export type InferBetterZapPluginContext<TPlugins> = Simplify<
-  Omit<
+  WithoutKeys<
     UnionToIntersection<
       TPlugins extends readonly unknown[]
         ? InferPluginInitKey<TPlugins[number], "context">
@@ -191,7 +195,7 @@ export type InferBetterZapPluginContext<TPlugins> = Simplify<
 >;
 
 export type InferBetterZapPluginServices<TPlugins> = Simplify<
-  Omit<
+  WithoutKeys<
     UnionToIntersection<
       TPlugins extends readonly unknown[]
         ? InferPluginInitKey<TPlugins[number], "services">
