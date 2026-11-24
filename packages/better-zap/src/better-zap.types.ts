@@ -169,8 +169,8 @@ type InferPluginInitKey<
 export type InferBetterZapPluginContext<TPlugins> = Simplify<
   Omit<
     UnionToIntersection<
-      TPlugins extends readonly (infer TPlugin)[]
-        ? InferPluginInitKey<TPlugin, "context">
+      TPlugins extends readonly unknown[]
+        ? InferPluginInitKey<TPlugins[number], "context">
         : never
     >,
     keyof BetterZapCoreContext
@@ -180,8 +180,8 @@ export type InferBetterZapPluginContext<TPlugins> = Simplify<
 export type InferBetterZapPluginServices<TPlugins> = Simplify<
   Omit<
     UnionToIntersection<
-      TPlugins extends readonly (infer TPlugin)[]
-        ? InferPluginInitKey<TPlugin, "services">
+      TPlugins extends readonly unknown[]
+        ? InferPluginInitKey<TPlugins[number], "services">
         : never
     >,
     keyof BetterZapCoreServices

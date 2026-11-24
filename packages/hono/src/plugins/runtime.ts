@@ -166,7 +166,7 @@ function assertPlainObject(
   name: "context" | "services",
   value: unknown,
 ): void {
-  if (value === undefined) {
+  if (value === undefined || value === null) {
     return;
   }
   const prototype =

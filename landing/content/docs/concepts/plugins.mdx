@@ -157,6 +157,18 @@ When `betterZap()` can't see each plugin's type, it checks the plugins against `
 
 The types assume that `init` returns everything it can return. An `init` that sometimes returns nothing, or a list whose type is a union of plugins, still shows every key as present.
 
+### Plugin lists
+
+Write the list inline in `plugins: [...]`, or keep it in a variable without a type annotation, so TypeScript keeps each plugin's own type. To spread a list into `plugins`, declare it `as const`:
+
+```ts
+const basePlugins = [logging, analytics] as const;
+
+betterZap({ /* ... */ plugins: [...basePlugins, auditPlugin] });
+```
+
+A list annotated as `BetterZapPlugin[]` has lost each plugin's type. Spread without `as const`, TypeScript merges its plugins into one union type, which can drop another plugin's context.
+
 ### Reading another plugin's context
 
 A plugin can read context that another plugin provides. Pass that context to `BetterZapPlugin` and leave it out of `init`, or annotate the hook's `ctx`:

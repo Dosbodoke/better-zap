@@ -700,6 +700,22 @@ describe("betterZap plugins", () => {
     }
   });
 
+  it("ignores a null context or services", () => {
+    expect(() =>
+      betterZap({
+        database: makeDatabase(),
+        config: pluginTestConfig,
+        plugins: [
+          {
+            id: "null-plugin",
+            init: () => ({ context: null, services: null }) as never,
+          },
+        ],
+        webhook: noopWebhook,
+      }),
+    ).not.toThrow();
+  });
+
   it("names the plugin when init throws", () => {
     const original = new Error("boom");
     let thrown: unknown;

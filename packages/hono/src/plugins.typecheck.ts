@@ -536,3 +536,64 @@ betterZap({
     onStatusUpdate: async () => {},
   },
 });
+
+const loggingPlugin = definePlugin({
+  id: "logging",
+  hooks: {
+    onMessage: async () => {},
+  },
+});
+
+const withLogging = betterZap({
+  database,
+  config,
+  plugins: [loggingPlugin, metricsPlugin],
+  webhook: {
+    onMessage: async (ctx) => {
+      ctx.metrics.increment(ctx.phone);
+    },
+    onStatusUpdate: async () => {},
+  },
+});
+
+withLogging.services.metrics.increment("boot");
+
+const loggingList = [loggingPlugin, auditPlugin];
+
+betterZap({
+  database,
+  config,
+  plugins: loggingList,
+  webhook: {
+    onMessage: async (ctx) => {
+      ctx.audit.record(ctx.phone);
+    },
+    onStatusUpdate: async () => {},
+  },
+});
+
+const legacyPlugin: BetterZapPlugin = { id: "legacy" };
+
+betterZap({
+  database,
+  config,
+  plugins: [legacyPlugin, loggingPlugin, auditPlugin, auditReader],
+  webhook: {
+    onMessage: async (ctx) => {
+      ctx.audit.record(ctx.phone);
+    },
+    onStatusUpdate: async () => {},
+  },
+});
+
+const auditId: "audit" = auditPlugin.id;
+void auditId;
+
+const basePlugins = [loggingPlugin, countPlugin] as const;
+
+betterZap({
+  database,
+  config,
+  plugins: [...basePlugins, auditPlugin, auditReader],
+  webhook: noopWebhook,
+});
