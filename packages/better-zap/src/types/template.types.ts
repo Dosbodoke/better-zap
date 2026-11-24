@@ -37,17 +37,14 @@ export interface MessageTemplateNamedExample {
 export interface MessageTemplateHeaderComponent {
   type: "HEADER";
   format: "TEXT" | "IMAGE" | "VIDEO" | "DOCUMENT" | "LOCATION" | "GIF";
-  /** Only for `format: "TEXT"`. At most 60 characters and one variable. */
   text?: string;
   example?: {
     header_text?: string[];
     header_text_named_params?: MessageTemplateNamedExample[];
-    /** Media formats: one handle from Meta's Resumable Upload API. */
     header_handle?: string[];
   };
 }
 
-/** File types Meta accepts as the sample file of a media header. */
 export const TEMPLATE_HEADER_MEDIA_TYPES = [
   "image/jpeg",
   "image/jpg",
@@ -60,10 +57,8 @@ export type TemplateHeaderMediaType = (typeof TEMPLATE_HEADER_MEDIA_TYPES)[numbe
 
 export interface MessageTemplateBodyComponent {
   type: "BODY";
-  /** At most 1024 characters. */
   text: string;
   example?: {
-    /** Positional variables: one inner array with one example per variable. */
     body_text?: string[][];
     body_text_named_params?: MessageTemplateNamedExample[];
   };
@@ -71,7 +66,6 @@ export interface MessageTemplateBodyComponent {
 
 export interface MessageTemplateFooterComponent {
   type: "FOOTER";
-  /** At most 60 characters. */
   text: string;
 }
 
@@ -82,7 +76,6 @@ export type MessageTemplateButton =
   | { type: "COPY_CODE"; example: string }
   | MessageTemplateOtherButton;
 
-/** Button types Better Zap passes through without modelling their fields. */
 export interface MessageTemplateOtherButton {
   type: "OTP" | "MPM" | "CATALOG" | "FLOW" | "VOICE_CALL";
   [key: string]: unknown;
@@ -93,7 +86,6 @@ export interface MessageTemplateButtonsComponent {
   buttons: MessageTemplateButton[];
 }
 
-/** Component types Better Zap passes through without modelling their fields. */
 export interface MessageTemplateOtherComponent {
   type: "CAROUSEL" | "LIMITED_TIME_OFFER" | "CALL_PERMISSION_REQUEST";
   [key: string]: unknown;
@@ -106,7 +98,6 @@ export type MessageTemplateComponent =
   | MessageTemplateButtonsComponent
   | MessageTemplateOtherComponent;
 
-/** A template as Meta returns it. */
 export interface MessageTemplate {
   id: string;
   name: string;
@@ -124,24 +115,18 @@ export interface MessageTemplate {
   message_send_ttl_seconds?: number;
 }
 
-/** What `create` sends. */
 export interface MessageTemplateDefinition {
-  /** Lower-case letters, digits and underscores. At most 512 characters. */
   name: string;
-  /** Language code such as `pt_BR` or `en_US`. */
   language: string;
   category: MessageTemplateCategory;
   components: MessageTemplateComponent[];
-  /** Meta uses `POSITIONAL` when omitted. */
   parameter_format?: MessageTemplateParameterFormat;
   allow_category_change?: boolean;
   message_send_ttl_seconds?: number;
 }
 
-/** What `update` sends. `components` replaces every existing component. */
 export interface MessageTemplateChanges {
   components?: MessageTemplateComponent[];
-  /** Meta rejects a category change on an approved template. */
   category?: MessageTemplateCategory;
   message_send_ttl_seconds?: number;
 }
@@ -157,7 +142,6 @@ export interface TemplateFailure extends Omit<MetaGraphFailure, "diagnostics"> {
   diagnostics: Omit<CoexistenceGraphErrorDiagnostics, "kind"> & {
     kind: TemplateFailureKind;
   };
-  /** Present when a template failed local validation. */
   issues?: MessageTemplateIssue[];
 }
 

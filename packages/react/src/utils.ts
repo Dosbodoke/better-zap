@@ -6,13 +6,6 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-/**
- * Base UI-style element polymorphism: merge part props onto a render element.
- * - className: cn(computed, render.props.className)
- * - style: { ...computed.style, ...render.props.style }
- * - other props: render element's own props win
- * - children: part children win unless render element already has children
- */
 export function renderSlot(
   render: React.ReactElement<Record<string, unknown>>,
   computed: Record<string, unknown> & {

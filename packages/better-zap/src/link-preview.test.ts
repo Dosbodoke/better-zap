@@ -125,7 +125,6 @@ describe("parseOpenGraph", () => {
 
     const preview = parseOpenGraph(html, pageUrl);
     expect(preview?.title).toBe('Tom & Jerry – "Ep. 1" 😀 …');
-    // Unknown, invalid and wrongly cased entities are left as written.
     expect(preview?.description).toBe(
       "Irlandês, ação, Água ÿ ½ &unknown; &constructor; &#0; &AMP;",
     );

@@ -3,7 +3,6 @@ import type { MetaGraphResult } from "../types/graph.types";
 
 const REDACTED = "[REDACTED]";
 
-// Graph error codes Meta documents as temporary or rate limiting.
 const TRANSIENT_GRAPH_ERROR_CODES = new Set([
   1, 2, 4, 17, 32, 341, 613, 80007, 130429, 131056,
 ]);
@@ -16,23 +15,14 @@ export interface GraphRequestInput {
   method: "GET" | "POST" | "DELETE";
   query?: URLSearchParams;
   body?: unknown;
-  /** `undefined` fails with a configuration error. `null` sends no Authorization header. */
   token?: string | null;
-  /** Values that must never appear in a returned error string. */
   secrets?: Array<string | undefined>;
   includeHttpStatus?: boolean;
-  /** Extra request headers. They are added after the defaults and win on conflict. */
   headers?: Record<string, string>;
-  /** Scheme of the Authorization header. Defaults to `"Bearer"`. */
   authScheme?: "Bearer" | "OAuth";
-  /**
-   * Sent as the request body unchanged. When set, `body` is ignored and the
-   * default `Content-Type: application/json` header is not added.
-   */
   rawBody?: BodyInit;
 }
 
-/** Sends one Graph API request. Never throws; every outcome is a result. */
 export async function graphRequest<TData>(
   input: GraphRequestInput,
 ): Promise<MetaGraphResult<TData>> {
@@ -51,8 +41,6 @@ export async function graphRequest<TData>(
   }
 
   try {
-    // Called detached: Cloudflare Workers throws when the built-in `fetch`
-    // runs as a method of another object.
     const send = input.fetch;
     const response = await send(url.toString(), {
       method: input.method,
@@ -80,8 +68,6 @@ export async function graphRequest<TData>(
     }
 
     if (!response.ok) {
-      // Meta can echo the token back, as in "Malformed access token <token>".
-      // Only strings are redacted, so codes and flags keep their meaning.
       const secrets = [input.token ?? undefined, ...(input.secrets ?? [])];
       const graphError = readGraphError(data, secrets);
       const diagnostics = buildFailureDiagnostics(response.status, graphError);
@@ -132,11 +118,8 @@ export function redactSecrets(
   );
 }
 
-// Meta's error bodies are a few levels deep. Anything nested deeper than this
-// is dropped rather than walked, so a pathological body cannot exhaust the stack.
 const MAX_REDACT_DEPTH = 32;
 
-/** Copies a parsed JSON body with secrets removed from every string and key. */
 function redactBody(
   data: unknown,
   secrets: Array<string | undefined>,
@@ -169,7 +152,6 @@ type GraphErrorFields = {
   userMessage?: string;
 };
 
-/** Reads Meta's error object. Secrets are removed from its string fields. */
 function readGraphError(
   data: unknown,
   secrets: Array<string | undefined>,

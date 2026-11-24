@@ -11,11 +11,5 @@ export default defineConfig({
     setupFiles: [path.resolve(dir, "tests/setup.ts")],
   },
   resolve: {
-    // Self-reference should resolve to dist via package exports.
-    // If it fails under vitest, alias to dist (NOT source):
-    // alias: {
-    //   "@better-zap/react": path.resolve(dir, "dist/index.mjs"),
-    //   "@better-zap/react/tailwind.css": path.resolve(dir, "dist/tailwind.css"),
-    // },
   },
 });

@@ -54,8 +54,6 @@ export function LandingAnimations({ children }: { children: ReactNode }) {
             return;
           }
 
-          // Support for the hero: the right column picks up as the hero's
-          // CTAs land. Gaps shrink and travel drops item by item.
           const introTimeline = gsap.timeline({
             paused: true,
             defaults: { ease: "power3.out" },
@@ -82,13 +80,10 @@ export function LandingAnimations({ children }: { children: ReactNode }) {
             );
           }
 
-          // Reveals already in view at load join the end of the intro wave
-          // instead of jumping ahead of it.
           introTimeline.addLabel("introTail", "content+=0.26");
           const introTail = introTimeline.labels.introTail;
 
           const stopWaitingForHero = onHeroIntroStart((fromFallback) => {
-            // Without the hero there's nothing to follow, so skip the lead-in.
             introTimeline.play(fromFallback ? "content" : 0);
           });
 

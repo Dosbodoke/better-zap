@@ -7,11 +7,6 @@ const SECRET_ACCESS_KEY = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY";
 
 type StoredObject = { body: Uint8Array<ArrayBuffer>; contentType: string; meta: Record<string, string> };
 
-/**
- * A fake S3 endpoint. It recomputes each SigV4 signature from scratch (not
- * with aws4fetch) and answers like S3: 403 SignatureDoesNotMatch on a bad
- * signature, 404 NoSuchKey for missing objects.
- */
 function createFakeS3(options: {
   region: string;
   bucket: string;
@@ -305,7 +300,6 @@ describe.each(providers)("createS3MediaStore against $name", (provider) => {
     await store.put("whatsapp/phone_1/wamid.1", new ArrayBuffer(3), { contentType: "audio/ogg" });
     await store.delete?.("whatsapp/phone_1/wamid.1");
     expect(await store.get("whatsapp/phone_1/wamid.1")).toBeNull();
-    // Deleting a missing key is not an error.
     await expect(store.delete?.("whatsapp/phone_1/wamid.1")).resolves.toBeUndefined();
   });
 
@@ -347,7 +341,6 @@ describe("createS3MediaStore", () => {
   });
 
   it("matches AWS's published presigned URL example", async () => {
-    // https://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-query-string-auth.html
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2013-05-24T00:00:00Z"));
     const store = createS3MediaStore({

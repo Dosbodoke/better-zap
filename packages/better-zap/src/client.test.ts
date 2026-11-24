@@ -86,7 +86,6 @@ describe("createZapClient", () => {
 
     const [, init] = fetchFn.mock.calls[0];
     expect(init.headers.Authorization).toBe("Bearer sk_test_123");
-    // Transport headers merge with the request's own headers, not replace them.
     expect(init.headers["Content-Type"]).toBe("application/json");
     expect(init.credentials).toBeUndefined();
   });

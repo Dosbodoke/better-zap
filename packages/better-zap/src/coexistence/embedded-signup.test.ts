@@ -3,11 +3,6 @@ import { launchCoexistenceEmbeddedSignup } from ".";
 
 const META_ORIGIN = "https://www.facebook.com";
 
-/**
- * Shape of a real FINISH message observed from Meta during coexistence
- * onboarding: no `version`, coexistence-specific event name, and asset id
- * arrays. Every value here is fake.
- */
 const observedCoexistenceFinishMessage = {
   type: "WA_EMBEDDED_SIGNUP",
   event: "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING",
@@ -281,7 +276,6 @@ describe("launchCoexistenceEmbeddedSignup completion join", () => {
       event: "ERROR",
       data: { error_message: "fake error", error_code: "1", session_id: "fake" },
     });
-    // An ERROR alone does not start the join timer; the flow may still be open.
     await vi.advanceTimersByTimeAsync(60_000);
     expect(await isSettled(controller.result)).toBe(false);
 

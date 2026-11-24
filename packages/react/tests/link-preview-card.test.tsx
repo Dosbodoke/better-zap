@@ -2,10 +2,8 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { LinkPreviewCard, MessageBubble } from "@better-zap/react";
 import type { LinkPreview, LinkPreviewCardProps } from "@better-zap/react";
-// Documented subpath import (see README "Subpath imports").
 import { LinkPreviewCard as SubpathLinkPreviewCard } from "@better-zap/react/link-preview-card";
 
-// Ensure type exports emit in declarations (compile-time only).
 type _TypeExports = [LinkPreview, LinkPreviewCardProps];
 void 0 as unknown as _TypeExports;
 
@@ -140,7 +138,6 @@ describe("MessageBubble linkPreview", () => {
       card().compareDocumentPosition(price) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(card().className).toContain("bg-[#f0f2f5]");
-    // The message's own link still renders as text.
     expect(
       screen.getByRole("link", { name: preview.url }).getAttribute("href"),
     ).toBe(preview.url);

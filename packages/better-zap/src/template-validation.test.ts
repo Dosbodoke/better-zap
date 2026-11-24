@@ -38,7 +38,6 @@ const valid = (): MessageTemplateDefinition => ({
   ],
 });
 
-/** A definition whose fields can be broken freely, as untyped JavaScript could. */
 type Loose = Record<string, any>;
 
 const header = (definition: Loose) => definition.components[0];
@@ -342,7 +341,6 @@ describe("validateMessageTemplate", () => {
           { type: null },
         ],
       },
-      // JSON can carry an object whose `toString` is not a function.
       {
         name: "a",
         language: "en",

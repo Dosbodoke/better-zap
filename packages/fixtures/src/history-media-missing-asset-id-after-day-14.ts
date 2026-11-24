@@ -1,6 +1,5 @@
 import type { CoexistenceWebhookPayload } from "./types";
 
-// Encodes the Meta ES v4 coexistence webhook spec (history sync): media older than 14 days arrives without asset IDs and must still process.
 export const historyMediaMissingAssetIdAfterDay14Fixture = {
   object: "whatsapp_business_account",
   entry: [

@@ -210,7 +210,6 @@ export class CoexistenceService {
     query?: URLSearchParams;
     body?: unknown;
     token?: string | null;
-    /** Values that must never appear in a returned error string. */
     secrets?: Array<string | undefined>;
     includeHttpStatus?: boolean;
   }): Promise<CoexistenceGraphResult<TData>> {

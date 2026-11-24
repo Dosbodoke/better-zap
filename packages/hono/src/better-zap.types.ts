@@ -22,19 +22,9 @@ export type BetterZapAuthorizeAppRequest = (input: {
   env?: unknown;
 }) => boolean | Promise<boolean>;
 
-/**
- * Checks the Embedded Signup `state` and `nonce` against values your server
- * issued, for example ones stored in the user's session.
- */
 export type BetterZapVerifySignupState = (input: {
-  /** `state` from the callback body. `undefined` when the client sent none. */
   state: string | undefined;
-  /** `nonce` from the callback body. `undefined` when the client sent none. */
   nonce: string | undefined;
-  /**
-   * The callback request, for reading cookies and headers. Its body has
-   * already been read; use `state` and `nonce` instead.
-   */
   request: Request;
   env?: unknown;
 }) => boolean | Promise<boolean>;
@@ -54,19 +44,7 @@ export interface BetterZapConfig<
     TDatabase,
     InferBetterZapPluginContext<TPlugins>
   > & {
-    /**
-     * Runs webhook processing (hooks, then media downloads) after Meta gets
-     * its `200 OK`. Defaults to `executionCtx.waitUntil` on Workers. Without
-     * an execution context the response waits for processing, so on a
-     * long-running Node server pass `(work) => { void work; }`.
-     */
     runInBackground?: (work: Promise<void>) => void | Promise<void>;
-    /**
-     * Turns an incoming message into the text stored as its `content` and
-     * passed to hooks as `ctx.content`. Also used for messages imported from
-     * coexistence history and echoes. Defaults to `getMessageContent`, which
-     * returns Brazilian Portuguese labels such as `[imagem]`.
-     */
     resolveMessageContent?: (message: IncomingMessage) => string;
   };
   coexistence?: {
@@ -79,59 +57,17 @@ export interface BetterZapConfig<
     graphApiVersion?: string;
     graphBaseUrl?: string;
     fetch?: typeof fetch;
-    /**
-     * Subscribe the connected WABA to this app after a successful Embedded
-     * Signup code exchange. Defaults to true. Failures are returned and recorded
-     * instead of being silently ignored.
-     */
     subscribeWabaAfterCodeExchange?: boolean;
-    /**
-     * Verifies the Embedded Signup `state` and `nonce` before anything is
-     * recorded or exchanged. Return `false` to reject the callback with `400`.
-     *
-     * Without it, `state` and `nonce` are stored with the onboarding session
-     * but not checked. Better Zap never compares them with values sent in the
-     * same request.
-     */
     verifySignupState?: BetterZapVerifySignupState;
   };
-  /**
-   * The service behind `api.templates`. Defaults to one built from
-   * `config.token` and `config.wabaId`. Pass your own to manage several
-   * business accounts (a `TemplateService` with a `tokenProvider`).
-   */
   templateService?: TemplateService;
-  /**
-   * Media download settings. Downloads only run when `database.media` is set.
-   */
   media?: {
-    /** Files larger than this are skipped (`metadata.media.status: "skipped"`). Defaults to 25 MiB. */
     maxBytes?: number;
-    /**
-     * Time limit in milliseconds for one file's download and upload. Slower
-     * files are recorded as `failed`. Defaults to 30 seconds.
-     */
     timeoutMs?: number;
-    /** Files downloaded at the same time. Defaults to 3. */
     concurrency?: number;
-    /**
-     * Lifetime of the presigned URL the media route redirects to, when the
-     * store has `getSignedUrl`. Capped at 7 days. Defaults to 3600 seconds.
-     */
     signedUrlExpiresIn?: number;
   };
   basePath?: string;
-  /**
-   * Guards every app route: everything under `basePath` except `/webhook`.
-   *
-   * - A function is called once per request. Return `true` to allow it.
-   *   `false` answers `401`, a throw answers `500`.
-   * - `"public"` turns the guard off. Use it only when something in front of
-   *   Better Zap already authenticates the request (a gateway, a private
-   *   network, your own middleware).
-   * - When omitted, app routes are closed and answer `401`. The webhook
-   *   routes keep working, so a webhook-only bot needs no value here.
-   */
   authorizeAppRequest?: BetterZapAuthorizeAppRequest | "public";
   logger?: LoggerConfig;
 }

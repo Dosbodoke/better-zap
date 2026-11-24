@@ -14,7 +14,6 @@ export default function HeroGeometricClient() {
 
   return (
     <div className="relative h-full w-full bg-[#E8FFF0]">
-      {/* CSS gradient fallback — approximates the shader output */}
       <div
         className="absolute -inset-1 transition-opacity duration-700 ease-out"
         style={{
@@ -23,7 +22,6 @@ export default function HeroGeometricClient() {
             "linear-gradient(135deg, #fff 0%, #E8FFF0 30%, #6ee7a0 60%, #25D366 100%)",
         }}
       />
-      {/* No wrapper fade: HeroGeometric runs its own entrance. */}
       {HeroGeometric ? (
         <div className="absolute -inset-1">
           <HeroGeometric />

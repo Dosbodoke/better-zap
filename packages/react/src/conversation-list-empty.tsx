@@ -11,15 +11,12 @@ import {
 import { cn } from "./utils";
 import { useOptionalWhatsappDashboard } from "./whatsapp-dashboard";
 
-/** Why `ConversationList` has no rows to show. */
 export type ConversationListEmptyState =
   | { reason: "no-conversations" }
   | {
       reason: "no-results";
-      /** The trimmed search text, as typed. */
       query: string;
       filter: ConversationFilterValue;
-      /** Clears the search the same way typing would (controlled or not). */
       clearSearch: () => void;
     }
   | { reason: "all-read" };
@@ -27,7 +24,6 @@ export type ConversationListEmptyState =
 export const ConversationListEmptyContext =
   createContext<ConversationListEmptyState | null>(null);
 
-/** Reads the empty reason. Use inside `ConversationList`'s `empty` slot. */
 export function useConversationListEmpty(): ConversationListEmptyState {
   const state = useContext(ConversationListEmptyContext);
   if (!state) {
@@ -39,11 +35,9 @@ export function useConversationListEmpty(): ConversationListEmptyState {
 }
 
 export interface ConversationListEmptyProps {
-  /** Replaces the default heading for every reason. */
   heading?: React.ReactNode;
 }
 
-/** Default empty content: one small state per reason. */
 export function ConversationListEmpty({ heading }: ConversationListEmptyProps) {
   const state = useConversationListEmpty();
   switch (state.reason) {
@@ -64,10 +58,6 @@ export function ConversationListEmpty({ heading }: ConversationListEmptyProps) {
 
 export type ConversationListClearSearchProps = React.ComponentProps<"button">;
 
-/**
- * Clears the search. Renders nothing unless the list is empty because of a
- * search. Call `event.preventDefault()` in `onClick` to keep the query.
- */
 export function ConversationListClearSearch({
   children = "Limpar busca",
   className,
@@ -97,7 +87,6 @@ export function ConversationListClearSearch({
 }
 
 function NoConversations({ heading }: ConversationListEmptyProps) {
-  // On mobile the list is the whole screen, so first use gets the pane size.
   const isMobile = useOptionalWhatsappDashboard()?.isMobile ?? false;
   return (
     <InboxEmpty size={isMobile ? "lg" : "sm"}>

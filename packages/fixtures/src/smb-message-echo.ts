@@ -1,6 +1,5 @@
 import type { CoexistenceWebhookPayload } from "./types";
 
-// Encodes the Meta ES v4 coexistence webhook spec (webhook field catalog): smb_message_echoes imports outgoing messages sent in the WhatsApp Business app.
 export const smbMessageEchoFixture = {
   object: "whatsapp_business_account",
   entry: [

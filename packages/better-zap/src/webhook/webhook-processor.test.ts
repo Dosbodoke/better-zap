@@ -910,7 +910,6 @@ describe("createWebhookProcessor", () => {
         raw: { type: "image", image: { id: "media_fake_1" } },
       });
 
-      // A placeholder replayed after the real media must not overwrite it.
       await processor.process(historyThreadsChunkFixture as any);
       expect(stored()?.content).toBe("[imagem: fake caption]");
       expect(mockOnCoexistenceHistory).toHaveBeenLastCalledWith(

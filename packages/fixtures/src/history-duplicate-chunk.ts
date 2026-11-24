@@ -1,6 +1,5 @@
 import type { CoexistenceWebhookPayload } from "./types";
 
-// Encodes the Meta ES v4 coexistence webhook spec (history sync / webhook field catalog) implementation impact: duplicate history chunks must deduplicate by WhatsApp message ID.
 export const historyDuplicateChunkFixture = {
   object: "whatsapp_business_account",
   entry: [

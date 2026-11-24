@@ -8,7 +8,6 @@ import type { MessageTemplate } from "./types/template.types";
 
 type MetaTemplateInput = Pick<MessageTemplate, "language" | "components">;
 
-/** Builds an input from loose JSON, the way Meta's response or a lower-case template looks. */
 const fromJson = (value: unknown): MetaTemplateInput => value as MetaTemplateInput;
 
 const definitionOf = (result: TemplateDefinitionFromMetaResult) => {

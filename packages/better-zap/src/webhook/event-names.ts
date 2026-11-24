@@ -1,6 +1,5 @@
 import type { BetterZapWebhookEventName } from "../better-zap.types";
 
-/** Runtime list of every hookable webhook event, in dispatch-table order. */
 export const WEBHOOK_EVENT_NAMES = [
   "onMessage",
   "onStatusUpdate",
@@ -19,7 +18,6 @@ export const WEBHOOK_EVENT_NAMES = [
   "onTemplateComponentsUpdate",
 ] as const satisfies readonly BetterZapWebhookEventName[];
 
-// Fails to compile when a hook is added to WebhookProcessorHooks but not here.
 type MissingEventName = Exclude<
   BetterZapWebhookEventName,
   (typeof WEBHOOK_EVENT_NAMES)[number]

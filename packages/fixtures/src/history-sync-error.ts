@@ -1,6 +1,5 @@
 import type { CoexistenceWebhookPayload } from "./types";
 
-// Encodes the Meta ES v4 coexistence webhook spec (history sync / webhook field catalog): history sync opt-out errors, including code 2593109, fail the sync job.
 export const historySyncErrorFixture = {
   object: "whatsapp_business_account",
   entry: [

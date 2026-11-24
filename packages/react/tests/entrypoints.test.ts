@@ -106,7 +106,6 @@ const SUBPATH_SYMBOLS: Record<string, readonly string[]> = {
 const FORBIDDEN_GRAPH = ["@legendapp/list", "@hugeicons/"] as const;
 
 function hasLeadingUseClient(source: string): boolean {
-  // Strip BOM / leading whitespace and optional shebang; directive must lead code.
   const body = source.replace(/^\uFEFF/, "").replace(/^#!.*\n/, "");
   return /^\s*["']use client["']\s*;/.test(body);
 }
@@ -115,7 +114,6 @@ function readDist(base: string, ext: "mjs" | "cjs"): string {
   return readFileSync(path.join(distDir, `${base}.${ext}`), "utf8");
 }
 
-/** Walk relative imports from an ESM entry within dist/ and collect file sources. */
 function collectEsmGraphSources(entryBase: string): Map<string, string> {
   const sources = new Map<string, string>();
   const queue: string[] = [path.join(distDir, `${entryBase}.mjs`)];
@@ -197,10 +195,7 @@ describe("RSC / client directives on published entries", () => {
     );
     for (const file of files) {
       const source = readFileSync(path.join(distDir, file), "utf8");
-      // Shared chunks may be part of client graphs but must not receive the
-      // entry-only banner (would force server-safe importers into client mode).
       if (hasLeadingUseClient(source)) {
-        // Only fail if a server-safe entry imports this chunk.
         for (const safe of SERVER_SAFE_ENTRIES) {
           const graph = collectEsmGraphSources(safe);
           const hit = [...graph.keys()].some((p) => path.basename(p) === file);
@@ -214,8 +209,6 @@ describe("RSC / client directives on published entries", () => {
   });
 
   it("server-safe entries reach client code only through client entries", () => {
-    // A server module may import a "use client" module: that import is the
-    // client boundary. message-bubble renders LinkPreviewCard this way.
     for (const safe of SERVER_SAFE_ENTRIES) {
       const clientFiles = [...collectEsmGraphSources(safe)]
         .filter(([, source]) => hasLeadingUseClient(source))
@@ -327,7 +320,6 @@ describe("packed tarball surface", () => {
       const tgzPath = path.join(tmp, tgz!);
 
       execFileSync("tar", ["-xzf", tgzPath, "-C", tmp], { encoding: "utf8" });
-      // pnpm pack nests under package/
       const pkgDir = path.join(tmp, "package");
       expect(existsSync(pkgDir)).toBe(true);
 
@@ -381,7 +373,6 @@ describe("packed tarball surface", () => {
       expect(existsSync(path.join(packedDist, "tailwind.css"))).toBe(true);
       expect(existsSync(path.join(packedDist, "wpp-bg.webp"))).toBe(true);
 
-      // webp sits next to the chunk that references it
       const messageView = readFileSync(
         path.join(packedDist, "message-view.mjs"),
         "utf8",

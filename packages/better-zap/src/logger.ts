@@ -1,13 +1,5 @@
-/**
- * Centralized Logger for Better Zap
- *
- * Lightweight, injectable logger with structured JSON output.
- * Cloudflare Workers compatible (no external dependencies).
- */
-
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
-/** User-facing configuration (on betterZap config). */
 export interface LoggerConfig {
   disabled?: boolean;
   level?: LogLevel;
@@ -18,7 +10,6 @@ export interface LoggerConfig {
   ) => void;
 }
 
-/** Internal logger interface injected into services. */
 export interface Logger {
   debug(message: string, context?: Record<string, unknown>): void;
   info(message: string, context?: Record<string, unknown>): void;

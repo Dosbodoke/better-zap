@@ -41,7 +41,6 @@ const REQUIRED_EXPORT_NAMES = [
   "FreeformWindowClosedError",
 ] as const;
 
-/** Normative export map keys from issue #32 / plan 012 (no wildcards). */
 const EXPECTED_EXPORTS_KEYS = [
   ".",
   "./bubble",
@@ -72,7 +71,6 @@ const JS_ENTRY_BASES = [
   "utils",
 ] as const;
 
-/** Load CJS in a real CommonJS process (createRequire under ESM hits hugeicons dual-package hazard). */
 function loadCjsExportNames(cjsPath: string): string[] {
   const script = `
     const m = require(${JSON.stringify(cjsPath)});

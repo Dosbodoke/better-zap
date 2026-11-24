@@ -1,6 +1,5 @@
 import type { CoexistenceWebhookPayload } from "./types";
 
-// Encodes the Meta ES v4 coexistence webhook spec (webhook field catalog): smb_app_state_sync can remove WhatsApp contacts.
 export const smbAppStateSyncContactRemoveFixture = {
   object: "whatsapp_business_account",
   entry: [

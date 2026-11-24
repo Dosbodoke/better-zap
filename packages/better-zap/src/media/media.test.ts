@@ -9,7 +9,6 @@ import {
 } from "./message-media";
 
 const bytes = new TextEncoder().encode("fake image bytes");
-// sha256("fake image bytes")
 const BYTES_SHA256_HEX = await sha256Hex(bytes);
 const BYTES_SHA256_BASE64 = btoa(
   String.fromCharCode(...(BYTES_SHA256_HEX.match(/../g) ?? []).map((h) => parseInt(h, 16))),

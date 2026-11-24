@@ -26,7 +26,6 @@ describe("MessageInput (published surface)", () => {
     );
 
     const textarea = screen.getByRole("textbox", { name: "Mensagem" });
-    // Without onMicClick, empty state shows disabled send — not mic
     expect(screen.queryByRole("button", { name: "Gravar áudio" })).toBeNull();
     expect(
       (screen.getByRole("button", { name: "Enviar" }) as HTMLButtonElement)
@@ -203,7 +202,6 @@ describe("MessageInput (published surface)", () => {
   });
 
   it("closes freeform window when expiresAt is reached (fake timers)", async () => {
-    // Core derives expiresAt = lastIncoming + 24h (ignores freeformMessageWindow.expiresAt alone).
     const now = new Date("2026-07-11T12:00:00.000Z");
     vi.useFakeTimers({ now });
 
@@ -240,7 +238,6 @@ describe("MessageInput (published surface)", () => {
     const now = new Date("2026-07-11T12:00:00.000Z");
     vi.useFakeTimers({ now });
 
-    // Open for 5s so compose stays open; then jump past expiry and send.
     const expiresAtMs = now.getTime() + 5000;
     const lastIncoming = new Date(expiresAtMs - 24 * HOUR).toISOString();
     const expiresAt = new Date(expiresAtMs).toISOString();
@@ -271,11 +268,9 @@ describe("MessageInput (published surface)", () => {
     const textarea = screen.getByRole("textbox", {
       name: "Mensagem",
     }) as HTMLTextAreaElement;
-    // fireEvent avoids userEvent + fake-timer deadlocks
     fireEvent.change(textarea, { target: { value: "late" } });
     expect(textarea.value).toBe("late");
 
-    // Jump past expiresAt. Timer may fire (banner) or revalidate-on-send closes.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(6000);
     });

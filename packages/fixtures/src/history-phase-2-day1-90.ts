@@ -1,6 +1,5 @@
 import type { CoexistenceWebhookPayload } from "./types";
 
-// Encodes the Meta ES v4 coexistence webhook spec (history sync): history sync phase 2 covers day 1 through day 90, with progress metadata.
 export const historyPhase2Day190Fixture = {
   object: "whatsapp_business_account",
   entry: [

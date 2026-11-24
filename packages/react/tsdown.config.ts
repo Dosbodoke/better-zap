@@ -1,15 +1,5 @@
 import { defineConfig } from "tsdown";
 
-/**
- * Published entry basenames that must lead with `"use client"`.
- * Leaf client sources already contain the directive; multi-entry bundling
- * preserves it on those entry chunks. The root barrel (`index`) has no source
- * directive, so it is injected via Rolldown's per-chunk banner below.
- *
- * Do not use tsdown's top-level `banner` function for this: tsdown's
- * `resolveChunkAddon` only invokes a functional banner once and reuses the
- * first return value for every subsequent chunk (mis-tags server-safe entries).
- */
 const CLIENT_ENTRY_BASES = new Set([
   "index",
   "link-preview-card",
@@ -20,7 +10,6 @@ const CLIENT_ENTRY_BASES = new Set([
   "whatsapp-dashboard",
 ]);
 
-/** Entries that need an injected banner because source has no directive. */
 const BANNER_ENTRY_BASES = new Set(
   [...CLIENT_ENTRY_BASES].filter((base) => base === "index"),
 );

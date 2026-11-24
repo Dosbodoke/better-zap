@@ -8,7 +8,6 @@ import { cn } from "./utils";
 
 export type { LinkPreview } from "better-zap";
 
-// Each tint is a slightly darker shade of the matching Bubble variant.
 const tintByVariant: Record<BubbleVariant, string> = {
   default: "bg-[#f0f2f5]",
   primary: "bg-[#d1f4cc]",
@@ -20,26 +19,15 @@ const tintByVariant: Record<BubbleVariant, string> = {
 export interface LinkPreviewCardProps
   extends Omit<React.ComponentProps<"a">, "children"> {
   preview: LinkPreview;
-  /**
-   * Variant of the surrounding `Bubble`, so the card gets the matching tint.
-   * @default "default"
-   */
   variant?: BubbleVariant;
 }
 
-/**
- * WhatsApp-style Open Graph card: image, two-line title, two-line description
- * and the link's domain. Render it inside `BubbleContent`, above the text.
- * The image is hidden if it fails to load.
- */
 export function LinkPreviewCard({
   preview,
   variant = "default",
   className,
   ...props
 }: LinkPreviewCardProps): React.JSX.Element {
-  // Keyed by URL rather than a boolean: list rows are recycled, so the same
-  // instance can later render a different preview.
   const [failedImage, setFailedImage] = useState<string | null>(null);
   const image =
     preview.image && preview.image !== failedImage ? preview.image : null;
@@ -67,7 +55,6 @@ export function LinkPreviewCard({
           referrerPolicy="no-referrer"
           className="block max-h-[180px] w-full bg-white object-cover"
           onError={() => setFailedImage(image)}
-          // The image can fail before hydration attaches onError.
           ref={(element) => {
             if (element?.complete && element.naturalWidth === 0) {
               setFailedImage(image);

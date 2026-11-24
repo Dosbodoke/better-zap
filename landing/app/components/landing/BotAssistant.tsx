@@ -36,7 +36,6 @@ export function BotAssistant() {
       });
 
       mm.add("(prefers-reduced-motion: no-preference)", () => {
-        // Decoration: arrives once the hero and content wave have settled.
         const intro = gsap.timeline({
           paused: true,
           defaults: { ease: "power3.out" },
@@ -57,8 +56,6 @@ export function BotAssistant() {
             },
             "arrive",
           )
-          // The robot speaks once it has mostly landed; the tail is part of
-          // the balloon and comes with it.
           .fromTo(
             balloon,
             { autoAlpha: 0, y: 16, x: 10, scale: 0.86 },

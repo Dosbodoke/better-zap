@@ -104,7 +104,6 @@ export const coexistenceWebhookFixtures = {
   signatureTestPayloadFixture,
 };
 
-/** Template webhooks are addressed to a business account: no `metadata.phone_number_id`. */
 export const templateWebhookFixtures = {
   templateStatusApprovedFixture,
   templateStatusRejectedFixture,

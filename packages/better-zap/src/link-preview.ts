@@ -1,37 +1,15 @@
-/**
- * Pure helpers for WhatsApp-style link previews (Open Graph cards).
- *
- * Fetching a page is left to the app: it needs SSRF guards, timeouts, size
- * limits and caching that depend on where the app runs. These helpers only
- * find the link to preview and turn the fetched HTML into a `LinkPreview`.
- */
-
-/** Data for one link preview card. */
 export interface LinkPreview {
-  /** The page the card links to. */
   url: string;
   title: string;
   description?: string;
-  /** Absolute http(s) image URL. */
   image?: string;
   siteName?: string;
 }
 
-/**
- * Same link pattern `FormattedMessage` uses in `@better-zap/react`, so the
- * previewed link is always one that renders as an anchor in the bubble.
- */
 const LINK_PATTERN = /https?:\/\/[^\s]+/;
 
 const TRAILING_PUNCTUATION = /[).,!?;:'"\]]$/;
 
-/**
- * Returns the first http(s) link in a message, or null.
- *
- * Trailing punctuation that usually ends the sentence rather than the URL
- * (`).,!?;:'"]`) is trimmed. A closing `)` or `]` is kept when it balances an
- * opening one inside the URL, e.g. `https://en.wikipedia.org/wiki/Foo_(bar)`.
- */
 export function firstLinkIn(text: string | null | undefined): string | null {
   const match = text ? LINK_PATTERN.exec(text) : null;
   if (!match) {
@@ -51,15 +29,6 @@ export function firstLinkIn(text: string | null | undefined): string | null {
   return isHttpUrl(link) ? link : null;
 }
 
-/**
- * Builds a `LinkPreview` from a page's HTML, or returns null when the page has
- * no usable title.
- *
- * Reads `og:*` tags first, then `twitter:*`, then `<title>` and the
- * `description` meta tag. Entities are decoded, relative image URLs are
- * resolved against `pageUrl`, and only http(s) images are kept. Only the
- * `<head>` is read, so passing just the first chunk of a page works.
- */
 export function parseOpenGraph(
   html: string,
   pageUrl: string,
@@ -136,7 +105,6 @@ function isHttpUrl(value: string): boolean {
   }
 }
 
-/** Decodes entities and collapses whitespace, as browsers do for titles. */
 function clean(value: string): string {
   return decodeEntities(value).replace(/\s+/g, " ").trim();
 }
@@ -146,7 +114,6 @@ const ATTRIBUTE_PATTERN =
 
 function readAttributes(tag: string): Map<string, string> {
   const attributes = new Map<string, string>();
-  // Skip the tag name so `<meta` is never read as an attribute.
   for (const match of tag.slice(5).matchAll(ATTRIBUTE_PATTERN)) {
     const name = match[1]!.toLowerCase();
     if (!attributes.has(name)) {
@@ -168,14 +135,11 @@ function firstHttpUrl(
         return url.toString();
       }
     } catch {
-      // Invalid URL or base: try the next candidate.
     }
   }
   return undefined;
 }
 
-// Latin-1 entities (U+00A0 to U+00FF) in code point order. Portuguese and
-// Spanish pages often write accents this way (&atilde;, &ccedil;, &eacute;).
 const LATIN1_ENTITY_NAMES =
   "nbsp iexcl cent pound curren yen brvbar sect uml copy ordf laquo not shy reg macr deg plusmn sup2 sup3 acute micro para middot cedil sup1 ordm raquo frac14 frac12 frac34 iquest Agrave Aacute Acirc Atilde Auml Aring AElig Ccedil Egrave Eacute Ecirc Euml Igrave Iacute Icirc Iuml ETH Ntilde Ograve Oacute Ocirc Otilde Ouml times Oslash Ugrave Uacute Ucirc Uuml Yacute THORN szlig agrave aacute acirc atilde auml aring aelig ccedil egrave eacute ecirc euml igrave iacute icirc iuml eth ntilde ograve oacute ocirc otilde ouml divide oslash ugrave uacute ucirc uuml yacute thorn yuml".split(
     " ",
@@ -218,7 +182,6 @@ function decodeEntities(value: string): string {
           ? String.fromCodePoint(point)
           : entity;
       }
-      // Entity names are case-sensitive (&Atilde; is not &atilde;).
       return Object.hasOwn(NAMED_ENTITIES, code) ? NAMED_ENTITIES[code]! : entity;
     },
   );

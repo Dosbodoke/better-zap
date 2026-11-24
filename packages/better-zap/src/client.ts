@@ -1,19 +1,3 @@
-/**
- * Client-side SDK for Better Zap.
- *
- * Usage:
- * ```ts
- * import { createZapClient } from "better-zap/client";
- *
- * export const zapClient = createZapClient();
- *
- * // Then anywhere in your app:
- * await zapClient.send.text({ to: "5511...", body: "Hello!" });
- * const conversations = await zapClient.conversations.list();
- * const messages = await zapClient.conversations.messages("5511999998888");
- * ```
- */
-
 import type {
   SendResult,
   Conversation,
@@ -28,65 +12,22 @@ import type {
 } from "./template-registry";
 
 interface ZapClientOptions<TTemplates extends TemplateRegistry = {}> {
-  /**
-   * Base URL for the API. Defaults to `window.location.origin` in the browser.
-   * Useful for SSR or custom proxy setups.
-   */
   baseURL?: string;
-  /**
-   * Base path for all routes. Must match the `basePath` used in `betterZap()`.
-   * @default "/api/whatsapp"
-   */
   basePath?: string;
-  /**
-   * Custom fetch implementation. Defaults to the global `fetch`.
-   */
   fetch?: typeof fetch;
-  /**
-   * How requests authenticate to the Better Zap HTTP routes. Defaults to
-   * sending requests as-is (ambient same-origin cookies). See {@link ZapTransport}
-   * and the {@link sessionTransport} / {@link apiKeyTransport} built-ins.
-   */
   transport?: ZapTransport;
-  /**
-   * Optional template registry used only for type inference.
-   * The HTTP server still owns runtime serialization and validation.
-   */
   templates?: TTemplates;
 }
 
-/**
- * Controls how the client authenticates its requests to the Better Zap HTTP
- * routes. This is the seam that lets a browser client talk to the API without
- * embedding an API key: the app proxies Better Zap behind its own
- * session-authenticated routes and the client just forwards the session.
- *
- * Two built-ins cover the common cases:
- * - {@link sessionTransport} — session/proxy auth: sends same-origin
- *   credentials (cookies) and no API key. Use when a trusted server owns the
- *   session and proxies Better Zap (e.g. a dashboard's own authed routes).
- * - {@link apiKeyTransport} — sends `Authorization: Bearer <key>`. Use for
- *   server-to-server calls in a trusted environment.
- *
- * Implement the interface directly for anything else (e.g. a rotating token).
- */
 export interface ZapTransport {
-  /** Extra headers merged onto every request. Called per request, may be async. */
   headers?(): Record<string, string> | Promise<Record<string, string>>;
-  /** Fetch credentials mode; `sessionTransport` sets `"include"`. */
   credentials?: RequestCredentials;
 }
 
-/**
- * Session/proxy transport: send same-origin credentials (cookies), no API key.
- * The recommended browser default when the app proxies Better Zap behind its
- * own authenticated routes.
- */
 export function sessionTransport(): ZapTransport {
   return { credentials: "include" };
 }
 
-/** API-key transport: send `Authorization: Bearer <apiKey>` on every request. */
 export function apiKeyTransport(apiKey: string): ZapTransport {
   return { headers: () => ({ Authorization: `Bearer ${apiKey}` }) };
 }
@@ -265,7 +206,6 @@ export function createZapClient<TTemplates extends TemplateRegistry = {}>(
     });
   }
 
-  /** Strip non-digits to get the canonical 13-digit phone for URL paths. */
   function normalizePhone(phone: string): string {
     return phone.replace(/\D/g, "");
   }

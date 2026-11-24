@@ -2,15 +2,9 @@ import React from "react";
 import { cn } from "./utils";
 
 export interface InboxEmptyProps extends React.ComponentProps<"div"> {
-  /** `sm` fits the conversation list; `lg` fills the message pane. @default "sm" */
   size?: "sm" | "lg";
 }
 
-/**
- * Centered empty-state frame. Compose `InboxEmptyIllustration`,
- * `InboxEmptyTitle`, `InboxEmptyDescription` and any actions inside; the
- * parts read `size` from the frame's `data-size`.
- */
 export function InboxEmpty({
   size = "sm",
   className,
@@ -69,11 +63,9 @@ export type InboxEmptyIllustrationVariant =
 
 export interface InboxEmptyIllustrationProps
   extends React.ComponentProps<"svg"> {
-  /** @default "chat" */
   variant?: InboxEmptyIllustrationVariant;
 }
 
-/** Decorative chat-bubble drawing; hidden from assistive technology. */
 export function InboxEmptyIllustration({
   variant = "chat",
   className,
@@ -99,7 +91,6 @@ export function InboxEmptyIllustration({
 
 const SHADOW = { filter: "drop-shadow(0 1px 0.5px rgba(11,20,26,0.13))" };
 
-/** A bubble path with WhatsApp's tail on the top corner, outside the box. */
 function bubble(
   x: number,
   y: number,
@@ -135,7 +126,6 @@ function Ticks({ x, y, read }: { x: number; y: number; read: boolean }) {
   );
 }
 
-/** An exchange: incoming bubble answered by a sent one. */
 function ChatDrawing() {
   return (
     <g style={SHADOW}>
@@ -149,7 +139,6 @@ function ChatDrawing() {
   );
 }
 
-/** Dashed outlines where the first conversation will appear. */
 function OutlineDrawing() {
   return (
     <g
@@ -165,7 +154,6 @@ function OutlineDrawing() {
   );
 }
 
-/** A bubble under a magnifier. */
 function SearchDrawing() {
   return (
     <>
@@ -192,7 +180,6 @@ function SearchDrawing() {
   );
 }
 
-/** A sent bubble with blue read ticks. */
 function ReadDrawing() {
   return (
     <g style={SHADOW}>

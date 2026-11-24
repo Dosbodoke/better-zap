@@ -1,8 +1,5 @@
 import type { IncomingMessage } from "../types/whatsapp.types";
 
-/**
- * Extract human-readable content from incoming messages for audit logs.
- */
 export function getMessageContent(message: IncomingMessage): string {
   switch (message.type) {
     case "text":
@@ -32,7 +29,6 @@ export function getMessageContent(message: IncomingMessage): string {
     case "reaction":
       return "[reação]";
     case "media_placeholder":
-      // History sync omits older media. See `isMediaPlaceholder`.
       return "[mídia]";
     default:
       return `[${message.type}]`;

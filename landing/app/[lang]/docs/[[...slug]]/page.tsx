@@ -20,7 +20,6 @@ export default async function DocsPageRoute(props: {
   const page = source.getPage(params.slug, params.lang);
   if (!page) notFound();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const data = page.data as any;
   const MDX = data.body;
   const markdownUrl = getLlmsPageUrl(page);

@@ -26,7 +26,6 @@ import {
   stubLegendListLayout,
 } from "./helpers";
 
-// Ensure type exports emit in declarations (compile-time only).
 type _TypeExports = [
   MessageViewProps,
   MessageViewHeaderProps,
@@ -51,7 +50,6 @@ const conversations = [
   }),
 ];
 
-/** LegendList may pool duplicate row nodes in jsdom. */
 function findRowByName(name: string) {
   const matches = screen.getAllByText(name);
   const el = matches[0];
@@ -278,7 +276,6 @@ describe("MessageView + WhatsappDashboard", () => {
       .closest("div.flex.flex-col.h-full") as HTMLElement | null;
     expect(listRoot?.style.display).not.toBe("none");
 
-    // Message pane hidden while list is active
     const messageRoot = screen.getByTestId("message-view");
     expect(messageRoot.style.display).toBe("none");
 

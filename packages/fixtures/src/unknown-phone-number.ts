@@ -1,6 +1,5 @@
 import type { CoexistenceWebhookPayload } from "./types";
 
-// Encodes the Meta ES v4 coexistence webhook spec (webhook field catalog) routing custody: valid coexistence webhooks for unknown phone numbers are stored as unrouted raw events.
 export const unknownPhoneNumberFixture = {
   object: "whatsapp_business_account",
   entry: [

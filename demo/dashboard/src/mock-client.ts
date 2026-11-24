@@ -5,13 +5,6 @@ import type {
   UIMessageStatus,
 } from "better-zap";
 
-/**
- * In-memory stand-in for a Better Zap backend. Seeds realistic conversations,
- * simulates outgoing status transitions (sent -> delivered -> read) and
- * auto-replies, and notifies subscribers on every change so the UI can be
- * driven with useSyncExternalStore.
- */
-
 export interface MockClientState {
   conversations: Conversation[];
   messagesByConversation: Record<string, UIMessage[]>;
@@ -22,12 +15,7 @@ export interface MockWhatsappClient {
   getState: () => MockClientState;
   sendMessage: (conversationId: string, text: string) => Promise<void>;
   markConversationRead: (conversationId: string) => void;
-  /** Incoming messages on the active conversation don't increment unread. */
   setActiveConversation: (conversationId: string | null) => void;
-  /**
-   * Stand-in for a server link-preview endpoint. A real app fetches the page
-   * on its server (see the link previews guide).
-   */
   fetchLinkPreview: (url: string) => Promise<LinkPreview | null>;
 }
 
@@ -77,7 +65,6 @@ interface SeedConversation {
 const AMAZON_LINK =
   "https://www.amazon.com.br/dp/B07XQM4PH3?tag=promosmercado-20";
 
-/** Open Graph data the mock link-preview endpoint returns, by URL. */
 const LINK_PREVIEWS: Record<string, LinkPreview> = {
   [AMAZON_LINK]: {
     url: AMAZON_LINK,
@@ -193,8 +180,6 @@ const SEED: SeedConversation[] = [
     ],
   },
   {
-    // Freeform window expired: last incoming message is 3 days old, so the
-    // composer shows the 24h-window notice for this conversation.
     id: "conv-condominio",
     phone: "5548991002200",
     contactName: "Condomínio Ipê",
@@ -359,7 +344,6 @@ export function createMockWhatsappClient(): MockWhatsappClient {
     },
 
     async sendMessage(conversationId, text) {
-      // Simulated network latency.
       await new Promise((resolve) => setTimeout(resolve, 350));
 
       messageCounter += 1;
@@ -372,7 +356,6 @@ export function createMockWhatsappClient(): MockWhatsappClient {
         sentAt: new Date().toISOString(),
       });
 
-      // Type "falha" anywhere in the message to preview the failed state.
       if (/falha/i.test(text)) {
         setTimeout(() => updateMessage(conversationId, id, { status: "failed" }), 900);
         return;

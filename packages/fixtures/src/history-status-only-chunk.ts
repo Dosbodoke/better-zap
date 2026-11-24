@@ -1,6 +1,5 @@
 import type { CoexistenceWebhookPayload } from "./types";
 
-// Encodes the Meta ES v4 coexistence webhook spec (webhook field catalog): history webhooks can include statuses without messages.
 export const historyStatusOnlyChunkFixture = {
   object: "whatsapp_business_account",
   entry: [

@@ -26,10 +26,6 @@ async function sha256Hex(data: Uint8Array): Promise<string> {
   return Array.from(digest, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-// ============================================
-// In-memory stores
-// ============================================
-
 function createLogStore() {
   const rows = new Map<string, WhatsAppLogRecord>();
   const store = {
@@ -66,7 +62,6 @@ function createLogStore() {
   return { store, rows };
 }
 
-/** `beforePut` runs at the start of every upload, e.g. to slow it down. */
 function createMediaStore(
   overrides: Partial<MediaStore> = {},
   beforePut?: () => Promise<void>,
@@ -109,7 +104,6 @@ function createCoexistenceStore(): CoexistenceStore {
   } as unknown as CoexistenceStore;
 }
 
-/** Fake Durable Object namespace that records sync events. */
 function createSyncNamespace() {
   const events: SyncEvent[] = [];
   const namespace = {
@@ -123,10 +117,6 @@ function createSyncNamespace() {
   };
   return { namespace: namespace as unknown as DurableObjectNamespace, events };
 }
-
-// ============================================
-// Fake Meta Graph API
-// ============================================
 
 type MetaBehavior = {
   lookupStatus?: number;
@@ -172,10 +162,6 @@ function stubMeta(behaviors: Record<string, MetaBehavior> = {}) {
   return fetchMock;
 }
 
-// ============================================
-// App helpers
-// ============================================
-
 function createZap(input: {
   database: BetterZapDatabase;
   conversationSync?: DurableObjectNamespace;
@@ -211,7 +197,6 @@ async function postWebhook(zap: ReturnType<typeof betterZap>, payload: unknown) 
   return response;
 }
 
-/** Posts a webhook and returns as soon as Meta would get its response. */
 async function sendWebhook(zap: ReturnType<typeof betterZap>, payload: unknown) {
   const pending: Promise<unknown>[] = [];
   const response = await zap.handler(
@@ -285,10 +270,6 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-// ============================================
-// Webhook pipeline
-// ============================================
-
 describe("media download in the webhook pipeline", () => {
   it("stores incoming media and references it in metadata.media", async () => {
     const fetchMock = stubMeta();
@@ -320,7 +301,6 @@ describe("media download in the webhook pipeline", () => {
     const row = logs.rows.get("wamid.image.1");
     expect(row?.content).toBe("[imagem: foto]");
     expect(row?.metadata).toEqual({
-      // The raw media object stays next to the reference.
       image: imageMessage.image,
       media: {
         status: "stored",
@@ -384,7 +364,6 @@ describe("media download in the webhook pipeline", () => {
     );
     expect(response.status).toBe(200);
 
-    // Both hooks ran while the image upload is still in progress.
     await vi.waitFor(() => {
       expect(onMessage).toHaveBeenCalledTimes(2);
       expect(media.store.put).toHaveBeenCalledOnce();
@@ -407,7 +386,6 @@ describe("media download in the webhook pipeline", () => {
         background.push(work);
       },
     });
-    // No execution context, like a Node server.
     const response = await zap.handler(await signedWebhookRequest(messagesPayload(imageMessage)));
 
     expect(response.status).toBe(200);
@@ -448,7 +426,6 @@ describe("media download in the webhook pipeline", () => {
     stubMeta();
     const logs = createLogStore();
     const media = createMediaStore({
-      // Ignores the abort signal and never settles.
       put: vi.fn(() => new Promise<void>(() => {})),
     });
     const { zap, onMessage } = createZap({
@@ -604,13 +581,11 @@ describe("media download in the webhook pipeline", () => {
         mediaId: "media_asset_placeholder_1",
       },
     });
-    // One update for the upgrade, one for the stored media.
     expect(sync.events.map((event) => event.type)).toEqual([
       "MESSAGE_UPDATE",
       "MESSAGE_UPDATE",
     ]);
 
-    // A replayed placeholder neither downloads nor drops the stored media.
     await postWebhook(zap, historyMediaPlaceholderFixture);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(row()?.metadata.media.status).toBe("stored");
@@ -678,7 +653,6 @@ describe("media download in the webhook pipeline", () => {
 
     expect(response.status).toBe(200);
     expect(onMessage).toHaveBeenCalledOnce();
-    // Only the lookup ran; the file itself was never fetched.
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(media.store.put).not.toHaveBeenCalled();
     expect(logs.rows.get("wamid.image.1")?.metadata.media).toEqual({
@@ -742,10 +716,6 @@ describe("media download in the webhook pipeline", () => {
     }
   });
 });
-
-// ============================================
-// Serving route
-// ============================================
 
 describe("GET /api/whatsapp/media/:waMessageId", () => {
   async function setup(

@@ -35,11 +35,6 @@ function linkIn(message: UIMessage): string | null {
   return message.templateName ? null : firstLinkIn(message.content);
 }
 
-/**
- * Loads previews for the links in `messages` and returns a resolver for
- * MessageList. The resolver changes when a preview arrives, which re-renders
- * the list rows.
- */
 function useLinkPreviews(client: MockWhatsappClient, messages: UIMessage[]) {
   const [previews, setPreviews] = useState<Record<string, LinkPreview>>({});
 
@@ -69,10 +64,6 @@ function useLinkPreviews(client: MockWhatsappClient, messages: UIMessage[]) {
   );
 }
 
-/**
- * A search among unread conversations misses chats that were already read, so
- * offer to search all of them. Every other reason keeps the default content.
- */
 function UnreadSearchEmpty({ onSearchAll }: { onSearchAll: () => void }) {
   const empty = useConversationListEmpty();
   if (empty.reason !== "no-results" || empty.filter !== "unread") {
@@ -99,10 +90,6 @@ function UnreadSearchEmpty({ onSearchAll }: { onSearchAll: () => void }) {
   );
 }
 
-/**
- * Subscribes to the conversations slice only: message-level updates (status
- * ticks) that don't touch the conversations array never reach this pane.
- */
 const ConversationsPane = memo(function ConversationsPane({
   client,
   selectedId,
@@ -144,7 +131,6 @@ function SelectConversationPrompt({ unread }: { unread: number }) {
   );
 }
 
-/** Subscribes to the selected conversation and its messages only. */
 const ChatPane = memo(function ChatPane({
   client,
   selectedId,
@@ -164,7 +150,6 @@ const ChatPane = memo(function ChatPane({
       : NO_MESSAGES,
   );
 
-  // A number snapshot: only a change in the count re-renders this pane.
   const unread = useSyncExternalStore(
     client.subscribe,
     () =>

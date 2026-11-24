@@ -1,6 +1,5 @@
 import type { CoexistenceWebhookPayload } from "./types";
 
-// Encodes the Meta ES v4 coexistence webhook spec (webhook field catalog): smb_app_state_sync upserts WhatsApp contacts.
 export const smbAppStateSyncContactAddFixture = {
   object: "whatsapp_business_account",
   entry: [

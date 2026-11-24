@@ -47,19 +47,6 @@ export type CoexistenceFacebookInitOptions = {
   [key: string]: unknown;
 };
 
-/**
- * How an Embedded Signup launch ended.
- *
- * - `completed`: a FINISH session event and an authorization code both arrived.
- * - `finished_without_code`: FINISH arrived but no code did. Meta treats closing
- *   the popup on the final screen as success, but only sends the code when the
- *   customer clicks Finish.
- * - `missing_session`: a code arrived but no terminal session event did within
- *   `joinTimeoutMs`. Do not treat this as a confirmed onboarding.
- * - `cancelled` / `error`: the latest terminal session event was CANCEL / ERROR.
- * - `no_authorization`: the login callback had no code and no session arrived.
- * - `torn_down`: `teardown()` ran before the flow settled.
- */
 export type CoexistenceEmbeddedSignupStatus =
   | "completed"
   | "finished_without_code"
@@ -73,7 +60,6 @@ export type CoexistenceEmbeddedSignupResult = {
   status: CoexistenceEmbeddedSignupStatus;
   code: string | null;
   session: CoexistenceSessionEventPayload | null;
-  /** The FB.login response, or `{}` when the callback never ran. */
   loginResponse: CoexistenceFacebookLoginResponse;
   loginCallbackReceived: boolean;
 };
@@ -96,22 +82,11 @@ export type LaunchCoexistenceEmbeddedSignupInput =
       allowedOrigins?: string[];
       origin?: string;
       fbInit?: CoexistenceFacebookInitOptions;
-      /**
-       * How long to wait for the other half (session event or login callback)
-       * once a code or a FINISH/CANCEL event arrives. Meta codes expire after
-       * about 30 seconds, so keep this short.
-       * @default 5000
-       */
       joinTimeoutMs?: number;
     };
 
 export type CoexistenceEmbeddedSignupController = {
-  /**
-   * Settles exactly once. It rejects only when `FB.login` throws; every flow
-   * outcome resolves with a `status`.
-   */
   result: Promise<CoexistenceEmbeddedSignupResult>;
-  /** Removes the listener, clears timers, and settles as `torn_down` if pending. */
   teardown(): void;
 };
 
@@ -122,8 +97,6 @@ const DEFAULT_ALLOWED_ORIGINS = [
 
 const DEFAULT_JOIN_TIMEOUT_MS = 5_000;
 
-// Meta's documented session events carry no `version`; older integrations
-// sent `version: 3`. Any other explicit version is an unknown envelope.
 const SUPPORTED_SESSION_VERSIONS = new Set<unknown>([undefined, 3, "3"]);
 
 const SESSION_IDENTIFIER_FIELDS = [
@@ -240,7 +213,6 @@ export function launchCoexistenceEmbeddedSignup(
     }
   };
 
-  // Resolves before running onFinish so a throwing hook cannot strand the result.
   const settle = (options: { tornDown?: boolean } = {}) => {
     if (settled) {
       return;
@@ -284,7 +256,6 @@ export function launchCoexistenceEmbeddedSignup(
       return;
     }
 
-    // ERROR alone does not start the timer: the popup may still be open.
     const terminalEvent = terminalSession
       ? normalizeCoexistenceSessionEvent(terminalSession.event)
       : null;

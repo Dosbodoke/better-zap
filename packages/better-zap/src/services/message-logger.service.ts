@@ -1,11 +1,3 @@
-/**
- * Message Logger Service
- * LGPD-compliant logging of all WhatsApp messages.
- *
- * This service is generic and relies on interfaces for persistence and
- * optional sync event delivery.
- */
-
 import type { SendResult } from "../types/whatsapp.types";
 import type {
   Conversation,
@@ -75,10 +67,6 @@ export type CreateWhatsAppLogParams = {
   sentAt: string;
 };
 
-/**
- * Interface for database persistence of WhatsApp logs.
- * Decouples Better Zap from any specific application database package.
- */
 export interface WhatsAppLogStore {
   createWhatsAppLog(
     params: CreateWhatsAppLogParams,
@@ -91,12 +79,6 @@ export interface WhatsAppLogStore {
     updates: Partial<WhatsAppLogRecord>,
   ): Promise<void>;
 
-  /**
-   * Atomically update status only if the new status advances the lifecycle.
-   * Returns true if the row was updated, false if skipped (duplicate/regression).
-   *
-   * Progression: sent(1) → delivered(2) → read(3). failed(4) always wins.
-   */
   updateStatusIfProgressed(
     waMessageId: string,
     newStatus: WhatsAppStatus,
@@ -127,10 +109,6 @@ export interface WhatsAppLogStore {
     }>
   >;
 
-  /**
-   * Check if there's a recent outgoing message to this phone within N hours.
-   * Used for consumer-defined cooldown checks.
-   */
   hasRecentOutgoingMessage(
     phone: string,
     withinHours: number,
@@ -194,17 +172,11 @@ export class MessageLoggerService {
     );
   }
 
-  /**
-   * Check if a message with this waMessageId was already processed.
-   */
   async isDuplicate(waMessageId: string): Promise<boolean> {
     const existing = await this.store.getMessageByWaId(waMessageId);
     return !!existing;
   }
 
-  /**
-   * Log outgoing message for LGPD compliance
-   */
   async logOutgoing(params: {
     phone: string;
     userId?: string;
@@ -232,11 +204,6 @@ export class MessageLoggerService {
     return inserted.id;
   }
 
-  /**
-   * Update message status from webhook callback.
-   * Only applies if the new status advances the lifecycle (atomic, no race conditions).
-   * Returns true if the update was applied, false if skipped.
-   */
   async updateStatus(
     waMessageId: string,
     status: WhatsAppStatus,
@@ -275,12 +242,6 @@ export class MessageLoggerService {
     return updated;
   }
 
-  /**
-   * Check if there's a recent outgoing message to this phone within N hours.
-   *
-   * @param {string} phone : The phone number to check (in E.164 format)
-   * @param {number} [withinHours=24] : Time in hours to look for incoming messages
-   */
   async hasRecentOutgoingMessage(
     phone: string,
     withinHours: number = 24,
@@ -288,9 +249,6 @@ export class MessageLoggerService {
     return this.store.hasRecentOutgoingMessage(normalizeWaId(phone), withinHours);
   }
 
-  /**
-   * Log incoming message (for audit trail)
-   */
   async logIncoming(params: {
     phone: string;
     waMessageId: string;
@@ -319,30 +277,10 @@ export class MessageLoggerService {
     return true;
   }
 
-  /**
-   * Log an imported WhatsApp message with an explicit direction and timestamp.
-   * Used by coexistence history imports and app echo webhooks where the message
-   * did not originate from the local send API call.
-   *
-   * Returns true only when a new row was created. See {@link importMessage}
-   * for the detailed result, including placeholder upgrades.
-   */
   async logImportedMessage(params: ImportMessageParams): Promise<boolean> {
     return (await this.importMessage(params)) === "created";
   }
 
-  /**
-   * Import a WhatsApp message, deduplicated by `waMessageId`.
-   *
-   * When a row with the same id already exists and still holds a history media
-   * placeholder (see {@link hasPendingMedia}), and the new message has real
-   * content, the stored content and metadata are replaced and a
-   * `MESSAGE_UPDATE` sync event is sent. A placeholder never overwrites real
-   * content.
-   *
-   * Relies on `createWhatsAppLog` returning the existing row with
-   * `created: false` for a known `waMessageId`.
-   */
   async importMessage(params: ImportMessageParams): Promise<ImportMessageResult> {
     const { record, created } = await this.store.createWhatsAppLog({
       phone: normalizeWaId(params.phone),
@@ -367,16 +305,6 @@ export class MessageLoggerService {
     return "created";
   }
 
-  /**
-   * Save the result of a media download as `metadata.media` on a stored
-   * message and send a `MESSAGE_UPDATE` sync event.
-   *
-   * Only the `media` field is written; other metadata fields are kept. A
-   * stored file is never replaced by a failed or skipped result.
-   *
-   * Returns the updated record, or `null` when the message isn't stored or
-   * the update was skipped.
-   */
   async setMessageMedia(
     waMessageId: string,
     media: MessageMedia,
@@ -384,7 +312,6 @@ export class MessageLoggerService {
     const existing = await this.store.getMessageByWaId(waMessageId);
     if (!existing) return null;
 
-    // A stored file is never replaced by a later failure or skip.
     const alreadyStored = getMessageMedia(existing)?.status === "stored";
     if (alreadyStored && media.status !== "stored") return null;
 
@@ -393,7 +320,6 @@ export class MessageLoggerService {
     });
   }
 
-  /** Writes `updates` to a stored message and sends `MESSAGE_UPDATE`. */
   private async updateMessage(
     waMessageId: string,
     existing: WhatsAppLogRecord,
@@ -412,7 +338,6 @@ export class MessageLoggerService {
     if (!existing || !hasPendingMedia(existing)) return false;
     if (hasPendingMedia({ metadata: params.metadata })) return false;
 
-    // Keep stored fields the follow-up lacks (e.g. the original requestId).
     const metadata = mergeDefined(asRecord(existing.metadata), params.metadata);
     delete metadata.mediaPending;
 
@@ -435,9 +360,4 @@ export type ImportMessageParams = {
   metadata?: Record<string, unknown>;
 };
 
-/**
- * - `created`: a new row was stored.
- * - `duplicate`: a row with this `waMessageId` already existed and was left as is.
- * - `upgraded`: a stored media placeholder was replaced with the real media.
- */
 export type ImportMessageResult = "created" | "duplicate" | "upgraded";

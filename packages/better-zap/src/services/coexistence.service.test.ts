@@ -422,8 +422,6 @@ describe("CoexistenceService", () => {
   describe("SMB App Data sync request contract", () => {
     type SyncType = "smb_app_state_sync" | "history";
 
-    // Mirrors Meta's documented request: both fields are required, and Graph
-    // rejects anything else with an OAuthException code 100.
     const createStrictGraph = () => {
       const requests: { url: string; authorization?: string; body: unknown }[] =
         [];

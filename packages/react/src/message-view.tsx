@@ -20,10 +20,6 @@ import { MessageBubble, type MessageBubbleProps } from "./message-bubble";
 import { useOptionalWhatsappDashboard } from "./whatsapp-dashboard";
 
 export interface MessageViewProps extends React.ComponentProps<"div"> {
-  /**
-   * Replaces the default `MessageViewEmpty` content when there are no
-   * children (desktop / standalone only).
-   */
   empty?: React.ReactNode;
   children?: React.ReactNode;
 }
@@ -43,7 +39,6 @@ export function MessageView({
   const isVisible = !isMobile || mobileView === "chat";
 
   if (!hasContent) {
-    // Don't show empty state on mobile — the conversation list is shown instead
     if (isMobile) return null;
     return (
       <MessageViewEmpty className={className} style={style} {...props}>
@@ -72,7 +67,6 @@ export function MessageView({
   );
 }
 
-// Header Component
 export interface MessageViewHeaderLabels {
   back: string;
   info: string;
@@ -87,12 +81,9 @@ export interface MessageViewHeaderProps extends React.ComponentProps<"div"> {
   conversation?: Conversation;
   onBack?: () => void;
   onInfoClick?: () => void;
-  /** Force the back button outside dashboard context. Default: ctx?.isMobile ?? false */
   showBackButton?: boolean;
-  /** Replaces the right-side default info button entirely. */
   actions?: React.ReactNode;
   labels?: Partial<MessageViewHeaderLabels>;
-  /** children replace the identity block (name + phone) when provided. */
   children?: React.ReactNode;
 }
 
@@ -178,11 +169,9 @@ export function MessageViewHeader({
   );
 }
 
-// Content Component (Scrollable area)
 export interface MessageViewContentProps extends React.ComponentProps<"div"> {
   children?: React.ReactNode;
   autoScroll?: boolean;
-  /** Called when the user scrolls to the top of the container. */
   onScrollTop?: () => void;
 }
 
@@ -213,28 +202,20 @@ export function MessageViewContent({
   );
 }
 
-// Standalone Message List
-
 export type MessageGroupPosition = "single" | "first" | "middle" | "last";
 
 export interface MessageRenderContext {
   message: UIMessage;
-  /** Stable list identity — always message.id. */
   id: string;
   direction: "incoming" | "outgoing";
-  /** Presentation alignment: incoming → "start", outgoing → "end". */
   align: "start" | "end";
   groupPosition: MessageGroupPosition;
-  /** Result of renderMessageLabel, when provided. */
   label?: string;
-  /** Result of resolveLinkPreview, when it returned a preview. */
   linkPreview?: LinkPreview;
 }
 
 export interface DateDividerRenderContext {
-  /** Formatted label (output of formatDate / getDisplayDate). */
   label: string;
-  /** sentAt of the first message under this divider (raw ISO string). */
   date: string;
 }
 
@@ -242,27 +223,15 @@ export interface MessageListProps {
   messages: UIMessage[];
   renderMessage?: (context: MessageRenderContext) => React.ReactNode;
   renderDateDivider?: (context: DateDividerRenderContext) => React.ReactNode;
-  /** Formats divider labels. Default: getDisplayDate (pt-BR HOJE/ONTEM). */
   formatDate?: (isoDate: string) => string;
-  /** Formats the in-bubble timestamp used by the DEFAULT renderer. Default: pt-BR HH:mm. */
   formatTime?: (isoDate: string) => string;
   renderMessageLabel?: (message: UIMessage) => string | undefined;
-  /**
-   * Returns the Open Graph card for a message, shown by the default renderer
-   * and passed to `renderMessage` as `linkPreview`. Must be synchronous: keep
-   * fetched previews in state and pass a new function (e.g. from
-   * `useCallback`) when they change; rows re-render when its identity changes.
-   */
   resolveLinkPreview?: (message: UIMessage) => LinkPreview | null | undefined;
-  /** Direct props — context from MessageViewContent still works; these win over it. */
   autoScroll?: boolean;
   onScrollTop?: () => void;
   className?: string;
 }
 
-// Memoized default renderers: a change to one message (e.g. a status tick)
-// re-renders that bubble only. Props are primitives except linkPreview, which
-// is compared by value so resolvers may return a fresh object each call.
 const MemoizedMessageBubble = React.memo(
   MessageBubble,
   areMessageBubblePropsEqual,
@@ -274,7 +243,7 @@ type MessageListItem =
       type: "date";
       id: string;
       label: string;
-      date: string; // raw sentAt of first message in section
+      date: string;
     }
   | {
       type: "message";
@@ -289,7 +258,6 @@ function areMessageBubblePropsEqual(
 ): boolean {
   const { linkPreview: prevPreview, ...prevRest } = prev;
   const { linkPreview: nextPreview, ...nextRest } = next;
-  // null and undefined both mean "no card", so they render the same.
   const previewsEqual =
     prevPreview && nextPreview
       ? shallowEqual(prevPreview, nextPreview)
@@ -464,7 +432,6 @@ export function MessageList({
   );
 }
 
-// Date Divider
 export function DateDivider({
   children,
   className,
@@ -485,7 +452,6 @@ export function DateDivider({
   );
 }
 
-// Empty State
 export function MessageViewEmpty({
   className,
   children,

@@ -21,6 +21,8 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm lint:comments
+      - run: pnpm test:lint-comments
       - run: pnpm build
       - run: pnpm typecheck
       - run: pnpm landing:typecheck

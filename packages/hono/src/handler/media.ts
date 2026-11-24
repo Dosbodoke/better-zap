@@ -7,26 +7,12 @@ import {
 } from "better-zap";
 import type { BetterZapEnv } from "./types";
 
-/** Stored files never change, so browsers may cache them for a year. */
 const IMMUTABLE_CACHE_CONTROL = "private, max-age=31536000, immutable";
 
-/** Default lifetime of the presigned URL the route redirects to. */
 export const DEFAULT_MEDIA_SIGNED_URL_EXPIRES_IN = 3600;
 
-/**
- * Types shown inline. Everything else (HTML, SVG, scripts, unknown files) is
- * served as a download with a sandbox CSP, so a file sent by a contact can't
- * run script on the app's origin.
- */
 const INLINE_TYPES = /^(image\/(jpeg|png|gif|webp|avif)|audio\/[\w.+-]+|video\/[\w.+-]+|application\/pdf)$/i;
 
-/**
- * `GET {basePath}/media/:waMessageId`
- *
- * Serves the stored media of a message. Redirects inline-safe types to a
- * presigned URL when the `MediaStore` has `getSignedUrl`; streams everything
- * else.
- */
 export async function handleGetMedia(c: Context<BetterZapEnv>) {
   const mediaStore = c.get("mediaStore");
   const waMessageId = c.req.param("waMessageId");
@@ -40,8 +26,6 @@ export async function handleGetMedia(c: Context<BetterZapEnv>) {
   const media = getStoredMessageMedia(record);
   if (!media) return notFound(c);
 
-  // Only inline-safe types redirect: the bucket would serve anything else
-  // (HTML, SVG) without the download headers set below.
   const getSignedUrl = mediaStore.getSignedUrl?.bind(mediaStore);
   if (getSignedUrl && isInlineType(media.contentType)) {
     const expiresIn = clampSignedUrlExpiry(
@@ -50,7 +34,6 @@ export async function handleGetMedia(c: Context<BetterZapEnv>) {
     const [url, signError] = await tryCatch(() => getSignedUrl(media.key, expiresIn));
     if (signError) return internalError(c, signError);
 
-    // Cache the redirect for less time than the signed URL lives.
     const maxAge = Math.max(0, Math.floor(expiresIn - 60));
     return new Response(null, {
       status: 302,

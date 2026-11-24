@@ -10,7 +10,7 @@ import React, {
 } from "react";
 import { cn } from "./utils";
 
-const MOBILE_BREAKPOINT = 1024; // matches `lg` in Tailwind
+const MOBILE_BREAKPOINT = 1024;
 
 function useIsMobile(enabled = true) {
   const [isMobile, setIsMobile] = useState(false);
@@ -47,7 +47,6 @@ export function useWhatsappDashboard() {
   return ctx;
 }
 
-/** Returns the dashboard context, or null when rendered outside <WhatsappDashboard>. */
 export function useOptionalWhatsappDashboard(): WhatsappDashboardContextValue | null {
   return useContext(WhatsappDashboardContext);
 }
@@ -55,10 +54,8 @@ export function useOptionalWhatsappDashboard(): WhatsappDashboardContextValue | 
 export interface WhatsappDashboardProps extends React.ComponentProps<"div"> {
   children: React.ReactNode;
   defaultMobileView?: MobileView;
-  /** Controlled mobile navigation view. When set, local state is not updated. */
   mobileView?: MobileView;
   onMobileViewChange?: (view: MobileView) => void;
-  /** Override media-query detection (e.g. app-owned responsive state). */
   isMobile?: boolean;
 }
 

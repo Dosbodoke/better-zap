@@ -1,6 +1,5 @@
 import type { CoexistenceWebhookPayload } from "./types";
 
-// Encodes the Meta ES v4 coexistence webhook spec (webhook field catalog): account_reconnected tracks re-registration, reinstall, and device-switch reconnects.
 export const accountReconnectedFixture = {
   object: "whatsapp_business_account",
   entry: [

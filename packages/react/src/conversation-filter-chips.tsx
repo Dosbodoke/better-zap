@@ -11,10 +11,6 @@ export interface ConversationFilterChipsProps {
   labels?: { all: string; unread: string };
 }
 
-/**
- * Memoized: with stable onValueChange and labels, typing in the search box
- * doesn't re-render the chips.
- */
 export const ConversationFilterChips = React.memo(
   function ConversationFilterChips({
     value,
