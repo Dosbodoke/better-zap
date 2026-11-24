@@ -35,16 +35,7 @@ export interface MessageBubbleProps extends React.HTMLAttributes<HTMLDivElement>
   status?: UIMessageStatus | string;
   templateName?: string;
   label?: string;
-  /**
-   * Position within a run of same-direction messages. Controls the corner
-   * tail (first/single only) and the gap to the next message, mirroring
-   * WhatsApp's grouping. @default "single"
-   */
   groupPosition?: MessageBubbleGroupPosition;
-  /**
-   * Open Graph card shown inside the bubble, above the text. The bubble takes
-   * WhatsApp's fixed preview width while a card is shown.
-   */
   linkPreview?: LinkPreview | null;
 }
 
@@ -80,7 +71,6 @@ export function MessageBubble({
   const hasTail = groupPosition === "single" || groupPosition === "first";
   const endsGroup = groupPosition === "single" || groupPosition === "last";
 
-  // Display content or template name as fallback
   const displayContent =
     content ||
     (templateName
@@ -122,7 +112,6 @@ export function MessageBubble({
 
             <FormattedMessage text={displayContent} />
 
-            {/* Timestamp and Status */}
             <div className="float-right -mb-1 ml-2 mt-1.5 flex items-center justify-end gap-1 shrink-0 h-[15px] select-none">
               {timestamp && (
                 <span className="text-[11px] text-[#111b21]/60 leading-none whitespace-nowrap">
@@ -151,7 +140,6 @@ export function MessageBubble({
 export function FormattedMessage({ text }: { text: string }) {
   if (!text) return null;
 
-  // Split by newlines first to handle them explicitly
   const lines = text.split(/(\n)/g);
 
   return (

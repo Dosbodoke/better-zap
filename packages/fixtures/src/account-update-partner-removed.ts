@@ -1,6 +1,5 @@
 import type { CoexistenceWebhookPayload } from "./types";
 
-// Encodes the Meta ES v4 coexistence webhook spec (webhook field catalog): account_update includes PARTNER_REMOVED lifecycle events with WABA info.
 export const accountUpdatePartnerRemovedFixture = {
   object: "whatsapp_business_account",
   entry: [

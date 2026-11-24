@@ -18,7 +18,6 @@ type DownloadContext = {
   fetch: typeof fetch;
 };
 
-/** Returned by one download pass when the 5-minute URL expired before use. */
 const URL_EXPIRED = Symbol("url_expired");
 
 class TooLargeError extends Error {
@@ -27,24 +26,13 @@ class TooLargeError extends Error {
   }
 }
 
-/**
- * Downloads a WhatsApp media file:
- * 1. `GET /{media-id}` returns a download URL that expires after 5 minutes.
- * 2. The URL is fetched with the same bearer token. On 404 a new URL is
- *    requested once.
- *
- * Never throws. Files over `maxBytes` are not read.
- */
 export async function downloadMetaMedia(input: {
   mediaId: string;
   accessToken: string;
-  /** Versioned Graph API base, e.g. `https://graph.facebook.com/v25.0`. */
   graphUrl: string;
   options?: MediaDownloadOptions;
   fetch?: typeof fetch;
 }): Promise<MediaDownloadResult> {
-  // Every step reports its own errors; this guard keeps the "never throws"
-  // promise for anything unexpected (e.g. a custom fetch that throws synchronously).
   const [result, error] = await tryCatch(() => download(input));
   if (error) return failed(`Media download failed: ${error.message}`);
   return result;
@@ -152,7 +140,6 @@ async function describeError(response: Response): Promise<string> {
   return `HTTP ${response.status}: ${message}`;
 }
 
-/** Reads the body, stopping with a `TooLargeError` once it passes `maxBytes`. */
 async function readLimited(
   response: Response,
   maxBytes: number,
@@ -190,11 +177,6 @@ async function readLimited(
   return [out.buffer, null];
 }
 
-/**
- * Meta's docs don't say whether the hash is hex or base64, so both are
- * accepted. Values that are neither (e.g. test fixtures) are ignored rather
- * than failing the download.
- */
 function sha256Matches(actualHex: string, expected: string): boolean {
   const trimmed = expected.trim();
   if (/^[0-9a-f]{64}$/i.test(trimmed)) return trimmed.toLowerCase() === actualHex;
@@ -204,13 +186,10 @@ function sha256Matches(actualHex: string, expected: string): boolean {
   return bytesToHex(bytes) === actualHex;
 }
 
-/** Decodes standard or URL-safe base64. Returns `undefined` for anything else. */
 function decodeBase64(value: string): Uint8Array | undefined {
   if (!/^[A-Za-z0-9+/_-]+={0,2}$/.test(value)) return undefined;
 
   const standard = value.replace(/-/g, "+").replace(/_/g, "/");
-  // The two inputs atob rejects once the alphabet is valid (forgiving-base64):
-  // padding on a length that isn't a multiple of 4, and 1 dangling character.
   if (standard.includes("=") && standard.length % 4 !== 0) return undefined;
   if (standard.replace(/=+$/, "").length % 4 === 1) return undefined;
 

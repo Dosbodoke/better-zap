@@ -19,7 +19,6 @@ import {
   stubLegendListLayout,
 } from "./helpers";
 
-// Ensure type exports emit in declarations (compile-time only).
 type _TypeExports = [
   MessageListProps,
   MessageRenderContext,
@@ -100,8 +99,6 @@ describe("MessageList (published surface)", () => {
       expect(screen.getByText("Assistente")).toBeTruthy();
     });
 
-    // LegendList absolute-position pooling can reorder date dividers in the DOM
-    // tree; assert chronological order among message bodies instead.
     const messageOrder = textDocumentOrder(container, [
       "ontem",
       "hoje-a",
@@ -214,7 +211,6 @@ describe("MessageList (published surface)", () => {
   });
 
   it("computes every grouping position: single, first, middle, last", async () => {
-    // three consecutive incoming (same day) + one outgoing single
     const messages = [
       createMessage({
         id: "g1",
@@ -304,14 +300,12 @@ describe("MessageList (published surface)", () => {
     });
 
     await waitFor(() => {
-      // yesterday: first/last pair
       expect(screen.getByTestId("row-y1").getAttribute("data-group")).toBe(
         "first",
       );
       expect(screen.getByTestId("row-y2").getAttribute("data-group")).toBe(
         "last",
       );
-      // today starts a new group despite same direction
       expect(screen.getByTestId("row-t1").getAttribute("data-group")).toBe(
         "first",
       );
@@ -440,7 +434,6 @@ describe("MessageList (published surface)", () => {
       }),
     ];
 
-    // Standalone — no provider; props must not throw
     expect(() =>
       renderList({
         messages,
@@ -465,9 +458,6 @@ describe("MessageList (published surface)", () => {
       }),
     ];
 
-    // Render under context with opposite handlers. LegendList may fire
-    // onStartReached on mount in jsdom — the prop callback must receive it,
-    // not the context one (direct props win).
     render(
       <div style={{ height: 800, width: 400 }}>
         <MessageViewContent autoScroll={true} onScrollTop={contextOnScrollTop}>
@@ -483,9 +473,7 @@ describe("MessageList (published surface)", () => {
     await waitFor(() => {
       expect(screen.getByText("ctx")).toBeTruthy();
     });
-    // Context handler must never run when a direct prop is provided.
     expect(contextOnScrollTop).not.toHaveBeenCalled();
-    // LegendList typically fires onStartReached once at mount with short lists.
     await waitFor(() => {
       expect(propOnScrollTop).toHaveBeenCalled();
     });
@@ -514,12 +502,9 @@ describe("MessageList (published surface)", () => {
 
     renderList({
       messages,
-      // Force identical labels for the two invalid timestamps
       formatDate: (iso) =>
         iso === "2026-04-04T10:00:00.000Z" ? "VALID" : "Invalid Date",
       renderDateDivider: ({ label, date }) => {
-        // Capture identity via label + raw date sequence; ids are internal
-        // but we can observe duplicate labels render twice.
         dateRowIds.push(`${label}::${date}`);
         return (
           <div
@@ -542,7 +527,6 @@ describe("MessageList (published surface)", () => {
       expect(screen.getByText("bad-b")).toBeTruthy();
     });
 
-    // Two separate date sections for the same label with different raw dates
     expect(dateRowIds.filter((r) => r.startsWith("Invalid Date::"))).toHaveLength(
       2,
     );

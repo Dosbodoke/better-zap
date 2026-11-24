@@ -24,20 +24,15 @@ import { META_API_VERSION, META_BASE_URL } from "./coexistence.service";
 const NUMERIC_ID = /^\d+$/;
 
 export interface TemplateServiceConfig {
-  /** Token used when a call passes none and no `tokenProvider` is set. */
   accessToken?: string;
-  /** Resolves a token per call. Receives the call's `wabaId`. Wins over `accessToken`. */
   tokenProvider?: MetaAccessTokenProvider;
-  /** Business account used when a call passes none. */
   wabaId?: string;
-  /** Meta app id. Needed only by `uploadHeaderMedia`. */
   appId?: string;
   graphApiVersion?: string;
   graphBaseUrl?: string;
   fetch?: typeof fetch;
 }
 
-/** Present on every call. Both override the service config for that call. */
 export interface TemplateCallOptions {
   wabaId?: string;
   accessToken?: string;
@@ -48,11 +43,9 @@ export interface ListMessageTemplatesInput extends TemplateCallOptions {
   category?: MessageTemplateCategory;
   language?: string;
   name?: string;
-  /** Page size. Meta's default applies when omitted. */
   limit?: number;
   after?: string;
   before?: string;
-  /** Defaults to `DEFAULT_MESSAGE_TEMPLATE_FIELDS`. */
   fields?: readonly string[];
 }
 
@@ -66,10 +59,6 @@ type MessageTemplateListResponse = {
   paging?: { cursors?: { before?: string; after?: string }; next?: unknown };
 };
 
-/**
- * Manages WhatsApp message templates through Meta's Graph API. Never throws:
- * every method returns a `TemplateResult`. Calls are not retried.
- */
 export class TemplateService {
   private readonly accessToken?: string;
   private readonly tokenProvider?: MetaAccessTokenProvider;
@@ -89,7 +78,6 @@ export class TemplateService {
     this.fetchImpl = config.fetch ?? defaultFetch;
   }
 
-  /** One page. */
   async list(
     input: ListMessageTemplatesInput = {},
   ): Promise<TemplateResult<MessageTemplatePage>> {
@@ -134,10 +122,8 @@ export class TemplateService {
     };
   }
 
-  /** Every page, following `after` cursors. Stops after `maxPages` (default 100). */
   async listAll(
     input: Omit<ListMessageTemplatesInput, "after" | "before" | "limit"> & {
-      /** Defaults to 100. */
       pageSize?: number;
       maxPages?: number;
     } = {},
@@ -175,11 +161,9 @@ export class TemplateService {
     });
   }
 
-  /** Validates the template first unless `validate` is `false`. */
   async create(
     input: TemplateCallOptions & {
       template: MessageTemplateDefinition;
-      /** Defaults to `true`. `false` sends the template without local validation. */
       validate?: boolean;
     },
   ): Promise<
@@ -221,12 +205,10 @@ export class TemplateService {
     });
   }
 
-  /** Validates `changes.components`, when given, unless `validate` is `false`. */
   async update(
     input: TemplateCallOptions & {
       templateId: string;
       changes: MessageTemplateChanges;
-      /** Defaults to `true`. `false` sends the components without local validation. */
       validate?: boolean;
     },
   ): Promise<TemplateResult<{ success: boolean }>> {
@@ -256,7 +238,6 @@ export class TemplateService {
     });
   }
 
-  /** Deletes one language of a template. Needs both the id and the name. */
   async delete(
     input: TemplateCallOptions & { templateId: string; name: string },
   ): Promise<TemplateResult<{ success: boolean }>> {
@@ -272,7 +253,6 @@ export class TemplateService {
     });
   }
 
-  /** Deletes the template in every language. */
   async deleteAllLanguages(
     input: TemplateCallOptions & { name: string },
   ): Promise<TemplateResult<{ success: boolean }>> {
@@ -287,16 +267,11 @@ export class TemplateService {
     });
   }
 
-  /**
-   * Uploads a sample file for a media header and returns the handle to put in
-   * `example.header_handle`. Makes two requests to Meta.
-   */
   async uploadHeaderMedia(
     input: TemplateCallOptions & {
       file: Blob | ArrayBuffer | Uint8Array;
       fileName: string;
       fileType: TemplateHeaderMediaType;
-      /** Overrides the service config for this call. */
       appId?: string;
     },
   ): Promise<TemplateResult<{ handle: string }>> {
@@ -342,8 +317,6 @@ export class TemplateService {
     });
     if (!session.success) return session;
 
-    // The id can carry a query string (`upload:<SESSION>?sig=...`), which
-    // becomes the query of the upload request.
     const sessionId = session.data?.id;
     if (
       typeof sessionId !== "string" ||
@@ -358,7 +331,6 @@ export class TemplateService {
       method: "POST",
       authScheme: "OAuth",
       headers: { file_offset: "0" },
-      // DOM typings reject a `Uint8Array` over an `ArrayBufferLike`; fetch takes it.
       rawBody: file as BodyInit,
     });
     if (!upload.success) return upload;
@@ -371,7 +343,6 @@ export class TemplateService {
     return { success: true, data: { handle } };
   }
 
-  /** Returns the numeric business account id, or the failure to return instead. */
   private resolveWabaId(input: TemplateCallOptions): string | TemplateFailure {
     const wabaId = input.wabaId ?? this.wabaId;
     if (!wabaId) {
@@ -385,7 +356,6 @@ export class TemplateService {
     return isNumericId(wabaId) ? wabaId : invalidId("wabaId");
   }
 
-  /** Resolves the token for this call, then sends the request. */
   private async send<TData>(
     input: TemplateCallOptions,
     wabaId: string | undefined,
@@ -397,7 +367,6 @@ export class TemplateService {
     return this.request(token.data, request);
   }
 
-  /** `accessToken` on the call, then `tokenProvider`, then the configured token. */
   private async resolveToken(
     input: TemplateCallOptions,
     wabaId: string | undefined,
@@ -468,7 +437,6 @@ function invalidTemplate(issues: MessageTemplateIssue[]): TemplateFailure {
   return { ...invalidInput(`Invalid template: ${issues[0]!.message}`), issues };
 }
 
-/** Copies only the listed keys, leaving out the ones that are `undefined`. */
 function pickDefined<T extends object, K extends keyof T>(
   source: T,
   keys: readonly K[],

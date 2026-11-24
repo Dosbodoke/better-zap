@@ -1,7 +1,5 @@
 import type { CoexistenceWebhookPayload } from "./types";
 
-// Encodes Meta's history webhook reference: media in history sync arrives as `type: "media_placeholder"` with the content omitted, inside `history[].threads[].messages`.
-// Stage 1 of 2. See historyMediaPlaceholderFollowUpFixture for the real media.
 export const historyMediaPlaceholderFixture = {
   object: "whatsapp_business_account",
   entry: [

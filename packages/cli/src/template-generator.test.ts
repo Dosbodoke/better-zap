@@ -262,7 +262,6 @@ describe("template generator CLI helpers", () => {
     });
     expect(preferred.registry.order_ready?.language).toBe("pt_BR");
 
-    // A default language the template does not have falls back to sorting.
     const missing = buildTemplateRegistry(templates, {
       defaultLanguage: "es_ES",
     });
@@ -359,7 +358,6 @@ describe("template generator CLI helpers", () => {
     });
     expect(await readFile(output, "utf8")).toContain('"order_ready"');
 
-    // With every status the pending template is generated too, so the file changes.
     await expect(
       runGenerateCommand({
         accessToken: "token",

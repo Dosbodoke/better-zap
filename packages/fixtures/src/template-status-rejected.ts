@@ -1,6 +1,5 @@
 import type { TemplateWebhookPayload } from "./types";
 
-// Encodes Meta's message_template_status_update webhook reference: a template rejected with rejection_info.
 export const templateStatusRejectedFixture = {
   object: "whatsapp_business_account",
   entry: [

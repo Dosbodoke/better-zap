@@ -12,3 +12,10 @@ instead of switching the active account:
 ```sh
 GH_TOKEN="$(gh auth token --user Dosbodoke)" gh pr create ...
 ```
+
+## Code comments
+
+Source files have no comments. `pnpm lint:comments` fails CI on new ones.
+Record a non-obvious decision in `docs/adr` instead (see
+`docs/adr/0001-no-code-comments.md`), and use the `/delete-comment` skill to
+clear comments that are left.

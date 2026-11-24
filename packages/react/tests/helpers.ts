@@ -3,7 +3,6 @@ import { vi } from "vitest";
 
 const HOUR = 60 * 60 * 1000;
 
-/** Conversation with an open freeform window relative to `now` (default: real now). */
 export function createConversation(
   overrides: Partial<Conversation> = {},
   now: Date = new Date(),
@@ -30,7 +29,6 @@ export function createConversation(
     lastIncomingMessageAt,
     freeformMessageWindow,
     ...overrides,
-    // Keep window fields consistent after spread when not explicitly overridden
     lastIncomingMessageAt:
       overrides.lastIncomingMessageAt ?? lastIncomingMessageAt,
     freeformMessageWindow:
@@ -74,7 +72,6 @@ export function createMessage(
   };
 }
 
-/** Mobile viewport for WhatsappDashboard (max-width: 1023px). */
 export function mockMatchMedia(matches: boolean) {
   Object.defineProperty(window, "matchMedia", {
     writable: true,
@@ -92,10 +89,6 @@ export function mockMatchMedia(matches: boolean) {
   });
 }
 
-/**
- * LegendList measures container size via DOM geometry.
- * Stub common measurements so virtualized rows can mount in jsdom.
- */
 export function stubLegendListLayout(height = 600, width = 360) {
   Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
     configurable: true,

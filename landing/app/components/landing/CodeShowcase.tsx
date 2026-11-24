@@ -47,7 +47,7 @@ const bulletKeys = [
 
 export function CodeShowcase() {
   const t = useTranslations();
-  const [activeTab, setActiveTab] = useState(1); // default to pnpm
+  const [activeTab, setActiveTab] = useState(1);
 
   return (
     <div className="space-y-10 lg:pt-[20vh]">
@@ -93,7 +93,6 @@ export function CodeShowcase() {
         ))}
       </ul>
 
-      {/* Installation code block */}
       <div
         data-desktop-intro
         data-scroll-reveal
@@ -138,7 +137,6 @@ export function CodeShowcase() {
         </div>
       </div>
 
-      {/* Usage code block */}
       <div
         data-scroll-reveal
         className="scroll-mt-20 pt-10"

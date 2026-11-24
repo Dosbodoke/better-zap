@@ -68,7 +68,6 @@ describe("MessageBubble (published surface)", () => {
       />,
     );
     expect(screen.getByText("[Template: hello_world]")).toBeTruthy();
-    // header chip also mentions the template name
     expect(screen.getByText("hello_world")).toBeTruthy();
   });
 

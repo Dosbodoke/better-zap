@@ -17,7 +17,6 @@ declare module "react" {
   }
 }
 
-// --- Shader Code ---
 const vertexShader = `
 varying vec2 vUv;
 void main() {
@@ -221,8 +220,6 @@ function HighlightedWhatsAppLine({
   );
 }
 
-// --- Main Component ---
-
 export default function HeroGeometric() {
   const t = useTranslations("heroMain");
   const locale = useLocale();
@@ -251,7 +248,6 @@ export default function HeroGeometric() {
         if (chip) {
           gsap.set(chip, { autoAlpha: 1, rotation: -3, scale: 1 });
         }
-        // Collapse the wave: no movement or delays, one shared fade.
         gsap.fromTo(
           [...heroElements, ...actions],
           { autoAlpha: 0 },
@@ -264,7 +260,6 @@ export default function HeroGeometric() {
           defaults: { ease: "power3.out" },
         });
 
-        // Crossfades with the CSS fallback in HeroGeometricClient (700ms ease-out).
         if (background) {
           tl.fromTo(
             background,
@@ -274,8 +269,6 @@ export default function HeroGeometric() {
           );
         }
 
-        // Headline lines lead and travel furthest; the description follows
-        // with less. Gaps shrink so the group reads as one wave.
         const [line1, line2, description] = heroElements;
         const copyBeats = [
           { target: line1, at: 0.08, y: 24, duration: 0.6 },
@@ -296,7 +289,6 @@ export default function HeroGeometric() {
           );
         }
 
-        // Accent inside line 1: pops in place and lands as the line settles.
         if (chip) {
           tl.fromTo(
             chip,
@@ -312,7 +304,6 @@ export default function HeroGeometric() {
           );
         }
 
-        // Side-by-side CTAs are one beat, so they arrive together.
         tl.fromTo(
           actions,
           { autoAlpha: 0, y: 8, scale: 0.98 },
@@ -339,7 +330,6 @@ export default function HeroGeometric() {
       ref={rootRef}
       className="relative flex h-full w-full flex-col items-center justify-center bg-[#E8FFF0] text-black"
     >
-      {/* Background Shader */}
       <div
         data-hero-background
         className="pointer-events-none absolute -inset-1 z-0"
@@ -356,7 +346,6 @@ export default function HeroGeometric() {
         </Canvas>
       </div>
 
-      {/* Content */}
       <div className="relative z-10 w-full flex flex-col items-center justify-center lg:justify-start px-6 py-12 md:py-0 lg:pt-[20vh] lg:-translate-y-14">
         <div className="flex flex-col items-center text-center gap-2 md:gap-4 mb-8">
           <h1

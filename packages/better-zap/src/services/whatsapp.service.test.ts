@@ -5,10 +5,6 @@ import { createFreeformMessageWindow } from "../freeform-message-window";
 import { formatPhone } from "../utils/phone";
 import { stubWorkersFetch } from "../test-utils/workers-fetch";
 
-// ============================================
-// Helpers
-// ============================================
-
 function makeEnv(overrides: Partial<WhatsAppConfig> = {}): WhatsAppConfig {
   return {
     token: "test-token",
@@ -78,10 +74,6 @@ function mockFetchError(status: number, errorMessage = "Error", code = 100) {
       }),
   });
 }
-
-// ============================================
-// Tests
-// ============================================
 
 describe("WhatsAppService", () => {
   beforeEach(() => {

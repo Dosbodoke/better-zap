@@ -1,6 +1,5 @@
 import type { CoexistenceWebhookPayload } from "./types";
 
-// Encodes the Meta ES v4 coexistence webhook spec (history sync): group chats are excluded; this is the individual-chat-only wire shape Meta sends.
 export const historyGroupExcludedFixture = {
   object: "whatsapp_business_account",
   entry: [

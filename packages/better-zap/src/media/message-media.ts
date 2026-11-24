@@ -9,18 +9,12 @@ import {
 
 export interface MessageMediaPayload {
   type: StorableMediaType;
-  /** Meta media id. Expires 7 days after the webhook. */
   id: string;
   mimeType?: string;
   sha256?: string;
   filename?: string;
 }
 
-/**
- * Returns the media object of an image, audio, video, document or sticker
- * message. Returns `undefined` for other types and for history media
- * placeholders, which carry no media.
- */
 export function getMessageMediaPayload(
   message: { type?: unknown; [key: string]: unknown } | null | undefined,
 ): MessageMediaPayload | undefined {
@@ -40,11 +34,6 @@ export function getMessageMediaPayload(
   };
 }
 
-/**
- * Stable storage key for a message's media:
- * `whatsapp/{phoneNumberId}/{waMessageId}`. Each segment is URI-encoded, so
- * ids with `/` or `=` stay one path segment.
- */
 export function getMediaStorageKey(input: {
   phoneNumberId?: string | null;
   waMessageId: string;
@@ -56,7 +45,6 @@ export function getMediaStorageKey(input: {
   ].join("/");
 }
 
-/** Reads `metadata.media` from a stored log record. */
 export function getMessageMedia(
   record: { metadata?: unknown } | null | undefined,
 ): MessageMedia | undefined {
@@ -65,7 +53,6 @@ export function getMessageMedia(
   return media as unknown as MessageMedia;
 }
 
-/** Returns `metadata.media` only when the file is in the `MediaStore`. */
 export function getStoredMessageMedia(
   record: { metadata?: unknown } | null | undefined,
 ): StoredMessageMedia | undefined {

@@ -1,22 +1,3 @@
-/**
- * S3-compatible `MediaStore` for AWS S3, Cloudflare R2, MinIO and Backblaze B2.
- *
- * Uses `aws4fetch` for SigV4 signing over `fetch`, so it runs on Cloudflare
- * Workers, Node 20+, Deno and Bun without the AWS SDK.
- *
- * @example
- * ```ts
- * import { createS3MediaStore } from "better-zap/s3";
- *
- * const media = createS3MediaStore({
- *   endpoint: `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
- *   bucket: "whatsapp-media",
- *   accessKeyId: env.R2_ACCESS_KEY_ID,
- *   secretAccessKey: env.R2_SECRET_ACCESS_KEY,
- * });
- * ```
- */
-
 import { AwsClient } from "aws4fetch";
 import {
   clampSignedUrlExpiry,
@@ -31,41 +12,16 @@ import { tryCatch } from "./utils/result";
 export type { MediaStore, MediaStoreObject, MediaStorePutInfo } from "./media/types";
 
 export interface S3MediaStoreConfig {
-  /**
-   * S3 API endpoint, without the bucket. Examples:
-   * - R2: `https://<account-id>.r2.cloudflarestorage.com`
-   * - AWS: `https://s3.us-east-1.amazonaws.com` (optional for AWS when `region` is set)
-   * - MinIO: `http://localhost:9000`
-   * - B2: `https://s3.us-west-004.backblazeb2.com`
-   */
   endpoint?: string;
   bucket: string;
-  /**
-   * Signing region. Defaults to `auto` for R2, the region in the host name for
-   * AWS and B2, and `us-east-1` otherwise.
-   */
   region?: string;
   accessKeyId: string;
   secretAccessKey: string;
-  /** For temporary AWS credentials. */
   sessionToken?: string;
-  /**
-   * Put the bucket in the path (`endpoint/bucket/key`) rather than the host
-   * name (`bucket.endpoint/key`). Defaults to `false` for AWS endpoints and
-   * `true` for everything else (R2, MinIO, B2).
-   */
   forcePathStyle?: boolean;
-  /** Prefix added to every key, e.g. `"prod/"`. */
   keyPrefix?: string;
-  /**
-   * Add `getSignedUrl`, so the media route redirects to a presigned bucket
-   * URL rather than streaming the file through your server. Defaults to
-   * `false`.
-   */
   signedUrls?: boolean;
-  /** Retries for network errors, 429 and 5xx responses. Defaults to 2. */
   retries?: number;
-  /** Custom `fetch`, e.g. for tests. Defaults to the global `fetch`. */
   fetch?: typeof fetch;
 }
 
@@ -113,7 +69,6 @@ export function createS3MediaStore(config: S3MediaStoreConfig): MediaStore {
     return url;
   };
 
-  /** Signs and sends a request. Throws only when every attempt hit a network error. */
   const send = async (
     url: URL,
     init: {
@@ -135,12 +90,10 @@ export function createS3MediaStore(config: S3MediaStoreConfig): MediaStore {
 
   const store: MediaStore = {
     async put(key, body, info: MediaStorePutInfo) {
-      // S3 needs a Content-Length, so streams are read into memory first.
       const bytes =
         body instanceof ArrayBuffer ? body : await new Response(body).arrayBuffer();
       const headers: Record<string, string> = {
         "Content-Type": info.contentType || "application/octet-stream",
-        // Sign the payload hash so the bucket rejects a corrupted upload.
         "X-Amz-Content-Sha256": await sha256Hex(bytes),
       };
       if (info.sha256) {

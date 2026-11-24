@@ -9,10 +9,8 @@ export type TemplateDefinitionFromMetaResult =
   | { supported: true; definition: TemplateDefinition }
   | { supported: false; reason: string };
 
-/** Templates can come from untyped JSON, so every field is read as `unknown`. */
 type LooseObject = { [key: string]: unknown };
 
-/** Components of one Meta component, or why the template cannot be expressed. */
 type ConversionStep =
   | { supported: true; components: TemplateComponentDefinition[] }
   | { supported: false; reason: string };
@@ -21,10 +19,6 @@ const VARIABLE_PATTERN = /\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g;
 const DIGITS = /^\d+$/;
 const MEDIA_HEADER_FORMATS = ["IMAGE", "VIDEO", "DOCUMENT"];
 
-/**
- * Converts a template as Meta returns it into the definition used by
- * `defineTemplates` and `serializeTemplateFromRegistry`. Never throws.
- */
 export function templateDefinitionFromMeta(
   template: Pick<MessageTemplate, "language" | "components">,
 ): TemplateDefinitionFromMetaResult {
@@ -134,8 +128,6 @@ function convertButtons(component: LooseObject): ConversionStep {
       continue;
     }
 
-    // A phone-number button takes no value when the message is sent. It still
-    // counts towards the index of the buttons after it.
     if (type === "PHONE_NUMBER") {
       continue;
     }
@@ -148,10 +140,6 @@ function convertButtons(component: LooseObject): ConversionStep {
   return { supported: true, components };
 }
 
-/**
- * One text parameter per variable, in order. A numeric variable is named by
- * its position (`body_1`); a named one keeps its name (`body_first_name`).
- */
 function textParameters(
   prefix: string,
   text: unknown,
@@ -192,7 +180,6 @@ function describe(value: unknown): string {
   return type === "object" ? "an object" : `a ${type}`;
 }
 
-/** Upper-cases a string. Anything else reads as `""`, so a value from JSON cannot make this throw. */
 function upper(value: unknown): string {
   return typeof value === "string" ? value.toUpperCase() : "";
 }

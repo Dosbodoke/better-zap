@@ -16,36 +16,18 @@ import {
   type MessageMedia,
 } from "./types";
 
-/** Media download settings for the webhook processor. */
 export type WebhookMediaConfig = {
   store: MediaStore;
-  /** Downloads a Meta media id. `betterZap()` uses `WhatsAppService.downloadMedia`. */
   download: (
     mediaId: string,
     options: MediaDownloadOptions & { phoneNumberId?: string },
   ) => Promise<MediaDownloadResult>;
-  /** Files larger than this are skipped. Defaults to 25 MiB. */
   maxBytes?: number;
-  /**
-   * Time limit for one file's download and upload, in milliseconds. A file
-   * that takes longer is recorded as `failed`. Defaults to 30 seconds.
-   */
   timeoutMs?: number;
-  /** Files downloaded at the same time. Defaults to 3. */
   concurrency?: number;
-  /** Used in the storage key when the webhook has no `phone_number_id`. */
   phoneNumberId?: string;
 };
 
-/**
- * Downloads a message's media, stores it, and records the result in
- * `metadata.media`. Does nothing for messages without media and for history
- * media placeholders. Never throws.
- *
- * The download and upload together must finish within `media.timeoutMs`.
- * The webhook processor runs this in the background through a media queue,
- * after `onMessage`.
- */
 export async function storeMessageMedia(input: {
   message: IncomingMessage;
   phoneNumberId?: string;
@@ -90,8 +72,6 @@ async function downloadAndStore(
     mediaType: payload.type,
   };
 
-  // `download` and `put` are app-provided in custom setups, so they may throw
-  // or ignore the signal. `tryCatch` stops waiting once the signal aborts.
   const [download, downloadError] = await tryCatch(
     () =>
       media.download(payload.id, {

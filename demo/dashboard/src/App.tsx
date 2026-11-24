@@ -27,11 +27,6 @@ function linkIn(message: UIMessage): string | null {
   return message.templateName ? null : firstLinkIn(message.content);
 }
 
-/**
- * Loads previews for the links in `messages` and returns a resolver for
- * MessageList. The resolver changes when a preview arrives, which re-renders
- * the list rows.
- */
 function useLinkPreviews(client: MockWhatsappClient, messages: UIMessage[]) {
   const [previews, setPreviews] = useState<Record<string, LinkPreview>>({});
 
@@ -61,10 +56,6 @@ function useLinkPreviews(client: MockWhatsappClient, messages: UIMessage[]) {
   );
 }
 
-/**
- * Subscribes to the conversations slice only: message-level updates (status
- * ticks) that don't touch the conversations array never reach this pane.
- */
 const ConversationsPane = memo(function ConversationsPane({
   client,
   selectedId,
@@ -88,7 +79,6 @@ const ConversationsPane = memo(function ConversationsPane({
   );
 });
 
-/** Subscribes to the selected conversation and its messages only. */
 const ChatPane = memo(function ChatPane({
   client,
   selectedId,

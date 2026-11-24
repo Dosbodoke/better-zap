@@ -11,12 +11,9 @@ export interface MetaGraphFailure {
   error: string;
   errorCode?: number;
   errorSubcode?: number;
-  /** Meta's `error_user_title`. Safe to show to the person who made the request. */
   errorUserTitle?: string;
-  /** Meta's `error_user_msg`. Safe to show to the person who made the request. */
   errorUserMessage?: string;
   httpStatus?: number;
-  /** Raw response body. May contain untrusted text; do not log it verbatim. */
   details?: unknown;
   diagnostics: CoexistenceGraphErrorDiagnostics;
 }

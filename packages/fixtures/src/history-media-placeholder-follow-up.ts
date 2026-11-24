@@ -1,7 +1,5 @@
 import type { CoexistenceWebhookPayload } from "./types";
 
-// Encodes Meta's history webhook reference: media sent within 14 days of onboarding is delivered later in a separate history webhook that reuses the placeholder's message id and carries the media asset id.
-// Stage 2 of 2. The messages sit directly under `value`, not under `history[]`.
 export const historyMediaPlaceholderFollowUpFixture = {
   object: "whatsapp_business_account",
   entry: [

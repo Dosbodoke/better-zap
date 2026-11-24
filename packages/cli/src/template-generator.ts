@@ -23,9 +23,7 @@ type GenerateOptions = {
   accessToken?: string;
   apiVersion?: string;
   check?: boolean;
-  /** Language to prefer when a template exists in several. */
   defaultLanguage?: string;
-  /** Keep templates of every status, not only `APPROVED` and `PAUSED`. */
   allStatuses?: boolean;
   fetchImpl?: typeof fetch;
   output: string;
@@ -74,9 +72,7 @@ type MetaTemplate = {
 export type SkippedTemplate = { name: string; language: string; reason: string };
 
 type BuildTemplateRegistryOptions = {
-  /** Language to prefer when a template exists in several. */
   defaultLanguage?: string;
-  /** Statuses to keep. Defaults to `["APPROVED", "PAUSED"]`. `"all"` keeps every status. */
   includeStatuses?: readonly string[] | "all";
 };
 
@@ -372,7 +368,6 @@ async function findDefaultConfigPath(cwd: string): Promise<string | null> {
       await fs.access(absolutePath);
       return absolutePath;
     } catch {
-      // Try the next config filename.
     }
   }
 
@@ -401,10 +396,6 @@ function isStatusIncluded(
   );
 }
 
-/**
- * Uses `defaultLanguage` when the template has it, otherwise the language code
- * that sorts first, so the result does not depend on the order Meta returns.
- */
 function chooseLanguage(
   definitions: TemplateRegistry[string][],
   defaultLanguage: string | undefined,

@@ -255,8 +255,6 @@ describe("createWebhookHandler", () => {
         body: rawBody,
       });
 
-      // No third `executionCtx` argument. Hono's `c.executionCtx` getter throws
-      // here, so the handler must fall back to awaiting the processor.
       const res = await app.fetch(req, {});
 
       expect(res.status).toBe(200);

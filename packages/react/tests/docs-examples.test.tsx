@@ -15,8 +15,6 @@ import {
 } from "@better-zap/react";
 import type { Conversation, LinkPreview, UIMessage } from "@better-zap/react";
 import { firstLinkIn } from "better-zap";
-// Documented subpath import — proves `@better-zap/react/bubble` resolves
-// (see README "Subpath imports").
 import { Bubble, BubbleContent } from "@better-zap/react/bubble";
 import {
   createConversation,
@@ -25,13 +23,6 @@ import {
   stubLegendListLayout,
 } from "./helpers";
 
-/**
- * These tests render the README examples verbatim so documentation can't
- * silently drift from the published surface. When editing a code block in
- * `packages/react/README.md`, update the matching block here too.
- */
-
-// Mirrors "## Quick start" — verbatim copy of the Dashboard function.
 function Dashboard({
   conversations,
   messagesByConversation,
@@ -68,7 +59,6 @@ function Dashboard({
   );
 }
 
-// Mirrors "## Link previews" — verbatim copy of ChatWithPreviews.
 function ChatWithPreviews({
   messages,
   previews,
@@ -89,7 +79,6 @@ function ChatWithPreviews({
   );
 }
 
-// Mirrors the "## Link previews" Bubble composition block.
 function LinkPreviewComposition({
   preview,
   text,
@@ -128,15 +117,10 @@ describe("README examples", () => {
       />,
     );
 
-    // Conversation name from ConversationList row + MessageViewHeader identity.
     expect(screen.getAllByText("Bruno").length).toBeGreaterThan(0);
-    // Composer textarea from MessageInput.
     expect(screen.getByRole("textbox", { name: "Mensagem" })).toBeTruthy();
   });
 
-  // Not a new README block — included to prove the documented subpath import
-  // (`@better-zap/react/bubble`, see "## Subpath imports") resolves against
-  // the published surface.
   it("Link previews: ChatWithPreviews shows the card for the linked message", async () => {
     const url = "https://www.amazon.com.br/dp/B07XQM4PH3";
     const preview: LinkPreview = {

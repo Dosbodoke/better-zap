@@ -1,8 +1,3 @@
-/**
- * WhatsApp Cloud API Service
- * Direct integration with Meta's API (no third-party providers).
- */
-
 import type { WhatsAppConfig } from "../types/config";
 import { normalizePhone } from "../utils/phone";
 import { delay } from "../utils/delay";
@@ -38,9 +33,7 @@ const META_BASE_URL = "https://graph.facebook.com";
 export interface OutgoingLoggingMetadata {
   userId?: string;
   messageType: WhatsAppMessageType;
-  /** Human-readable content of the message to be stored in the log */
   content: string;
-  /** Optional metadata for the log entry (e.g. campaign ID, additional context) */
   metadata?: Record<string, any>;
 }
 
@@ -69,12 +62,10 @@ export class WhatsAppService {
     this.log = log;
   }
 
-  /** Canonical form of a phone number supplied by the app, using this service's `defaultCountry`. */
   normalizePhone(phone: string): string {
     return normalizePhone(phone, { defaultCountry: this.defaultCountry });
   }
 
-  /** Send a text message within the 24h free-form message window only. */
   async sendText(
     to: string,
     body: string,
@@ -125,7 +116,6 @@ export class WhatsAppService {
     });
   }
 
-  /** Send a template message (works outside service window). */
   async sendTemplate(
     to: string,
     templateName: string,
@@ -147,7 +137,6 @@ export class WhatsAppService {
     return this.send(payload, logging);
   }
 
-  /** Send an interactive message with reply buttons (up to 3). */
   async sendInteractiveButtons(
     to: string,
     bodyText: string,
@@ -178,7 +167,6 @@ export class WhatsAppService {
     });
   }
 
-  /** Send an interactive list message with sections and rows. */
   async sendInteractiveList(
     to: string,
     bodyText: string,
@@ -211,7 +199,6 @@ export class WhatsAppService {
     });
   }
 
-  /** Send an interactive media carousel message (2-10 cards). */
   async sendInteractiveMediaCarousel(
     data: SendInteractiveMediaCarouselData,
     logging?: Omit<OutgoingLoggingMetadata, "content">,
@@ -264,7 +251,6 @@ export class WhatsAppService {
     });
   }
 
-  /** Send a location pin message. */
   async sendLocation(
     to: string,
     latitude: number,
@@ -288,11 +274,6 @@ export class WhatsAppService {
     });
   }
 
-  /**
-   * Mark an inbound message as read.
-   *
-   * @see https://developers.facebook.com/docs/whatsapp/cloud-api/messages/mark-messages-as-read
-   */
   async markAsRead(messageId: string): Promise<SendResult> {
     const payload = {
       messaging_product: "whatsapp" as const,
@@ -308,12 +289,6 @@ export class WhatsAppService {
     return this.performRequest(payload, 0);
   }
 
-  /**
-   * Show or hide a typing indicator in the chat.
-   * When starting, the indicator auto-dismisses after 25 seconds or when a message is sent.
-   *
-   * @see https://developers.facebook.com/docs/whatsapp/cloud-api/typing-indicators/
-   */
   async typingIndicator(
     messageId: string,
     action: "typing_on" | "typing_off" = "typing_on",
@@ -339,11 +314,6 @@ export class WhatsAppService {
     return this.performRequest(payload, 0);
   }
 
-  /**
-   * Add a reaction to a message.
-   *
-   * @see https://developers.facebook.com/docs/whatsapp/cloud-api/messages/reaction-messages
-   */
   async sendReaction(
     to: string,
     messageId: string,
@@ -363,16 +333,6 @@ export class WhatsAppService {
     return this.send(payload);
   }
 
-  /**
-   * Download a media file received in a webhook (image, audio, video,
-   * document or sticker), using the configured access token.
-   *
-   * Meta deletes webhook media after 7 days. Never throws: failures and files
-   * over `maxBytes` are returned as results. Runs in development mode too,
-   * since it sends nothing.
-   *
-   * @see https://developers.facebook.com/docs/whatsapp/cloud-api/reference/media
-   */
   async downloadMedia(
     mediaId: string,
     options?: MediaDownloadOptions,
@@ -385,7 +345,6 @@ export class WhatsAppService {
     });
   }
 
-  /** Core send method with retry logic (2 retries, exponential backoff). */
   private async send(
     payload:
       | WhatsAppTextMessage
@@ -442,7 +401,6 @@ export class WhatsAppService {
     }
   }
 
-  /** Actually performs the network request with retries. */
   private async performRequest(
     payload: any,
     retries: number,

@@ -1,6 +1,5 @@
 import type { CoexistenceWebhookPayload } from "./types";
 
-// Encodes the Meta ES v4 coexistence webhook spec (webhook field catalog): account_offboarded is coexistence-specific and was not handled by better-zap SDK PR #11.
 export const accountOffboardedFixture = {
   object: "whatsapp_business_account",
   entry: [

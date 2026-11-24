@@ -1,7 +1,3 @@
-// Fake payloads that follow the shapes in Meta's "Onboard WhatsApp Business
-// app users" webhook reference (history threads, state_sync, message_echoes,
-// edit and revoke). Every identifier and phone number here is fake.
-
 export const BUSINESS_PHONE = "15550000001";
 export const BUSINESS_PHONE_NUMBER_ID = "phone_fake_1";
 

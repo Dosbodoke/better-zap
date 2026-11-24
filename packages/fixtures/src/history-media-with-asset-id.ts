@@ -1,6 +1,5 @@
 import type { CoexistenceWebhookPayload } from "./types";
 
-// Encodes the Meta ES v4 coexistence webhook spec (history sync): media messages from the first 14 days include media asset IDs.
 export const historyMediaWithAssetIdFixture = {
   object: "whatsapp_business_account",
   entry: [

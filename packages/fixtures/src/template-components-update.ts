@@ -1,6 +1,5 @@
 import type { TemplateWebhookPayload } from "./types";
 
-// Encodes Meta's message_template_components_update webhook reference: an edited template with a header, footer and two buttons.
 export const templateComponentsUpdateFixture = {
   object: "whatsapp_business_account",
   entry: [

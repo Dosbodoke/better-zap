@@ -26,11 +26,8 @@ export default async function LandingPage({
           </div>
         </div>
 
-        {/* Right column — scrollable content */}
         <div className="w-full lg:basis-1/2 lg:max-w-[50%] lg:h-screen lg:sticky lg:top-0 flex flex-col relative z-10 bg-[#f3f4f6] lg:overflow-hidden">
-          {/* Top fade */}
           <div className="absolute top-0 left-0 right-0 z-30 h-32 bg-gradient-to-b from-[#f3f4f6] via-[#f3f4f6]/95 to-transparent pointer-events-none backdrop-blur-[1px] hidden lg:block" />
-          {/* Bottom fade */}
           <div className="absolute bottom-0 left-0 right-0 z-30 h-32 bg-gradient-to-t from-[#f3f4f6] via-[#f3f4f6]/95 to-transparent pointer-events-none backdrop-blur-[1px] hidden lg:block" />
           <main
             data-landing-scroll-container
@@ -42,7 +39,6 @@ export default async function LandingPage({
                 <FeatureGrid />
               </div>
 
-              {/* CTA */}
               <section data-scroll-reveal className="text-center space-y-4">
                 <h2 className="text-2xl font-semibold tracking-tight bg-gradient-to-br from-zinc-900 via-zinc-500 to-zinc-900 bg-clip-text text-transparent pb-1">
                   {t("cta.title")}

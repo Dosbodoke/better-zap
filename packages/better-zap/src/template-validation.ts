@@ -41,13 +41,10 @@ export type MessageTemplateIssueCode =
 
 export interface MessageTemplateIssue {
   code: MessageTemplateIssueCode;
-  /** Where the problem is, e.g. `name`, `components[1].text`, `components[2].buttons[0].url`. */
   path: string;
-  /** One English sentence that states the limit and the actual value. */
   message: string;
 }
 
-/** Meta's documented limits. Lengths are counted in characters. */
 export const MESSAGE_TEMPLATE_LIMITS = {
   nameLength: 512,
   bodyLength: 1024,
@@ -71,12 +68,10 @@ const SINGLE_COMPONENT_TYPES = ["HEADER", "BODY", "FOOTER", "BUTTONS"];
 const MEDIA_HEADER_FORMATS = ["IMAGE", "VIDEO", "DOCUMENT", "GIF"];
 const TEXT_BUTTON_TYPES = ["QUICK_REPLY", "URL", "PHONE_NUMBER"];
 
-/** Definitions can come from untyped JavaScript, so every field is read as `unknown`. */
 type LooseObject = { [key: string]: unknown };
 
 type VariableSection = "header" | "body";
 
-/** Variable names in order of first appearance, without duplicates. `"Hi {{1}}, {{ 2 }}"` → `["1", "2"]`. */
 export function extractTemplateVariables(text: string | undefined): string[] {
   if (typeof text !== "string") return [];
 
@@ -87,7 +82,6 @@ export function extractTemplateVariables(text: string | undefined): string[] {
   return [...names];
 }
 
-/** Checks a whole definition. Returns `[]` when nothing is wrong. */
 export function validateMessageTemplate(
   definition: MessageTemplateDefinition,
 ): MessageTemplateIssue[] {
@@ -106,7 +100,6 @@ export function validateMessageTemplate(
       "Template language is missing; it must be a language code such as en_US.",
     );
   }
-  // Meta accepts the category and the parameter format in either case.
   const category = upper(template.category);
   if (!CATEGORIES.includes(category)) {
     addIssue(
@@ -117,7 +110,6 @@ export function validateMessageTemplate(
     );
   }
 
-  // Authentication templates use a different component model that is not checked.
   if (category === "AUTHENTICATION") return issues;
 
   issues.push(
@@ -133,19 +125,15 @@ export function validateMessageTemplate(
   return issues;
 }
 
-/** Checks components only, for an edit where the name and language are fixed. */
 export function validateMessageTemplateComponents(
   components: readonly MessageTemplateComponent[],
   options: {
     category?: MessageTemplateCategory;
-    /** When omitted, `NAMED` is assumed if any header or body variable is not a number, else `POSITIONAL`. */
     parameterFormat?: MessageTemplateParameterFormat;
   } = {},
 ): MessageTemplateIssue[] {
   const list: unknown[] = Array.isArray(components) ? components : [];
   const category = upper(options?.category);
-  // An edit usually carries no category, so an authentication template is
-  // also recognised by its one-time password button.
   if (category === "AUTHENTICATION" || (!category && hasOtpButton(list))) {
     return [];
   }
@@ -412,7 +400,6 @@ function validateButton(
   }
 }
 
-/** Checks the variables of one TEXT header or body. Numbering restarts in each component. */
 function validateVariables(
   issues: MessageTemplateIssue[],
   component: LooseObject,
@@ -486,7 +473,6 @@ function validateVariables(
   }
 }
 
-/** The body variables that have no example value. */
 function missingBodyExamples(
   component: LooseObject,
   variables: string[],
@@ -507,7 +493,6 @@ function missingBodyExamples(
   return [];
 }
 
-/** The header variables that have no example value. */
 function missingHeaderExamples(
   component: LooseObject,
   variables: string[],
@@ -535,7 +520,6 @@ function hasNamedExample(params: unknown, name: string): boolean {
   });
 }
 
-/** `NAMED` when any TEXT header or body variable is not a number, else `POSITIONAL`. */
 function inferParameterFormat(components: unknown[]): MessageTemplateParameterFormat {
   for (const value of components) {
     const component = asObject(value);
@@ -551,7 +535,6 @@ function inferParameterFormat(components: unknown[]): MessageTemplateParameterFo
   return "POSITIONAL";
 }
 
-/** Every authentication template has a one-time password (`OTP`) button. */
 function hasOtpButton(components: unknown[]): boolean {
   return components.some((value) => {
     const component = asObject(value);
@@ -565,7 +548,6 @@ function hasOtpButton(components: unknown[]): boolean {
   });
 }
 
-/** Adds the issue unless one with the same code and path is already there. */
 function addIssue(
   issues: MessageTemplateIssue[],
   code: MessageTemplateIssueCode,
@@ -597,12 +579,10 @@ function describe(value: unknown): string {
   return value === undefined || value === null ? "nothing" : `a ${typeof value}`;
 }
 
-/** Counts characters rather than UTF-16 code units, so an emoji counts once. */
 function characterCount(text: string): number {
   return Array.from(text).length;
 }
 
-/** Upper-cases a string. Anything else reads as `""`, so a value from JSON cannot make this throw. */
 function upper(value: unknown): string {
   return typeof value === "string" ? value.toUpperCase() : "";
 }
@@ -619,7 +599,6 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
 }
 
-/** A string with something other than whitespace. */
 function hasText(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }

@@ -1,9 +1,5 @@
 import { type Result, tryCatch } from "./result";
 
-/**
- * Returns a runner that runs at most `concurrency` tasks at a time. Extra
- * tasks wait their turn in order. Task errors come back as a {@link Result}.
- */
 export function createLimiter(
   concurrency: number,
 ): <T>(task: () => T | Promise<T>) => Promise<Result<T>> {
@@ -19,7 +15,6 @@ export function createLimiter(
     return new Promise((resolve) => waiting.push(resolve));
   };
 
-  // Hands the slot straight to the next task so a new caller can't take it in between.
   const release = () => {
     const next = waiting.shift();
     if (next) return next();

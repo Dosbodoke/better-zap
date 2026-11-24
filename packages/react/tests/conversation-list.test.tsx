@@ -22,7 +22,6 @@ import {
   stubLegendListLayout,
 } from "./helpers";
 
-// Ensure type exports emit in declarations (compile-time only).
 type _TypeExports = [
   ConversationListProps,
   ConversationListLabels,
@@ -59,7 +58,6 @@ const conversations = [
   }),
 ];
 
-/** LegendList may pool duplicate row nodes in jsdom. */
 function findRowByName(name: string) {
   const matches = screen.getAllByText(name);
   const el = matches[0];
@@ -138,7 +136,6 @@ describe("ConversationList + WhatsappDashboard (published surface)", () => {
       expect(screen.getAllByText("Bruno").length).toBeGreaterThan(0),
     );
 
-    // Unread badge on row Bruno (2) and chip count may also show "2"
     expect(screen.getAllByText("2").length).toBeGreaterThan(0);
     expect(screen.getAllByText("1").length).toBeGreaterThan(0);
 
@@ -224,7 +221,6 @@ describe("ConversationList + WhatsappDashboard (published surface)", () => {
       </WhatsappDashboard>,
     );
 
-    // allow useIsMobile effect to apply matchMedia
     await act(async () => {});
 
     await waitFor(() => {
@@ -312,7 +308,6 @@ describe("ConversationList standalone (no WhatsappDashboard)", () => {
       expect(screen.getAllByText("Bruno").length).toBeGreaterThan(0),
     );
 
-    // List stays visible outside dashboard (no display:none)
     const listRoot = screen
       .getByRole("textbox", { name: "Buscar conversa" })
       .closest("div.flex.flex-col.h-full") as HTMLElement | null;

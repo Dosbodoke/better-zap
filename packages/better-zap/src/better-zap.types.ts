@@ -28,22 +28,12 @@ import type { WebhookProcessorHooks } from "./webhook/webhook-processor";
 export interface BetterZapDatabase {
   whatsappLog: WhatsAppLogStore;
   coexistence?: CoexistenceStore;
-  /**
-   * Storage for incoming media files. When set, image, audio, video, document
-   * and sticker files are downloaded from Meta when they arrive and referenced
-   * in `metadata.media`. Without it, only the text label and Meta's media id
-   * are stored, and Meta deletes the file after 7 days.
-   */
   media?: MediaStore;
 }
 
 export type BetterZapCoreConfig = WhatsAppConfig & {
   webhookToken: string;
   appSecret: string;
-  /**
-   * WhatsApp Business Account ID. `api.templates` uses it when a call passes
-   * no `wabaId`. Messaging does not need it.
-   */
   wabaId?: string;
 };
 
@@ -97,25 +87,14 @@ export interface BetterZapPluginInitContext<
   log: Logger;
 }
 
-/**
- * Every webhook event an app or a plugin can hook. Derived from the
- * processor's hook list, so a new event is declared in one place.
- */
 export type BetterZapWebhookEvents = Omit<WebhookProcessorHooks, "onError">;
 
 export type BetterZapWebhookEventName = keyof BetterZapWebhookEvents;
 
-/** The context the processor passes to one event's hook. */
 export type BetterZapWebhookEventContext<
   TName extends BetterZapWebhookEventName,
 > = Parameters<NonNullable<BetterZapWebhookEvents[TName]>>[0];
 
-/**
- * Hook signatures for every webhook event, with the Better Zap context (`db`,
- * `api`, `logger` and the plugin context) merged into each event's context.
- * `onMessage` and `onStatusUpdate` are required and the rest are optional,
- * as in `WebhookProcessorHooks`.
- */
 export type BetterZapWebhookHooks<
   TDatabase extends BetterZapDatabase = BetterZapDatabase,
   TPluginContext extends Record<string, unknown> = {},
@@ -131,20 +110,10 @@ export interface BetterZapPlugin<
   TContext extends Record<string, unknown> = {},
   TServices extends Record<string, unknown> = {},
 > {
-  /** Unique among the plugins passed to `betterZap()`. */
   id: string;
-  /**
-   * Runs once, synchronously, when `betterZap()` is called. Plugins run in
-   * array order and each sees the context and services of the ones before it.
-   * Returned keys must not collide with core keys or another plugin's keys.
-   */
   init?: (
     ctx: BetterZapPluginInitContext<TDatabase>,
   ) => BetterZapPluginInitResult<TContext, TServices> | void;
-  /**
-   * Webhook hooks. For each event, plugin hooks run in array order before the
-   * app's own hook. A hook that throws is logged and does not stop the others.
-   */
   hooks?: Partial<
     BetterZapWebhookHooks<TDatabase, Record<string, unknown> & TContext>
   >;
@@ -194,7 +163,6 @@ type BetterZapTemplateSendMethod<TTemplates extends TemplateRegistry> =
         opts: TypedTemplateSendOptions<TTemplates, TName>,
       ) => Promise<SendResult>;
 
-/** Template management methods. See `TemplateService`. */
 export type BetterZapTemplatesApi = Pick<
   TemplateService,
   | "list"
@@ -261,10 +229,5 @@ export interface BetterZapApi<TTemplates extends TemplateRegistry = {}> {
       opts?: { cursor?: string; limit?: number },
     ): Promise<UIMessage[]>;
   };
-  /**
-   * Create, list, edit and delete message templates in Meta.
-   * Not to be confused with the `templates` option of `betterZap()`, which is
-   * the typed registry used by `send.template`.
-   */
   templates: BetterZapTemplatesApi;
 }

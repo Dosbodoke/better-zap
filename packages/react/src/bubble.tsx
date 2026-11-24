@@ -11,10 +11,6 @@ export type BubbleVariant =
   | "muted";
 
 const bubbleVariants = cva(
-  // max-w-full, not a percentage: a percentage here resolves against the
-  // content-sized MessageContent (circular), squeezing short bubbles below
-  // their own timestamp width. The 65% cap lives on MessageContent, whose
-  // containing block (the full-width Message row) makes it meaningful.
   "relative w-fit max-w-full rounded-[7.5px] px-[9px] py-[6px] text-[14.2px] leading-[19px] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]",
   {
     variants: {
@@ -45,7 +41,6 @@ const tailColorByVariant: Record<BubbleVariant, string> = {
   muted: "text-gray-50",
 };
 
-/** WhatsApp's bubble tail, drawn outside the top corner of the bubble. */
 function BubbleTail({
   align,
   variant,
@@ -78,15 +73,8 @@ function BubbleTail({
 }
 
 export interface BubbleProps extends React.ComponentProps<"div"> {
-  /** Visual treatment. Presentational only — never domain terms. @default "default" */
   variant?: BubbleVariant;
-  /** Which side the corner tail sits on. @default "start" */
   align?: BubbleAlign;
-  /**
-   * Renders WhatsApp's corner tail and squares that corner. Show it on the
-   * first bubble of a group (or a lone bubble), hide it on follow-ups.
-   * @default true
-   */
   tail?: boolean;
 }
 
@@ -116,10 +104,6 @@ export function Bubble({
 }
 
 export interface BubbleContentProps extends React.ComponentProps<"div"> {
-  /**
-   * Element-only polymorphism (Base UI style). When provided, BubbleContent
-   * clones this element instead of rendering a &lt;div&gt;, merging props per renderSlot.
-   */
   render?: React.ReactElement<Record<string, unknown>>;
 }
 
@@ -150,9 +134,7 @@ export function BubbleContent({
 }
 
 export interface BubbleReactionsProps extends React.ComponentProps<"div"> {
-  /** @default "bottom" */
   side?: "top" | "bottom";
-  /** @default "end" */
   align?: BubbleAlign;
 }
 
@@ -178,7 +160,6 @@ export function BubbleReactions({
 }
 
 export interface BubbleGroupProps extends React.ComponentProps<"div"> {
-  /** @default "start" */
   align?: BubbleAlign;
 }
 

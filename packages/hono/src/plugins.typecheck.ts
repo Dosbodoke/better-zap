@@ -5,8 +5,6 @@ declare const database: BetterZapDatabase;
 
 type Audit = { record(event: string): void };
 
-// Annotate the plugin. `satisfies` does not work here: the `plugins` option
-// compares against `BetterZapPlugin<TDatabase, any, any>`, which rejects it.
 const auditPlugin: BetterZapPlugin<BetterZapDatabase, { audit: Audit }> = {
   id: "audit",
   init() {
@@ -14,7 +12,6 @@ const auditPlugin: BetterZapPlugin<BetterZapDatabase, { audit: Audit }> = {
     return { context: { audit } };
   },
   hooks: {
-    // Plugin context and core context are both typed on a coexistence event.
     onSmbMessageEcho: async (ctx) => {
       ctx.audit.record("echo");
       ctx.db.whatsappLog;
@@ -31,7 +28,6 @@ betterZap({
   config: { token: "t", phoneId: "p", webhookToken: "w", appSecret: "s" },
   plugins: [auditPlugin] as const,
   webhook: {
-    // The app's hooks see the plugin context too.
     onMessage: async (ctx) => {
       ctx.audit.record(ctx.phone);
     },

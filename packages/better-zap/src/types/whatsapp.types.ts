@@ -1,12 +1,3 @@
-/**
- * Meta WhatsApp Cloud API v25.0 Type Definitions
- * https://developers.facebook.com/docs/whatsapp/cloud-api/reference/messages
- */
-
-// ============================================
-// Outgoing Message Types
-// ============================================
-
 export interface WhatsAppTextMessage {
   messaging_product: "whatsapp";
   recipient_type: "individual";
@@ -142,7 +133,7 @@ export interface WhatsAppReactionMessage {
   type: "reaction";
   reaction: {
     message_id: string;
-    emoji: string; // empty string removes reaction
+    emoji: string;
   };
 }
 
@@ -191,10 +182,6 @@ export interface TemplateParameter {
   payload?: string;
 }
 
-// ============================================
-// API Response Types
-// ============================================
-
 export interface SendMessageResponse {
   messaging_product: "whatsapp";
   contacts: Array<{
@@ -219,10 +206,6 @@ export interface SendMessageError {
     fbtrace_id: string;
   };
 }
-
-// ============================================
-// Webhook Payload Types
-// ============================================
 
 export interface WebhookPayload {
   object: "whatsapp_business_account";
@@ -292,7 +275,6 @@ export interface IncomingMessage {
     | "reaction"
     | "sticker"
     | "unsupported"
-    /** Coexistence history media with the content omitted. See `isMediaPlaceholder`. */
     | "media_placeholder"
     | (string & {});
   text?: {
@@ -389,10 +371,6 @@ export interface WebhookError {
   };
 }
 
-// ============================================
-// Internal Types
-// ============================================
-
 export interface SendResult {
   success: boolean;
   messageId?: string;
@@ -402,10 +380,6 @@ export interface SendResult {
   httpStatus?: number;
   details?: Record<string, any>;
 }
-
-// ============================================
-// UI Types
-// ============================================
 
 export type FreeformMessageWindow = {
   isOpen: boolean;

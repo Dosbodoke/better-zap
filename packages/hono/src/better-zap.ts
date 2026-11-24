@@ -146,7 +146,6 @@ export function betterZap<
         concurrency: options.media?.concurrency,
         phoneNumberId: config.phoneId,
         download: async (mediaId, { phoneNumberId, ...downloadOptions }) => {
-          // Media sent to another business's number needs that business's token.
           const accessToken =
             mediaCredentials && phoneNumberId && phoneNumberId !== config.phoneId
               ? await mediaCredentials.getAccessToken({ phoneNumberId })
@@ -198,8 +197,6 @@ export function betterZap<
 
   const authorizeAppRequest = options.authorizeAppRequest;
 
-  // Registered after the webhook router and before every app route, so it
-  // guards the app routes only. A route registered above this line is public.
   app.use("*", async (c, next) => {
     if (authorizeAppRequest === "public") {
       return next();

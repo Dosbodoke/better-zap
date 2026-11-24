@@ -1,6 +1,5 @@
 import type { TemplateWebhookPayload } from "./types";
 
-// Encodes Meta's message_template_quality_update webhook reference: a quality score drop from GREEN to YELLOW.
 export const templateQualityUpdateFixture = {
   object: "whatsapp_business_account",
   entry: [

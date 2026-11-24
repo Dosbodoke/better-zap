@@ -137,10 +137,6 @@ export type CoexistenceGraphFailureKind =
   | "configuration_error"
   | "credential_provider_error";
 
-/**
- * Log-safe failure summary. It never contains tokens, the app secret, the
- * authorization code, request URLs, or Meta's free-text error message.
- */
 export interface CoexistenceGraphErrorDiagnostics {
   kind: CoexistenceGraphFailureKind;
   httpStatus?: number;
@@ -148,11 +144,6 @@ export interface CoexistenceGraphErrorDiagnostics {
   subcode?: number;
   type?: string;
   fbtraceId?: string;
-  /**
-   * The failure class is usually transient (network, 5xx, 429, throttling or
-   * `is_transient`). An Embedded Signup code is single-use and short-lived, so
-   * retrying an exchange may still need a new code.
-   */
   retryable: boolean;
 }
 
@@ -163,7 +154,6 @@ export interface CoexistenceGraphResult<TData> {
   errorCode?: number;
   errorSubcode?: number;
   httpStatus?: number;
-  /** Raw response body. May contain untrusted text; do not log it verbatim. */
   details?: unknown;
   diagnostics?: CoexistenceGraphErrorDiagnostics;
 }
@@ -187,10 +177,6 @@ export interface CoexistenceTokenExchangeResult {
   accessToken: string;
   tokenType?: string;
   expiresIn?: number;
-  /**
-   * Deployment-owned credential reference returned by your credential provider.
-   * This is a vault/key identifier only; do not put a raw Meta access token here.
-   */
   credentialRef?: string;
   credentialProvider?: string;
   credentialMetadata?: Record<string, unknown>;
@@ -233,11 +219,6 @@ export interface CoexistenceWebhookValueBase {
   errors?: WebhookError[];
 }
 
-/**
- * Message fields Meta adds for coexistence webhooks. `from` is omitted when the
- * user's phone number is unavailable; `from_user_id` / `to_user_id` carry the
- * business-scoped user ID (BSUID) instead.
- */
 export type CoexistenceWebhookMessage = IncomingMessage & {
   from_user_id?: string;
   from_parent_user_id?: string;
@@ -251,7 +232,6 @@ export type CoexistenceWebhookMessage = IncomingMessage & {
 };
 
 export interface CoexistenceHistoryThread {
-  /** The WhatsApp user's phone number. Omitted when unavailable. */
   id?: string;
   context?: {
     wa_id?: string;
@@ -265,20 +245,15 @@ export interface CoexistenceHistoryThread {
 }
 
 export interface CoexistenceHistoryChunkMetadata {
-  /** 0: day 0-1, 1: day 1-90, 2: day 90-180. Does not mean the phase finished. */
   phase?: number;
-  /** Chunks can arrive out of order; use this to sequence them. */
   chunk_order?: number;
-  /** Overall sync progress, 0-100. 100 means the history sync is complete. */
   progress?: number;
   [key: string]: unknown;
 }
 
 export interface CoexistenceHistoryChunk {
   metadata?: CoexistenceHistoryChunkMetadata;
-  /** Documented shape: messages grouped per WhatsApp user thread. */
   threads?: CoexistenceHistoryThread[];
-  /** Legacy flat shape. Still accepted; duplicates of thread messages are skipped. */
   messages?: CoexistenceWebhookMessage[];
   statuses?: MessageStatus[];
   errors?: WebhookError[];
@@ -288,7 +263,6 @@ export interface CoexistenceHistoryChunk {
 export interface CoexistenceHistoryValue extends CoexistenceWebhookValueBase {
   request_id?: string;
   history?: CoexistenceHistoryChunk[];
-  /** Media asset deliveries for earlier `media_placeholder` history messages. */
   messages?: CoexistenceWebhookMessage[];
 }
 
@@ -300,7 +274,6 @@ export type CoexistenceHistoryWebhook = CoexistenceWebhookBase<
 export interface CoexistenceStateSyncContact {
   full_name?: string;
   first_name?: string;
-  /** Omitted when the user's phone number is unavailable. */
   phone_number?: string;
   user_id?: string;
   parent_user_id?: string;
@@ -311,7 +284,6 @@ export interface CoexistenceStateSyncContact {
 export interface CoexistenceStateSyncItem {
   type?: "contact" | (string & {});
   contact?: CoexistenceStateSyncContact;
-  /** `add` covers adds and edits; `remove` deletes the contact. */
   action?: "add" | "remove" | (string & {});
   metadata?: {
     timestamp?: string;
@@ -323,9 +295,7 @@ export interface CoexistenceStateSyncItem {
 export interface CoexistenceSmbAppStateSyncValue extends CoexistenceWebhookValueBase {
   request_id?: string;
   sync_type?: "smb_app_state_sync";
-  /** Documented contact sync shape. */
   state_sync?: CoexistenceStateSyncItem[];
-  /** Legacy contact shape. Still accepted; contacts already in `state_sync` are skipped. */
   contacts?: Array<{
     wa_id: string;
     profile?: { name?: string };
@@ -341,10 +311,6 @@ export type CoexistenceSmbAppStateSyncWebhook = CoexistenceWebhookBase<
 >;
 
 export interface CoexistenceSmbMessageEchoesValue extends CoexistenceWebhookValueBase {
-  /**
-   * Echoed messages. Meta's documented payload uses `message_echoes`; the Hono
-   * webhook handler merges both arrays into `messages` before calling hooks.
-   */
   messages: IncomingMessage[];
   message_echoes?: CoexistenceWebhookMessage[];
 }
@@ -458,17 +424,8 @@ export interface CoexistenceConnectedAccountRecord
   reconnectedAt?: Date | string;
   isOnBizApp?: boolean;
   platformType?: CoexistencePhoneStatusResponse["platform_type"];
-  /**
-   * Reference to deployment-owned token custody for this WABA/phone number.
-   * The generic account record must never store raw Meta access tokens.
-   */
   credentialRef?: string;
   credentialProvider?: string;
-  /**
-   * Provider metadata that helps resolve credential custody later.
-   * Store only non-secret values such as vault key versions, tenant IDs, token
-   * expiry timestamps, or provider account labels. Do not store raw tokens.
-   */
   credentialMetadata?: Record<string, unknown>;
   preflight?: CoexistencePreflightStateRecord;
   createdAt?: Date | string;
@@ -514,7 +471,6 @@ export interface CoexistenceSyncJobRecord {
 }
 
 export interface CoexistenceContactRecord {
-  /** The contact's phone number, or its business-scoped user ID when Meta omits the phone. */
   waId: string;
   phoneNumberId?: string;
   displayName?: string;

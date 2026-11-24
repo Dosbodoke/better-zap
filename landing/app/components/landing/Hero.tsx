@@ -3,7 +3,6 @@ import Link from "next/link";
 export function Hero({ content }: { content: any }) {
   return (
     <section className="relative overflow-hidden pt-20 pb-16 lg:pt-32 lg:pb-24">
-      {/* Background patterns */}
       <div className="absolute inset-0 -z-10 bg-[radial-gradient(45%_45%_at_50%_50%,rgba(37,211,102,0.05)_0%,rgba(255,255,255,0)_100%)]"></div>
       
       <div className="container mx-auto px-4 text-center">

@@ -88,8 +88,6 @@ function MessageInputBody({
   onMicClick?: () => void;
   showDefaultError: boolean;
 }): React.JSX.Element {
-  // useComposerState (not useComposer) so the toolbar and icon buttons don't
-  // re-render on every keystroke; hasText only flips on empty <-> non-empty.
   const { isSending, hasText } = useComposerState();
 
   return (

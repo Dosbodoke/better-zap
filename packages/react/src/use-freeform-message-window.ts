@@ -5,7 +5,6 @@ import type { Conversation, FreeformMessageWindow, UIMessage } from "better-zap"
 import { resolveConversationFreeformMessageWindow } from "better-zap";
 
 export interface UseFreeformMessageWindowResult extends FreeformMessageWindow {
-  /** Recompute with a fresh clock, update state, and return the fresh result. */
   revalidate: () => FreeformMessageWindow;
 }
 
@@ -69,7 +68,6 @@ export function useFreeformMessageWindow(
     conversation,
     freeformWindow.isOpen,
     freeformWindow.expiresAt,
-    // Re-arm when `now` advances (e.g. after revalidate or expiry tick)
     now,
   ]);
 

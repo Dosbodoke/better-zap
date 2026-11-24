@@ -48,23 +48,14 @@ import {
 import type { WebhookMediaConfig } from "../media/store-message-media";
 import { createMediaQueue, type MediaQueue } from "../media/media-queue";
 
-// ============================================
-// Hook context types
-// ============================================
-
 export interface CoexistenceHistoryContext {
   value: CoexistenceHistoryValue;
   change: WebhookChange;
   importedMessages: number;
-  /** Already stored, or repeated within this webhook. */
   duplicateMessages: number;
-  /** Stored media placeholders replaced by the real media in this webhook. */
   upgradedMessages: number;
-  /** Messages or statuses that could not be stored. Any failure fails the sync job. */
   failedMessages: number;
-  /** From `request_id`, or the in-flight history job for this phone number. */
   requestId?: string;
-  /** Highest `history[].metadata.progress` in this webhook (100 = complete). */
   progress?: number;
   phase?: number;
   chunkOrder?: number;
@@ -75,19 +66,15 @@ export interface SmbAppStateSyncContext {
   change: WebhookChange;
   upsertedContacts: number;
   removedContacts: number;
-  /** Non-contact items, unknown actions, or contacts without any identity. */
   skippedContacts: number;
-  /** Contacts the store failed to write. Any failure fails the sync job. */
   failedContacts: number;
 }
 
 export interface SmbMessageEchoContext {
-  /** `messages` holds the merged `message_echoes` and legacy `messages`. */
   value: CoexistenceSmbMessageEchoesValue;
   change: WebhookChange;
   importedMessages: number;
   duplicateMessages: number;
-  /** Stored media placeholders replaced by real media. */
   upgradedMessages: number;
   failedMessages: number;
 }
@@ -148,96 +135,53 @@ type ContactChange =
   | { kind: "remove"; waId: string }
   | { kind: "skip"; reason: string; type?: string; action?: string };
 
-// ============================================
-// Processor interface
-// ============================================
-
 export interface WebhookProcessorHooks {
-  /** Called once per incoming message, after SDK pre-processing. */
   onMessage: (ctx: MessageContext) => Promise<void>;
-  /** Called once per delivery status update (sent → delivered → read → failed). */
   onStatusUpdate: (ctx: StatusContext) => Promise<void>;
-  /** Called once per history webhook after SDK pre-processing. */
   onCoexistenceHistory?: (ctx: CoexistenceHistoryContext) => Promise<void>;
-  /** Called once per SMB app state sync webhook after SDK pre-processing. */
   onSmbAppStateSync?: (ctx: SmbAppStateSyncContext) => Promise<void>;
-  /** Called once per app message echo webhook after SDK pre-processing. */
   onSmbMessageEcho?: (ctx: SmbMessageEchoContext) => Promise<void>;
-  /** Called once per coexistence account lifecycle webhook. */
   onCoexistenceAccountUpdate?: (
     ctx: CoexistenceAccountUpdateContext,
   ) => Promise<void>;
-  /** Called once per coexistence offboarding lifecycle webhook. */
   onCoexistenceAccountOffboarded?: (
     ctx: CoexistenceAccountOffboardedContext,
   ) => Promise<void>;
-  /** Called once per coexistence background reconnection lifecycle webhook. */
   onCoexistenceAccountReconnected?: (
     ctx: CoexistenceAccountReconnectedContext,
   ) => Promise<void>;
-  /** Called for coexistence message edit webhooks. */
   onCoexistenceMessageEdit?: (
     ctx: CoexistenceMessageEditContext,
   ) => Promise<void>;
-  /** Called for coexistence message revoke webhooks. */
   onCoexistenceMessageRevoke?: (
     ctx: CoexistenceMessageRevokeContext,
   ) => Promise<void>;
-  /** Called when a coexistence webhook contains unsupported/error content. */
   onCoexistenceUnsupportedMessage?: (
     ctx: CoexistenceUnsupportedMessageContext,
   ) => Promise<void>;
-  /** Called when Meta approves, rejects, pauses, disables or otherwise changes a template's status. */
   onTemplateStatusUpdate?: (ctx: TemplateStatusUpdateContext) => Promise<void>;
-  /** Called when a template's quality score changes. */
   onTemplateQualityUpdate?: (ctx: TemplateQualityUpdateContext) => Promise<void>;
-  /** Called when Meta announces or applies a template category change. */
   onTemplateCategoryUpdate?: (ctx: TemplateCategoryUpdateContext) => Promise<void>;
-  /** Called when a template's content is edited. */
   onTemplateComponentsUpdate?: (ctx: TemplateComponentsUpdateContext) => Promise<void>;
-  /**
-   * Called for Meta platform-level errors.
-   * @default Uses the configured {@link WebhookProcessorConfig.log} logger's {@code error} method.
-   */
   onError?: (error: WebhookError) => void;
 }
 
 export interface WebhookProcessorConfig {
-  /** logger for automatic message storage. */
   logger: MessageLoggerService;
-  /** Structured logger for operational logging. */
   log: Logger;
-  /** Optional database contracts used for automatic coexistence persistence. */
   database?: BetterZapDatabase;
-  /** The dispatch hooks called for each webhook event. */
   hooks: WebhookProcessorHooks;
-  /** Seam for human-readable message content. Defaults to the built-in pt-BR resolver. */
   resolveMessageContent?: (message: IncomingMessage) => string;
-  /**
-   * Download incoming media into a `MediaStore`. Covers `messages`,
-   * `smb_message_echoes` and `history`, including follow-up media that
-   * replaces a placeholder. Omit to keep only the text label and media id.
-   *
-   * Downloads run in the background after the hooks, so they never delay
-   * `onMessage`.
-   */
   media?: WebhookMediaConfig;
 }
 
 export interface WebhookProcessor {
-  /**
-   * Dispatches one Meta webhook payload. Never throws: all errors are logged.
-   *
-   * Resolves once every hook has run and this payload's media downloads have
-   * finished, so pass it to `waitUntil` to keep the runtime alive for them.
-   */
   process(payload: WebhookPayload): Promise<void>;
 }
 
 export function createWebhookProcessor(
   config: WebhookProcessorConfig,
 ): WebhookProcessor {
-  // One queue per processor, so concurrent webhooks share the download limit.
   const mediaQueue = config.media
     ? createMediaQueue({ media: config.media, logger: config.logger, log: config.log })
     : undefined;
@@ -247,17 +191,10 @@ export function createWebhookProcessor(
   };
 }
 
-/** The processor config plus the media downloads started by the current payload. */
 type ProcessorRuntime = WebhookProcessorConfig & {
-  /** Starts downloading a message's media in the background. Returns immediately. */
   queueMedia: (message: IncomingMessage, phoneNumberId: string | undefined) => void;
 };
 
-// ============================================
-// Internal Pipeline
-// ============================================
-
-/** Top-level dispatcher — iterates entries in the webhook payload. */
 async function processPayload(
   payload: WebhookPayload,
   processorConfig: WebhookProcessorConfig,
@@ -275,8 +212,6 @@ async function processPayload(
 
   await dispatchPayload(payload, config, log);
 
-  // Hooks are done. Wait for the downloads they started (they never reject),
-  // so `waitUntil` keeps the runtime alive until the files are stored.
   await Promise.all(mediaJobs);
 }
 
@@ -299,7 +234,6 @@ async function dispatchPayload(
   }
 }
 
-/** Iterates changes within a single entry. */
 async function processEntry(
   entry: WebhookEntry,
   config: ProcessorRuntime,
@@ -318,7 +252,6 @@ async function processEntry(
   }
 }
 
-/** Routes webhook changes to field-specific processors. */
 async function processChange(
   change: WebhookChange,
   entryId: string,
@@ -359,10 +292,6 @@ async function processChange(
   }
 }
 
-/**
- * Passes a template webhook to its hook. These webhooks are addressed to the
- * business account: `entryId` is the WABA id and there is no phone number id.
- */
 async function processTemplateChange(
   change: WebhookChange,
   entryId: string,
@@ -416,7 +345,6 @@ async function processTemplateChange(
   }
 }
 
-/** Routes ordinary messages, statuses, and errors to the existing handlers. */
 async function processMessagesChange(
   change: WebhookChange,
   config: ProcessorRuntime,
@@ -506,7 +434,6 @@ async function processHistoryChange(
     upgradedMessages: 0,
     failedMessages: 0,
   };
-  // Ids from documented thread messages; legacy flat copies of them are skipped.
   const threadMessageIds = new Set<string>();
   const historyErrors: WebhookError[] = [...(value.errors ?? [])];
 
@@ -580,7 +507,6 @@ async function processHistoryChange(
     }
   }
 
-  // Media asset deliveries for earlier media_placeholder history messages.
   for (const message of value.messages ?? []) {
     await importHistoryMessage(message);
   }
@@ -588,7 +514,6 @@ async function processHistoryChange(
   if (requestId && store) {
     const hasHistoryErrors = historyErrors.length > 0;
     const failed = hasHistoryErrors || tally.failedMessages > 0;
-    // Older payloads without chunk metadata complete per webhook, as before.
     const isLegacyShape =
       chunks.length > 0 &&
       chunks.every((chunk) => chunk.metadata === undefined && chunk.threads === undefined);
@@ -810,7 +735,6 @@ async function processSmbAppStateSyncChange(
   );
 }
 
-/** Documented `state_sync` items first; legacy `contacts` only fill gaps. */
 function listContactChanges(
   value: CoexistenceSmbAppStateSyncValue,
   phoneNumberId: string | undefined,
@@ -867,7 +791,6 @@ function toStateSyncContactChange(
   }
 
   const contact = item.contact ?? {};
-  // Meta omits the phone number when it is unavailable; fall back to the BSUID.
   const waId = [contact.phone_number, contact.user_id].find(isNonEmptyString);
   if (!waId) {
     return { kind: "skip", reason: "missing_identity", type, action };
@@ -968,7 +891,6 @@ async function processSmbMessageEchoesChange(
     upgradedMessages: 0,
     failedMessages: 0,
   };
-  // Documented message_echoes first; legacy messages only fill gaps.
   const echoes = rawValue.message_echoes ?? [];
   const echoIds = new Set(echoes.map((message) => message?.id).filter(isNonEmptyString));
   const messages: CoexistenceWebhookMessage[] = [...echoes];
@@ -1183,10 +1105,6 @@ async function upsertLifecycleAccountState(
   });
 }
 
-/**
- * Meta's history and state sync webhooks do not carry `request_id`, so fall
- * back to the store's in-flight job for this phone number and sync type.
- */
 async function resolveSyncRequestId(
   value: { request_id?: string; metadata?: { phone_number_id?: string } },
   syncType: CoexistenceSyncType,
@@ -1310,8 +1228,6 @@ async function importCoexistenceMessage(input: {
       },
     });
 
-    // New rows and upgraded placeholders get their media, in the background.
-    // Duplicates are skipped so a replayed webhook never downloads twice.
     if (result === "created" || result === "upgraded") {
       input.config.queueMedia(message, input.metadata?.phone_number_id);
     }
@@ -1331,7 +1247,6 @@ function resolveMessageDirection(
   message: CoexistenceWebhookMessage,
   businessDisplayPhoneNumber: string | undefined,
 ): WhatsAppDirection {
-  // Meta only sets from_user_id on messages sent by the WhatsApp user.
   if (isNonEmptyString(message.from_user_id)) {
     return "incoming";
   }
@@ -1345,7 +1260,6 @@ function resolveMessageDirection(
     : "incoming";
 }
 
-/** Phone numbers first, then business-scoped user IDs when Meta hides the phone. */
 function resolveConversationPhone(
   message: CoexistenceWebhookMessage,
   direction: WhatsAppDirection,
@@ -1399,14 +1313,6 @@ async function runOptionalHook(
   }
 }
 
-/**
- * Processes a single incoming message:
- * 1. Extracts human-readable content
- * 2. Atomically logs and deduplicates by waMessageId
- * 3. Calls {@link WebhookProcessorHooks.onMessage}
- * 4. Queues its media download when a `MediaStore` is configured. The hook
- *    runs first so the bot's reply is never held up by a slow file.
- */
 async function processIncomingMessage(
   message: IncomingMessage,
   contact: WebhookContact | undefined,
@@ -1430,7 +1336,6 @@ async function processIncomingMessage(
     ? new Date().toISOString()
     : sentAt.toISOString();
 
-  // Automatic logging (audit trail)
   const { id, type, text, from, timestamp, ...rawMetadata } = message;
   const created = await config.logger.logIncoming({
     phone,
@@ -1468,13 +1373,6 @@ async function processIncomingMessage(
   config.queueMedia(message, phoneNumberId);
 }
 
-/**
- * Processes a single delivery status update:
- * 1. Parses Unix timestamp to ISO-8601
- * 2. Extracts first error (if any)
- * 3. Atomically updates status only if it advances the lifecycle
- * 4. Calls {@link WebhookProcessorHooks.onStatusUpdate} only if the update was applied
- */
 async function processStatusUpdate(
   status: MessageStatus,
   config: ProcessorRuntime,
@@ -1489,7 +1387,6 @@ async function processStatusUpdate(
   const errorMessage = firstError?.message;
   const errorCode = firstError?.code;
 
-  // Atomic conditional update — skips duplicates and regressions in a single query
   const applied = await config.logger.updateStatus(
     status.id,
     status.status,
@@ -1521,7 +1418,6 @@ async function processStatusUpdate(
   }
 }
 
-/** Matches a contact to a message by `wa_id`, falling back to the first contact. */
 function resolveContact(
   contacts: WebhookContact[] | undefined,
   message: IncomingMessage,
@@ -1555,7 +1451,6 @@ function resolveCoexistenceContact(
     return match;
   }
 
-  // Only legacy payloads without business-scoped IDs fall back to the first contact.
   const hasScopedIdentity =
     isNonEmptyString(message.from_user_id) || isNonEmptyString(message.to_user_id);
   return hasScopedIdentity ? undefined : contacts[0];

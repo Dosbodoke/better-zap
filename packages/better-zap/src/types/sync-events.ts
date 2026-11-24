@@ -24,10 +24,6 @@ export type ConversationUpdateEvent = {
   updates: Partial<ConversationSummary>;
 };
 
-/**
- * An existing message changed, e.g. a history media placeholder was replaced
- * by the real media, or its media file was stored (`metadata.media`).
- */
 export type MessageUpdateEvent = {
   type: "MESSAGE_UPDATE";
   message: WhatsAppLogRecord;

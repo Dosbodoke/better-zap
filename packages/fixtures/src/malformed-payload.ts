@@ -1,4 +1,3 @@
-// Encodes the Meta ES v4 coexistence webhook spec (webhook field catalog) error category: valid JSON that webhook consumers must reject or quarantine without crashing.
 export const malformedPayloadMissingPhoneNumberIdFixture: unknown = {
   object: "whatsapp_business_account",
   entry: [
@@ -28,13 +27,11 @@ export const malformedPayloadMissingPhoneNumberIdFixture: unknown = {
   ],
 };
 
-// Encodes the Meta ES v4 coexistence webhook spec (webhook field catalog) error category: an empty entry array is structurally invalid for routing.
 export const malformedPayloadEmptyEntryFixture: unknown = {
   object: "whatsapp_business_account",
   entry: [],
 };
 
-// Encodes the Meta ES v4 coexistence webhook spec (webhook field catalog) error category: a valid WhatsApp-shaped envelope with an unsupported change field.
 export const malformedPayloadUnknownFieldFixture: unknown = {
   object: "whatsapp_business_account",
   entry: [
@@ -56,7 +53,6 @@ export const malformedPayloadUnknownFieldFixture: unknown = {
   ],
 };
 
-// Encodes the Meta ES v4 coexistence webhook spec (webhook field catalog) error category: JSON that is not a WhatsApp webhook envelope at all.
 export const malformedPayloadMissingObjectFixture: unknown = {
   entry: [
     {

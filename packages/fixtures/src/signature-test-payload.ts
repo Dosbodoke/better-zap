@@ -1,6 +1,5 @@
 import type { CoexistenceWebhookPayload } from "./types";
 
-// Encodes the Meta ES v4 coexistence webhook spec (webhook field catalog): use this well-formed payload as the raw body for HMAC signature tests, signing it correctly for valid-signature cases and deliberately mis-signing it for invalid-signature cases.
 export const signatureTestPayloadFixture = {
   object: "whatsapp_business_account",
   entry: [

@@ -71,16 +71,11 @@ export interface TemplateComponentsUpdateValue extends TemplateWebhookValueBase 
   }>;
 }
 
-/** Fields every template hook receives. */
 export interface TemplateWebhookContext<TValue> {
-  /** The WhatsApp Business Account that owns the template (the webhook entry id). */
   wabaId: string;
-  /** Template id, always a string. */
   templateId: string;
   templateName: string;
-  /** Language code with `-` replaced by `_`, e.g. `en_US`. Empty string when Meta sends none. */
   templateLanguage: string;
-  /** The payload exactly as Meta sent it. */
   value: TValue;
   change: WebhookChange;
 }
@@ -88,7 +83,6 @@ export interface TemplateWebhookContext<TValue> {
 export interface TemplateStatusUpdateContext
   extends TemplateWebhookContext<TemplateStatusUpdateValue> {
   event: TemplateStatusEvent;
-  /** `null` when Meta sends no reason or the literal `"NONE"`. */
   reason: TemplateStatusReason | null;
   category?: MessageTemplateCategory | (string & {});
 }
@@ -101,15 +95,10 @@ export interface TemplateQualityUpdateContext
 
 export interface TemplateCategoryUpdateContext
   extends TemplateWebhookContext<TemplateCategoryUpdateValue> {
-  /** `"scheduled"`: Meta announced a change. `"changed"`: the change happened. */
   phase: "scheduled" | "changed";
-  /** The category the template has now. */
   currentCategory?: string;
-  /** Only when `phase` is `"changed"`. */
   previousCategory?: string;
-  /** Only when `phase` is `"scheduled"`: the category Meta will apply. */
   nextCategory?: string;
-  /** Only when `phase` is `"scheduled"`: ISO 8601 time of the change. */
   scheduledFor?: string;
 }
 
@@ -123,7 +112,6 @@ export interface TemplateComponentsUpdateContext
 
 type RawValue = Record<string, unknown>;
 
-/** Reads a `message_template_status_update` change. Returns `null` when it is malformed. */
 export function readTemplateStatusUpdate(
   change: WebhookChange,
   wabaId: string,
@@ -143,7 +131,6 @@ export function readTemplateStatusUpdate(
   };
 }
 
-/** Reads a `message_template_quality_update` change. Returns `null` when it is malformed. */
 export function readTemplateQualityUpdate(
   change: WebhookChange,
   wabaId: string,
@@ -159,7 +146,6 @@ export function readTemplateQualityUpdate(
   };
 }
 
-/** Reads a `template_category_update` change. Returns `null` when it is malformed. */
 export function readTemplateCategoryUpdate(
   change: WebhookChange,
   wabaId: string,
@@ -170,7 +156,6 @@ export function readTemplateCategoryUpdate(
   const { raw, context } = base;
   const currentCategory = readString(raw.new_category);
 
-  // Meta announces a change with `correct_category` and applies it with `previous_category`.
   if (typeof raw.correct_category === "string") {
     const scheduledFor = readUnixTimestamp(raw.category_update_timestamp);
     return {
@@ -191,7 +176,6 @@ export function readTemplateCategoryUpdate(
   };
 }
 
-/** Reads a `message_template_components_update` change. Returns `null` when it is malformed. */
 export function readTemplateComponentsUpdate(
   change: WebhookChange,
   wabaId: string,
@@ -216,7 +200,6 @@ export function readTemplateComponentsUpdate(
   };
 }
 
-/** Reads the id, name and language every template webhook carries. */
 function readBase<TValue>(
   change: WebhookChange,
   wabaId: string,
@@ -269,8 +252,6 @@ function readUnixTimestamp(timestamp: unknown): string | undefined {
   const seconds = Number(timestamp);
   if (!Number.isFinite(seconds) || seconds <= 0) return undefined;
 
-  // A timestamp outside the range of `Date` gives an invalid date, and
-  // `toISOString` throws on one.
   const date = new Date(seconds * 1000);
   return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }

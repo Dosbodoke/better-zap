@@ -18,35 +18,22 @@ export interface ComposerContextValue {
   setValue: (value: string) => void;
   isSending: boolean;
   disabled: boolean;
-  /** value.trim() is non-empty && !disabled && !isSending */
   canSend: boolean;
-  /** null when no failed send is pending display */
   error: unknown;
   clearError: () => void;
-  /** Fire-and-forget; never rejects. See send() algorithm. */
   send: () => void;
 }
 
-/**
- * Everything except the live draft string. Changes only on boundary events
- * (empty <-> non-empty, send lifecycle, errors), so consumers skip the
- * per-keystroke re-render that `useComposer` implies.
- */
 export interface ComposerStateContextValue
   extends Omit<ComposerContextValue, "value"> {
-  /** value.trim() is non-empty. Boundary-stable, unlike `value` itself. */
   hasText: boolean;
 }
 
-// Split contexts so typing only re-renders draft consumers: the value context
-// changes every keystroke, the state context object is memoized and only
-// changes on boundary events.
 const ComposerValueContext = createContext<string | null>(null);
 const ComposerStateContext = createContext<ComposerStateContextValue | null>(
   null,
 );
 
-/** The live draft string. Consumers re-render on every keystroke. */
 export function useComposerValue(): string {
   const value = useContext(ComposerValueContext);
   if (value === null) {
@@ -55,11 +42,6 @@ export function useComposerValue(): string {
   return value;
 }
 
-/**
- * Actions and boundary-stable flags without the live draft. Prefer this in
- * children that don't display the text (send/attach buttons, error slots) so
- * they don't re-render per keystroke.
- */
 export function useComposerState(): ComposerStateContextValue {
   const ctx = useContext(ComposerStateContext);
   if (!ctx) {
@@ -68,7 +50,6 @@ export function useComposerState(): ComposerStateContextValue {
   return ctx;
 }
 
-/** Full composer context. Subscribes to the draft: re-renders per keystroke. */
 export function useComposer(): ComposerContextValue {
   const ctx = useContext(ComposerStateContext);
   const value = useContext(ComposerValueContext);
@@ -84,7 +65,6 @@ export interface ComposerProps
   value?: string;
   defaultValue?: string;
   onValueChange?: (value: string) => void;
-  /** Required. Throw/reject to signal failure; the draft is preserved. */
   onSubmit: (text: string) => void | Promise<void>;
   onError?: (error: unknown, context: { text: string }) => void;
   disabled?: boolean;
@@ -103,11 +83,6 @@ interface ComposerProviderProps {
   children: React.ReactNode;
 }
 
-/**
- * Owns draft/send state below the pill markup, so uncontrolled keystrokes
- * re-render this provider and draft consumers only, never the pill div or
- * children that stick to useComposerState.
- */
 function ComposerProvider({
   value: valueProp,
   defaultValue,
@@ -150,7 +125,6 @@ function ComposerProvider({
   }, []);
 
   const send = useCallback(() => {
-    // Async IIFE so public send() returns void and no promise escapes to callers.
     void (async () => {
       const text = valueRef.current.trim();
       if (!text || disabledRef.current || isSendingRef.current) {
@@ -229,7 +203,6 @@ export function Composer({
 
 export interface ComposerTextareaProps
   extends React.ComponentProps<"textarea"> {
-  /** Enter sends (Shift+Enter = newline). Ignores IME composition. @default true */
   submitOnEnter?: boolean;
 }
 
@@ -351,7 +324,6 @@ export function ComposerButton({
 
 export interface ComposerErrorProps
   extends Omit<React.ComponentProps<"div">, "children"> {
-  /** Static node, or a function receiving the error. */
   children?: React.ReactNode | ((error: unknown) => React.ReactNode);
 }
 

@@ -8,7 +8,7 @@
     "landing:typecheck": "pnpm --dir landing typecheck",
     "test": "pnpm --filter \"./packages/better-zap\" --filter \"./packages/react\" --filter \"./packages/hono\" --filter \"./packages/cli\" --filter \"./packages/fixtures\" -r test",
     "pack:check": "pnpm --filter \"./packages/better-zap\" --filter \"./packages/react\" --filter \"./packages/hono\" --filter \"./packages/cli\" --filter \"./packages/fixtures\" -r package:check",
-    "release:check": "pnpm release:check-version && pnpm test:release-version && pnpm build && pnpm typecheck && pnpm landing:typecheck && pnpm test && pnpm pack:check && pnpm changeset status --verbose",
+    "release:check": "pnpm release:check-version && pnpm test:release-version && pnpm lint:comments && pnpm test:lint-comments && pnpm build && pnpm typecheck && pnpm landing:typecheck && pnpm test && pnpm pack:check && pnpm changeset status --verbose",
     "changeset": "changeset",
     "version-packages": "changeset version && pnpm release:check-version",
     "release:publish": "pnpm release:check-version && changeset publish",
@@ -17,6 +17,8 @@
     "release:check-version:next": "node scripts/check-release-version.mjs --mode next",
     "release:require-changeset": "node scripts/check-release-version.mjs --require-changeset",
     "test:release-version": "node --test scripts/check-release-version.test.mjs",
+    "lint:comments": "node scripts/check-comments.mjs",
+    "test:lint-comments": "node --test scripts/check-comments.test.mjs",
     "version-packages:next": "changeset version --snapshot next"
   },
   "devDependencies": {

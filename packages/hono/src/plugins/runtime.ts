@@ -49,7 +49,6 @@ export function initializePlugins<
 
   const pluginContext: Record<string, unknown> = {};
   const pluginServices: Record<string, unknown> = {};
-  // Which plugin provided each key, so a collision can name it.
   const contextOwners = new Map<string, string>();
   const serviceOwners = new Map<string, string>();
 
@@ -167,21 +166,13 @@ function isThenable(value: unknown): boolean {
   );
 }
 
-/** Hooks keyed by event name, with the context left open. Internal to this file. */
 type AnyWebhookHooks = Partial<
   Record<BetterZapWebhookEventName, (ctx: any) => Promise<void>>
 >;
 
-/**
- * Builds the processor's hooks from the plugins and the app's own hooks.
- * For each event: merge the Better Zap context into the event context, run
- * every plugin hook in order (isolating failures), then run the app's hook.
- */
 export function composeWebhookHooks<TDatabase extends BetterZapDatabase>(options: {
   plugins: readonly BetterZapPlugin<TDatabase, any, any>[];
-  /** The app's own hooks (`options.webhook`). Extra keys are ignored. */
   userHooks: AnyWebhookHooks;
-  /** Core context plus everything plugins returned from `init`. */
   context: BetterZapContext<TDatabase, Record<string, unknown>>;
   log: Logger;
 }): Required<BetterZapWebhookEvents> {
@@ -218,12 +209,10 @@ export function composeWebhookHooks<TDatabase extends BetterZapDatabase>(options
   return hooks as Required<BetterZapWebhookEvents>;
 }
 
-/** `onCoexistenceMessageEdit` → `on_coexistence_message_edit`. */
 function toSnakeCase(name: string): string {
   return name.replace(/[A-Z]/g, (letter) => "_" + letter.toLowerCase());
 }
 
-/** Log fields that identify the event a failing plugin hook received. */
 function describeEvent(
   name: BetterZapWebhookEventName,
   eventContext: any,

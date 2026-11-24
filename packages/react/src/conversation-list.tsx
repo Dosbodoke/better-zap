@@ -64,11 +64,6 @@ export interface ConversationListProps
   labels?: Partial<ConversationListLabels>;
 }
 
-/**
- * Memoized default row. Every prop is a primitive or a stable reference, so
- * selecting a conversation re-renders exactly two rows (the newly selected
- * and the previously selected one), not the whole list.
- */
 const ConversationListRow = React.memo(function ConversationListRow({
   conversation,
   isSelected,
@@ -138,16 +133,12 @@ export function ConversationList({
   const labels: ConversationListLabels = {
     ...DEFAULT_LABELS,
     ...labelsProp,
-    // When only searchPlaceholder is overridden, searchLabel follows unless set
     searchLabel:
       labelsProp?.searchLabel ??
       labelsProp?.searchPlaceholder ??
       DEFAULT_LABELS.searchLabel,
   };
 
-  // Latest-value refs so the callbacks below stay referentially stable no
-  // matter what the consumer passes; stable callbacks are what let the
-  // memoized search/chips/rows skip re-rendering.
   const isSearchControlledRef = useRef(isSearchControlled);
   isSearchControlledRef.current = isSearchControlled;
   const isFilterControlledRef = useRef(isFilterControlled);
@@ -332,14 +323,12 @@ export function ConversationItem({
         className,
       )}
     >
-      {/* Avatar */}
       {avatar ?? (
         <div className="w-[49px] h-[49px] rounded-full bg-[#dfe5e7] flex items-center justify-center shrink-0">
           <HugeiconsIcon icon={UserIcon} size={28} className="text-white" />
         </div>
       )}
 
-      {/* Content */}
       <div className="flex-1 min-w-0 border-b border-[#e9edef]/70 h-full flex flex-col justify-center pr-1 group-last:border-none group-data-[selected=true]:border-transparent">
         <div className="flex justify-between items-baseline mb-0.5">
           <span className="text-[17px] font-normal text-[#111b21] truncate">

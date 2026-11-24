@@ -1,6 +1,5 @@
 import type { TemplateWebhookPayload } from "./types";
 
-// Encodes Meta's template_category_update webhook reference: a category change announced ahead of time.
 export const templateCategoryScheduledFixture = {
   object: "whatsapp_business_account",
   entry: [
