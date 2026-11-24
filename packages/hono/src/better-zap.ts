@@ -78,21 +78,43 @@ function serializeRuntimeTemplate(
   });
 }
 
-type PluginsCheck<
+type UninferredPlugins<TDatabase extends BetterZapDatabase> = readonly (
+  | BetterZapPluginFor<TDatabase>
+  | AnyBetterZapPlugin<TDatabase>
+)[];
+
+type IsExactly<TLeft, TRight> =
+  (<T>() => T extends TLeft ? 1 : 2) extends <T>() => T extends TRight ? 1 : 2
+    ? true
+    : false;
+
+type ValidatePluginsCheck<
   TPlugins extends readonly unknown[],
   TDatabase extends BetterZapDatabase,
 > = [TPlugins] extends [ValidateBetterZapPlugins<TPlugins, TDatabase>]
   ? unknown
   : { plugins?: ValidateBetterZapPlugins<TPlugins, TDatabase> };
 
+type PluginsCheck<
+  TPlugins extends readonly unknown[],
+  TDatabase extends BetterZapDatabase,
+  TInferredDatabase,
+> = unknown extends TInferredDatabase
+  ? ValidatePluginsCheck<TPlugins, TDatabase>
+  : IsExactly<TPlugins, UninferredPlugins<TDatabase>> extends true
+    ? unknown
+    : ValidatePluginsCheck<TPlugins, TDatabase>;
+
 export function betterZap<
   TDatabase extends BetterZapDatabase = BetterZapDatabase,
   const TPlugins extends readonly AnyBetterZapPlugin<TDatabase>[] =
-    readonly BetterZapPluginFor<TDatabase>[],
+    UninferredPlugins<TDatabase>,
   TTemplates extends TemplateRegistry = {},
+  TInferredDatabase = unknown,
 >(
-  options: BetterZapConfig<TDatabase, TPlugins, TTemplates> &
-    NoInfer<PluginsCheck<TPlugins, TDatabase>>,
+  options: BetterZapConfig<TDatabase, TPlugins, TTemplates> & {
+    database: TInferredDatabase;
+  } & NoInfer<PluginsCheck<TPlugins, TDatabase, TInferredDatabase>>,
 ): BetterZap<InferBetterZapPluginServices<TPlugins>, TTemplates> {
   const {
     database,

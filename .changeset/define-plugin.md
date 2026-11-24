@@ -5,7 +5,7 @@
 
 `definePlugin()` infers a plugin's context and services from what `init` returns and types the plugin's own hooks with them, so a plugin no longer needs a `BetterZapPlugin<...>` annotation. A plugin written with `satisfies BetterZapPlugin` is now accepted by `plugins`, which used to reject any plugin whose hooks read its own context.
 
-`betterZap()` reads each plugin's context and services from the type `init` returns, and checks every plugin's hooks against the context they will receive. A plugin whose hooks need a key no plugin provides, or a database the app doesn't have, is now a type error. Context and service types may now be interfaces. Plugins annotated with `BetterZapPlugin<...>` keep working, except next to an inline plugin whose hooks take an untyped `ctx`; wrap that plugin in `definePlugin` or type its `ctx`.
+`betterZap()` reads each plugin's context and services from the type `init` returns, and checks every plugin's hooks against the context they will receive. A plugin whose hooks need a key no plugin provides, or a database the app doesn't have, is now a type error. Context and service types may now be interfaces. Plugins annotated with `BetterZapPlugin<...>` keep working, including next to an inline plugin whose hooks take an untyped `ctx`.
 
 Event fields now win over plugin context keys with the same name, such as `phone`, whenever the event sets them. Before, a plugin's value replaced the event's in every hook.
 
