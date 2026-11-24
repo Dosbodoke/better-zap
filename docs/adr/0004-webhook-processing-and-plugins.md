@@ -53,11 +53,22 @@ Plugins:
   against `WebhookProcessorHooks`, so a new hook cannot be forgotten.
 - A plugin's types come from its shape, as in better-auth: `betterZap()` reads
   the context and services from the type `init` returns, not from
-  `BetterZapPlugin`'s type arguments. The `plugins` option accepts any
-  `AnyBetterZapPlugin`, whose hooks take `never`, so a plugin whose hooks are
-  typed against its own context is assignable without an annotation.
-  `definePlugin()` infers that context for the plugin's own hooks. The app's
-  database is checked against the plugin's through the `init` parameter type.
+  `BetterZapPlugin`'s type arguments, and leaves out the core keys.
+- The `plugins` option takes two checks. `AnyBetterZapPlugin` accepts any hook
+  whose context includes the event and core context. It is bivariant, so a
+  plugin typed against its own context still fits. `ValidateBetterZapPlugins`
+  then checks each plugin's hooks against the context they will receive: the
+  app's database plus every plugin's context. So a missing dependency or a
+  database the app lacks is a type error where the plugin is passed.
+  Validation is skipped when `betterZap()`'s type arguments are given
+  explicitly, because then nothing is inferred to check against.
+- `definePlugin()` infers the plugin's context for its own hooks and its
+  database from the `init` parameter. Its hooks do not take part in inference
+  (`NoInfer`), so a hook cannot declare context that `init` does not return.
+- The types treat whatever `init` can return as provided. An `init` that
+  sometimes returns nothing, or a union of plugins, still types every key as
+  present. Making those keys optional would make every annotated plugin's
+  context optional, since `BetterZapPlugin`'s `init` returns `... | void`.
 
 ## Consequences
 

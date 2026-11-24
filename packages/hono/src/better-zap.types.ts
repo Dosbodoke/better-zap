@@ -10,6 +10,7 @@ import type {
   InferBetterZapPluginServices,
   LoggerConfig,
   TemplateRegistry,
+  ValidateBetterZapPlugins,
 } from "better-zap";
 import type {
   CoexistenceCredentialProvider,
@@ -36,7 +37,7 @@ export interface BetterZapConfig<
 > {
   database: TDatabase;
   config: BetterZapCoreConfig;
-  plugins?: TPlugins;
+  plugins?: TPlugins & NoInfer<ValidateBetterZapPlugins<TPlugins, TDatabase>>;
   templates?: TTemplates;
   conversationSync?: DurableObjectNamespace<any>;
   webhook: BetterZapWebhookHooks<
@@ -72,7 +73,7 @@ export interface BetterZapConfig<
 }
 
 export interface BetterZap<
-  TPluginServices extends Record<string, unknown> = {},
+  TPluginServices extends object = {},
   TTemplates extends TemplateRegistry = {},
 > {
   handler: (

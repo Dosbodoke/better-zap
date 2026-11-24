@@ -78,7 +78,8 @@ function serializeRuntimeTemplate(
 
 export function betterZap<
   TDatabase extends BetterZapDatabase = BetterZapDatabase,
-  TPlugins extends readonly AnyBetterZapPlugin<TDatabase>[] = readonly [],
+  TPlugins extends readonly AnyBetterZapPlugin<TDatabase>[] =
+    readonly AnyBetterZapPlugin<TDatabase>[],
   TTemplates extends TemplateRegistry = {},
 >(
   options: BetterZapConfig<TDatabase, TPlugins, TTemplates>,

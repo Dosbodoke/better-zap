@@ -340,6 +340,7 @@ export type {
   BetterZapWebhookHooks,
   InferBetterZapPluginContext,
   InferBetterZapPluginServices,
+  ValidateBetterZapPlugins,
 } from "./better-zap.types";
 export { definePlugin } from "./plugin";
 export { WEBHOOK_EVENT_NAMES } from "./webhook/event-names";

@@ -3,12 +3,19 @@ import type {
   BetterZapDatabase,
   BetterZapPlugin,
   BetterZapPluginInitContext,
+  InferBetterZapPluginContext,
+  MessageContext,
 } from "better-zap";
 import { betterZap } from "./better-zap";
 
 declare const database: BetterZapDatabase;
 
 const config = { token: "t", phoneId: "p", webhookToken: "w", appSecret: "s" };
+
+const noopWebhook = {
+  onMessage: async () => {},
+  onStatusUpdate: async () => {},
+};
 
 type Audit = { record(event: string): void };
 
@@ -171,3 +178,163 @@ const asyncInitPlugin: BetterZapPlugin = {
   init: async () => ({ context: {} }),
 };
 void asyncInitPlugin;
+
+const auditReader = {
+  id: "audit-reader",
+  hooks: {
+    onMessage: async (ctx) => {
+      ctx.audit.record(ctx.phone);
+    },
+  },
+} satisfies BetterZapPlugin<BetterZapDatabase, { audit: Audit }>;
+
+betterZap({
+  database,
+  config,
+  plugins: [auditPlugin, auditReader],
+  webhook: noopWebhook,
+});
+
+betterZap({
+  database,
+  config,
+  // @ts-expect-error no plugin provides the audit context the hook reads
+  plugins: [auditReader],
+  webhook: noopWebhook,
+});
+
+definePlugin({
+  id: "audit-reader",
+  hooks: {
+    // @ts-expect-error a hook cannot declare context that its init does not return
+    onMessage: async (ctx: MessageContext & { audit: Audit }) => {
+      ctx.audit.record(ctx.phone);
+    },
+  },
+});
+
+const ticketHooksOnly = {
+  id: "ticket-hooks",
+  hooks: {
+    onMessage: async (ctx) => {
+      await ctx.db.tickets.open(ctx.phone);
+    },
+  },
+} satisfies BetterZapPlugin<TicketDatabase>;
+
+betterZap({
+  database: ticketDatabase,
+  config,
+  plugins: [ticketHooksOnly],
+  webhook: noopWebhook,
+});
+
+betterZap({
+  database,
+  config,
+  // @ts-expect-error the hooks need a database with tickets
+  plugins: [ticketHooksOnly],
+  webhook: noopWebhook,
+});
+
+betterZap({
+  database: ticketDatabase,
+  config,
+  plugins: [metricsPlugin],
+  webhook: noopWebhook,
+});
+
+betterZap<TicketDatabase>({
+  database: ticketDatabase,
+  config,
+  plugins: [auditPlugin, ticketPlugin],
+  webhook: noopWebhook,
+});
+
+betterZap({
+  database,
+  config,
+  plugins: [
+    {
+      id: "inline",
+      init: () => ({ context: { inline: 1 } }),
+      hooks: {
+        onMessage: async (ctx) => {
+          ctx.db.whatsappLog;
+        },
+      },
+    },
+  ],
+  webhook: {
+    onMessage: async (ctx) => {
+      const inline: number = ctx.inline;
+      void inline;
+    },
+    onStatusUpdate: async () => {},
+  },
+});
+
+interface ReportContext {
+  report: Audit;
+}
+
+declare const reportContext: ReportContext;
+
+const reportPlugin = definePlugin({
+  id: "report",
+  init: () => ({ context: reportContext }),
+  hooks: {
+    onMessage: async (ctx) => {
+      ctx.report.record(ctx.phone);
+    },
+  },
+});
+
+const pluginList = [auditPlugin, reportPlugin];
+
+betterZap({
+  database,
+  config,
+  plugins: pluginList,
+  webhook: {
+    onMessage: async (ctx) => {
+      ctx.report.record(ctx.phone);
+      ctx.audit.record(ctx.phone);
+    },
+    onStatusUpdate: async () => {},
+  },
+});
+
+const reservedPlugin = {
+  id: "reserved",
+  init: () => ({ context: { db: 1 } }),
+} satisfies BetterZapPlugin;
+
+betterZap({
+  database,
+  config,
+  plugins: [reservedPlugin],
+  webhook: {
+    onMessage: async (ctx) => {
+      const db: BetterZapDatabase = ctx.db;
+      void db;
+    },
+    onStatusUpdate: async () => {},
+  },
+});
+
+betterZap({
+  database,
+  config,
+  webhook: {
+    onMessage: async (ctx) => {
+      // @ts-expect-error no plugins, so no plugin context
+      ctx.audit;
+    },
+    onStatusUpdate: async () => {},
+  },
+});
+
+type SinglePluginContext<TPlugin> = InferBetterZapPluginContext<TPlugin>;
+const singlePluginContext: SinglePluginContext<typeof auditPlugin> = {};
+void singlePluginContext;
