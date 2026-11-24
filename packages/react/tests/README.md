@@ -25,11 +25,15 @@ Server-safe: `bubble`, `message`, `message-bubble`, `utils`. `message-bubble` im
 
 ## LegendList / jsdom
 
-`ConversationList` and `MessageList` use `@legendapp/list` virtualization. jsdom has no real layout, so tests stub `offsetHeight` / `offsetWidth` / `getBoundingClientRect` (see `helpers.ts`).
+`ConversationList` and `MessageList` use `@legendapp/list` virtualization. jsdom has no layout, so `setup.ts` replaces `@legendapp/list/react` with `legend-list-double.tsx`, a non-virtual list that renders every item once, in `data` order. Tests assert what the components hand the list (rows, divider order, sticky headers, callbacks), not how LegendList lays it out.
 
-If row virtualization still fails to paint items after those stubs, prefer characterizing chrome (search, chips, loading/error/empty) and document the gap here rather than reaching into `src/`.
+The double keeps the parts of the LegendList contract the components rely on:
 
-LegendList absolute-position pooling can also scramble **document order** of sticky date dividers relative to messages. Prefer asserting message-body order (or presence of dividers) rather than strict DOM order of `HOJE`/`ONTEM` nodes.
+- A row re-renders only when its item, `data` or `extraData` changes, not when `renderItem` changes.
+- Indices in `stickyHeaderIndices` are marked `data-sticky-header`.
+- `onStartReached` fires on a `scroll` event within `onStartReachedThreshold` of the top. Use `fireEvent.scroll(screen.getByTestId("legend-list"))`.
+
+Scrolling, measuring and recycling are not covered here.
 
 ## Known product gaps (do not "fix" in production code here)
 
