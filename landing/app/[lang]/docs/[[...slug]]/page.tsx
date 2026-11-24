@@ -20,16 +20,15 @@ export default async function DocsPageRoute(props: {
   const page = source.getPage(params.slug, params.lang);
   if (!page) notFound();
 
-  const data = page.data as any;
-  const MDX = data.body;
+  const MDX = page.data.body;
   const markdownUrl = getLlmsPageUrl(page);
   const editPageUrl = `https://github.com/Dosbodoke/better-zap/blob/main/landing/content/docs/${page.path}`;
 
   return (
-    <DocsPage toc={data.toc}>
+    <DocsPage toc={page.data.toc}>
       <div className="mb-6">
-        <DocsTitle className="mb-5">{data.title}</DocsTitle>
-        <DocsDescription className="mb-4">{data.description}</DocsDescription>
+        <DocsTitle className="mb-5">{page.data.title}</DocsTitle>
+        <DocsDescription className="mb-4">{page.data.description}</DocsDescription>
         <div className="border-t border-fd-border pt-3">
           <div className="flex flex-wrap gap-2">
             <CopyMarkdownButton href={markdownUrl} />
