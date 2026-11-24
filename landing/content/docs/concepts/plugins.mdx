@@ -131,7 +131,7 @@ zap.services.analytics.getReport();
 
 - Plugin ids must be unique.
 - `init` must be synchronous. If a plugin needs asynchronous setup, create the client lazily inside a service.
-- Event fields win over plugin context. In a hook for an event that has a `phone` or `message` field, a context key with the same name is hidden. Avoid those names.
+- Event fields win over plugin context when the event sets them. In a hook for an event that has a `phone` or `message` field, a context key with the same name is hidden. Some fields are optional and left out when Meta sends no value, such as `category` on template events or `progress` on history events. A plugin key with that name then shows through, and the types don't show it. Avoid event field names.
 - `context` and `services` must be plain objects. Better Zap copies their own properties, so a class instance would lose its methods; `betterZap()` throws at startup if `init` returns one. Put instances inside the object instead: `{ context: { audit: new Audit() } }`.
 - A plugin cannot return the context keys `db`, `api` or `logger`, the service keys `whatsapp` or `logger`, or a key another plugin already returned. `betterZap()` throws at startup if it does, and the error names the plugin.
 - For each event, plugin hooks run in array order, before your own hook.
@@ -153,7 +153,7 @@ A plugin without `init` adds nothing to the context or services. The reserved co
 
 `betterZap()` also checks every plugin's hooks against the context they will receive: your `database` plus the context of every plugin in the list. A plugin whose hooks need a key that no plugin provides, or a database your app doesn't have, is rejected where you pass it to `plugins`.
 
-When `betterZap()` can't see each plugin's type, it checks the plugins against `BetterZapPluginFor<MyDatabase>`: their hooks may only need your database and the core context. That happens when you pass type arguments, as in `betterZap<MyDatabase>({ ... })`, or when the list's type has lost its plugin types, such as `AnyBetterZapPlugin[]`. In those cases plugin context and services are not inferred. `definePlugin` plugins pass this check, because their hooks always receive their own context. Plugins written with `satisfies` or an annotation whose hooks read plugin context are rejected. Let TypeScript infer the types, or keep a list in a variable without a type annotation.
+When `betterZap()` can't see each plugin's type, it checks the plugins against `BetterZapPluginFor<MyDatabase>`: their hooks may only need your database and the core context. That happens when you pass type arguments, as in `betterZap<MyDatabase>({ ... })`, when the list's type has lost its plugin types, such as `AnyBetterZapPlugin[]`, or when the list holds an inline plugin whose hooks take an untyped `ctx` (see [Inline plugins](#inline-plugins)). In those cases plugin context and services are not inferred. `definePlugin` plugins pass this check, because their hooks always receive their own context. Plugins written with `satisfies` or an annotation whose hooks read plugin context are rejected. Let TypeScript infer the types, and declare a list `as const` when you keep it in a variable.
 
 The types assume that `init` returns everything it can return. An `init` that sometimes returns nothing, or a list whose type is a union of plugins, still shows every key as present.
 
@@ -189,7 +189,7 @@ A hook annotated with only part of the context, such as `ctx: MessageContext & {
 
 ### Inline plugins
 
-A plugin written inline in `plugins: [...]` is accepted, and your `webhook` hooks get its context. Its own hooks see `db`, `api` and `logger`, but not the plugin's own context. Wrap it in `definePlugin` when its hooks need that.
+A plugin written inline in `plugins: [...]` is accepted, and your `webhook` hooks get its context. Its own hooks see `db`, `api` and `logger`, but not the plugin's own context. When its hooks take an untyped `ctx`, TypeScript can't infer the list in one pass, so every other plugin in the list is checked as `BetterZapPluginFor` and a `satisfies` or annotated plugin whose hooks read plugin context is rejected. Wrap the inline plugin in `definePlugin`, or type its `ctx`.
 
 ### Custom database
 

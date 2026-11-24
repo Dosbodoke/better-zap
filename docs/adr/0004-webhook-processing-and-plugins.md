@@ -61,7 +61,9 @@ Plugins:
   missing dependency or a database the app lacks is a type error where the
   plugin is passed.
 - When the plugin types can't be inferred (explicit type arguments on
-  `betterZap()`, or a list typed with erased plugins), the default and the
+  `betterZap()`, a list typed with erased plugins, or a list with an inline
+  plugin whose hooks take an untyped `ctx`, which TypeScript only infers on
+  a second pass), the default and the
   check fall back to `BetterZapPluginFor<TDatabase>`. Its hooks may only need
   the app's database and the core context. The database is always checked,
   and plugins whose hooks read plugin context are rejected there.
@@ -72,9 +74,11 @@ Plugins:
   in a variable or spread is still an array, where a plugin with
   `id: string` can absorb another, so the docs ask for `as const` there.
 - The runtime spreads the event context over the plugin context, so an
-  event field always wins over a plugin key with the same name. Hook
-  contexts are typed the same way, so a hook typed with the event's fields
-  is always right, whatever the plugins return.
+  event field wins over a plugin key with the same name whenever the event
+  sets it. Hook contexts are typed the same way. Optional event fields that
+  the event leaves out (template `category`, history `progress`, ...) let a
+  plugin key through, and the types don't show it; typing those keys as a
+  union would reject the plugins that provide them.
   When a plugin's context has a string index, the merged context keeps its
   declared keys but types the index as `unknown`, since a computed key may
   name an event field.

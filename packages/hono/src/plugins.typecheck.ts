@@ -679,3 +679,38 @@ betterZap({
     onStatusUpdate: async () => {},
   },
 });
+
+betterZap({
+  database,
+  config,
+  plugins: [
+    // @ts-expect-error an inline plugin with an untyped ctx makes the list fall back to BetterZapPluginFor
+    legacyCrmPlugin,
+    {
+      id: "inline-untyped",
+      hooks: {
+        onMessage: async (ctx) => {
+          ctx.phone;
+        },
+      },
+    },
+  ],
+  webhook: noopWebhook,
+});
+
+betterZap({
+  database,
+  config,
+  plugins: [
+    legacyCrmPlugin,
+    definePlugin({
+      id: "inline-defined",
+      hooks: {
+        onMessage: async (ctx) => {
+          ctx.phone;
+        },
+      },
+    }),
+  ],
+  webhook: noopWebhook,
+});
